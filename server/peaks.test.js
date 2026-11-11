@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const src = fs.readFileSync(new URL('./media.js', import.meta.url), 'utf8');
-const body = src.match(/export function peaksOf[\s\S]*?\n}\n/)[0].replace(/^export /, '');
+const body = src.match(/export function peaksOf[\s\S]*?\r?\n}\r?\n/)[0].replace(/^export /, '');   // \r?: a Windows clone has CRLF
 const peaksOf = new Function(body + '; return peaksOf;')();
 
 test('peaksOf: min/max pairs per 80 samples, ×127, a short last bucket', () => {
