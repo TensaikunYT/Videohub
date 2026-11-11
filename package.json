@@ -1,0 +1,39 @@
+{
+  "name": "videohub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Windows hub for videos that Claude Code writes as code: project catalog, live preview with no render, frame-accurate review notes sent back to Claude, a protected one-at-a-time render queue with partial re-renders, and MCP tools for Claude.",
+  "license": "MIT",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "video",
+    "motion-graphics",
+    "render-queue",
+    "canvas",
+    "puppeteer",
+    "ffmpeg",
+    "review",
+    "windows"
+  ],
+  "type": "module",
+  "main": "server/hub.js",
+  "os": [
+    "win32"
+  ],
+  "scripts": {
+    "start": "node server/hub.js",
+    "mcp": "node server/mcp.js",
+    "test": "node scripts/test.mjs",
+    "check": "node --check server/hub.js && node --check server/mcp.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "puppeteer-core": "^25.17.0",
+    "zod": "^4.6.7"
+  }
+}
