@@ -1,0 +1,73 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "hero-object",
+  "name": "Hero object",
+  "desc": "A single huge, glowing object in the centre, low angle, rim light from behind, a short title on top.",
+  "format": "16:9",
+  "tags": ["object", "hero", "cinematic"],
+  "slots": {
+    "OBJECT": { "label": "Featured object", "default": "a golden sword" },
+    "TITLE": { "label": "Top title", "default": "FORBIDDEN RELIC" }
+  },
+  "camera": {
+    "shot": "medium",
+    "angle": "low",
+    "lens": 24,
+    "horizon": 0.75,
+    "dof": 0.5
+  },
+  "light": {
+    "azimuth": 180,
+    "key": "fire",
+    "time": "night",
+    "contrast": 0.85,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": ["#0b0e14", "#f1c40f", "#e67e22"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Dark background",
+      "kind": "scene",
+      "desc": "A dark, vaulted ancient chamber, smoke and specks of dust",
+      "depth": 100
+    },
+    {
+      "type": "object",
+      "name": "Hero object",
+      "desc": "{{OBJECT}}, golden reflections and a magical glow",
+      "shape": "rect",
+      "x": 0.30,
+      "y": 0.20,
+      "w": 0.40,
+      "h": 0.70,
+      "depth": 25,
+      "importance": 3
+    },
+    {
+      "type": "text",
+      "name": "Top title",
+      "content": "{{TITLE}}",
+      "font": "Impact",
+      "size": 0.14,
+      "fill": "#f1c40f",
+      "stroke": "#000000",
+      "strokeW": 0.05,
+      "shadow": true,
+      "uppercase": true,
+      "x": 0.20,
+      "y": 0.05,
+      "w": 0.60,
+      "h": 0.20,
+      "depth": 0
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "mystery-silhouette",
+  "name": "Mystery / silhouette",
+  "desc": "A dark silhouette with its back turned in the foreground, a mysterious glowing door or portal ahead.",
+  "format": "16:9",
+  "tags": ["mystery", "silhouette", "exploration", "portal"],
+  "slots": {
+    "MYSTERY": { "label": "Mysterious structure ahead", "default": "a giant ancient portal radiating golden light" },
+    "TITLE": { "label": "Intriguing title", "default": "NO ONE WENT IN" }
+  },
+  "camera": {
+    "shot": "wide",
+    "angle": "low",
+    "lens": 24,
+    "horizon": 0.65,
+    "dof": 0.6
+  },
+  "light": {
+    "azimuth": 0,
+    "key": "fire",
+    "time": "night",
+    "contrast": 0.9,
+    "rim": true
+  },
+  "style": {
+    "preset": "dark-documentary",
+    "palette": ["#08090d", "#d35400", "#f39c12"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Dark cave / temple",
+      "kind": "scene",
+      "desc": "Dark, deep cave walls, with {{MYSTERY}} glowing ahead",
+      "depth": 100
+    },
+    {
+      "type": "effect",
+      "name": "Light rays",
+      "kind": "light-rays",
+      "stroke": "#f39c12",
+      "x": 0.35,
+      "y": 0.10,
+      "w": 0.30,
+      "h": 0.40,
+      "depth": 80
+    },
+    {
+      "type": "subject",
+      "name": "Traveller with back turned",
+      "desc": "Silhouette of a lone explorer with their back turned, wearing a backpack, looking at the portal",
+      "pose": "sirti-donuk",
+      "facing": "away",
+      "crop": "knee",
+      "color": "#11141c",
+      "x": 0.38,
+      "y": 0.40,
+      "w": 0.24,
+      "h": 0.60,
+      "depth": 15,
+      "importance": 3
+    },
+    {
+      "type": "text",
+      "name": "Mystery title",
+      "content": "{{TITLE}}",
+      "font": "Georgia",
+      "size": 0.13,
+      "fill": "#ffffff",
+      "stroke": "#000000",
+      "strokeW": 0.04,
+      "shadow": true,
+      "x": 0.15,
+      "y": 0.06,
+      "w": 0.70,
+      "h": 0.18,
+      "depth": 0
+    }
+  ]
+}

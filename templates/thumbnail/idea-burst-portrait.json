@@ -1,0 +1,139 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "idea-burst-portrait",
+  "name": "Idea burst",
+  "desc": "A thoughtful portrait on the right, a burst of colourful paint and objects on the left. Creativity, making things and visualising complex ideas.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "creativity",
+    "colour",
+    "idea",
+    "portrait"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Short title",
+      "default": "INSIDE THE MIND"
+    },
+    "CHARACTER": {
+      "label": "Main person",
+      "default": "a thoughtful creator"
+    },
+    "IDEA": {
+      "label": "Three concrete items in the burst",
+      "default": "a light bulb, scraps of coloured paper and small chess pieces"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.35,
+    "focusLayer": "t_4"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "warm",
+    "time": "studio",
+    "contrast": 0.75,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#ece8dd",
+      "#1baeb9",
+      "#ed3c93",
+      "#ffcd38"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "dramatic",
+    "custom": "Photographic portrait with an expressive cloud of colored pigment and three recognizable objects at left. Keep the right face natural and the lower-left title band quiet."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Plain light backdrop",
+      "kind": "scene",
+      "desc": "Warm off-white wall; paint marks on the left, calm empty space on the right",
+      "color": "#ece8dd",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "object",
+      "name": "Colourful thought cloud",
+      "desc": "{{IDEA}}, floating in mid-air inside a realistic burst of pigment with turquoise, magenta, yellow and green particles; only a few clear shapes",
+      "x": 0.035,
+      "y": 0.06,
+      "w": 0.55,
+      "h": 0.69,
+      "depth": 55,
+      "importance": 3,
+      "shape": "blob",
+      "color": "#e83a9b",
+      "id": "t_2"
+    },
+    {
+      "type": "effect",
+      "name": "Light of the idea",
+      "kind": "glow",
+      "x": 0.17,
+      "y": 0.21,
+      "w": 0.31,
+      "h": 0.34,
+      "depth": 45,
+      "stroke": "#f7cf38",
+      "fill": null,
+      "id": "t_3"
+    },
+    {
+      "type": "subject",
+      "name": "Thinking person",
+      "desc": "{{CHARACTER}}, one hand on the chin, face turned towards the colourful thought cloud, dark jacket",
+      "x": 0.58,
+      "y": 0.09,
+      "w": 0.37,
+      "h": 0.89,
+      "depth": 20,
+      "importance": 3,
+      "pose": "dusunuyor-cene",
+      "expression": "supheci",
+      "crop": "chest",
+      "facing": "left",
+      "color": "#91a3a8",
+      "id": "t_4"
+    },
+    {
+      "type": "text",
+      "name": "Creativity title",
+      "content": "{{TITLE}}",
+      "x": 0.055,
+      "y": 0.77,
+      "w": 0.52,
+      "h": 0.15,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.12,
+      "fill": "#151b20",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_5"
+    }
+  ]
+}

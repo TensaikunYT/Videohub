@@ -1,0 +1,178 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "rising-success-chart",
+  "name": "Rising success chart",
+  "desc": "A giant success rate at the top, a three-person scene below and a green arrow rising to the right. Views, learning and performance breakdowns.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "chart",
+    "success",
+    "performance",
+    "rate"
+  ],
+  "slots": {
+    "STAT": {
+      "label": "Big percentage or number",
+      "default": "99%"
+    },
+    "TITLE": {
+      "label": "Measured result",
+      "default": "VIEWS"
+    },
+    "TEAM": {
+      "label": "Three-person team",
+      "default": "three friends who make content for the same channel"
+    }
+  },
+  "camera": {
+    "shot": "medium",
+    "angle": "eye",
+    "lens": 50,
+    "horizon": 0.5,
+    "dof": 0.05,
+    "focusLayer": "t_4"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "neutral",
+    "time": "studio",
+    "contrast": 0.35,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#eee3ba",
+      "#25251e",
+      "#4cab45"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "exciting",
+    "custom": "Warm editorial team photograph in the lower half, three people only. The upper third stays empty for an oversized result number and metric; a green arrow rises to the upper right."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Warm light studio",
+      "kind": "scene",
+      "desc": "Yellow-cream backdrop, light paper texture; the upper half wide and empty, a plain studio floor below",
+      "color": "#eee3ba",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "subject",
+      "name": "Team · left",
+      "desc": "the first person from {{TEAM}}, turned excitedly towards the centre while working together",
+      "x": 0.055,
+      "y": 0.45,
+      "w": 0.27,
+      "h": 0.5,
+      "depth": 40,
+      "importance": 2,
+      "pose": "oturuyor",
+      "expression": "gulen",
+      "crop": "chest",
+      "facing": "right",
+      "color": "#bfa98b",
+      "id": "t_2"
+    },
+    {
+      "type": "subject",
+      "name": "Team · right",
+      "desc": "the third person from {{TEAM}}, celebrating the success",
+      "x": 0.645,
+      "y": 0.45,
+      "w": 0.27,
+      "h": 0.5,
+      "depth": 40,
+      "importance": 2,
+      "pose": "kollar-havada",
+      "expression": "heyecanli",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#bfa98b",
+      "id": "t_3"
+    },
+    {
+      "type": "subject",
+      "name": "Team · centre",
+      "desc": "the second person from {{TEAM}}, a large portrait standing out in front",
+      "x": 0.355,
+      "y": 0.405,
+      "w": 0.29,
+      "h": 0.55,
+      "depth": 25,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "gulen",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#d9be96",
+      "id": "t_4"
+    },
+    {
+      "type": "text",
+      "name": "Big result",
+      "content": "{{STAT}}",
+      "x": 0.045,
+      "y": 0.055,
+      "w": 0.36,
+      "h": 0.25,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.23,
+      "fill": "#2e7540",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_5"
+    },
+    {
+      "type": "text",
+      "name": "Result name",
+      "content": "{{TITLE}}",
+      "x": 0.43,
+      "y": 0.07,
+      "w": 0.52,
+      "h": 0.2,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.16,
+      "fill": "#25251e",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_6"
+    },
+    {
+      "type": "effect",
+      "name": "Rising arrow",
+      "kind": "arrow",
+      "x": 0.55,
+      "y": 0.285,
+      "w": 0.35,
+      "h": 0.16,
+      "depth": 5,
+      "stroke": "#4cab45",
+      "fill": null,
+      "rot": -18,
+      "id": "t_7"
+    }
+  ]
+}

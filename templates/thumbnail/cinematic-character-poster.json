@@ -1,0 +1,179 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "cinematic-character-poster",
+  "name": "Cinematic character poster",
+  "desc": "A large main portrait with three small characters and amber light behind. A poster layout for film, game and character reviews.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "cinema",
+    "poster",
+    "collage",
+    "portrait"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Short title (2–4 words)",
+      "default": "IT CHANGED EVERYTHING"
+    },
+    "CHARACTER": {
+      "label": "Main person",
+      "default": "a film director with a determined look"
+    },
+    "CAST": {
+      "label": "Three supporting people or characters",
+      "default": "a young hero, a mysterious rival and an old mentor"
+    },
+    "WORLD": {
+      "label": "Setting of the film or story",
+      "default": "a misty desert city and distant sand dunes"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.35,
+    "focusLayer": "t_6"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "warm",
+    "time": "studio",
+    "contrast": 0.75,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#141416",
+      "#e7a535",
+      "#f8f4e9"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "dramatic",
+    "custom": "Movie-poster portrait montage: one dominant portrait at left, three much smaller supporting portraits on the right. Amber backlight, black clothing, no generated lettering."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Amber film world",
+      "kind": "scene",
+      "desc": "{{WORLD}}, a poster atmosphere shifting from black shadows to orange light, no text",
+      "color": "#28160d",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "effect",
+      "name": "Sun halo behind",
+      "kind": "glow",
+      "x": 0.47,
+      "y": 0.05,
+      "w": 0.48,
+      "h": 0.78,
+      "depth": 85,
+      "stroke": "#f5a623",
+      "fill": null,
+      "id": "t_2"
+    },
+    {
+      "type": "subject",
+      "name": "Supporting cast · left",
+      "desc": "the first person from {{CAST}}, a supporting character smaller than the main portrait",
+      "x": 0.48,
+      "y": 0.31,
+      "w": 0.17,
+      "h": 0.42,
+      "depth": 65,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#ba693a",
+      "id": "t_3"
+    },
+    {
+      "type": "subject",
+      "name": "Supporting cast · middle",
+      "desc": "the second person from {{CAST}}, placed higher than the others",
+      "x": 0.64,
+      "y": 0.12,
+      "w": 0.17,
+      "h": 0.5,
+      "depth": 70,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#e0a55e",
+      "id": "t_4"
+    },
+    {
+      "type": "subject",
+      "name": "Supporting cast · right",
+      "desc": "the third person from {{CAST}}, a portrait emerging from the dark",
+      "x": 0.8,
+      "y": 0.33,
+      "w": 0.17,
+      "h": 0.4,
+      "depth": 60,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#a95727",
+      "id": "t_5"
+    },
+    {
+      "type": "subject",
+      "name": "Main portrait",
+      "desc": "{{CHARACTER}}, sharp and natural face, black clothing, amber rim light from the right",
+      "x": 0.035,
+      "y": 0.065,
+      "w": 0.43,
+      "h": 0.91,
+      "depth": 15,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#d1b9a1",
+      "id": "t_6"
+    },
+    {
+      "type": "text",
+      "name": "Poster title",
+      "content": "{{TITLE}}",
+      "x": 0.46,
+      "y": 0.77,
+      "w": 0.49,
+      "h": 0.16,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.15,
+      "fill": "#ffe34c",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "center",
+      "uppercase": true,
+      "id": "t_7"
+    }
+  ]
+}

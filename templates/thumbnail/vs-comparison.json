@@ -1,0 +1,93 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "vs-comparison",
+  "name": "VS comparison",
+  "desc": "Two rivals/characters facing each other, one mirrored, with a glowing VS in the middle.",
+  "format": "16:9",
+  "tags": ["vs", "comparison", "rivalry"],
+  "slots": {
+    "LEFT_RIVAL": { "label": "Left character/rival", "default": "a gladiator in red armour" },
+    "RIGHT_RIVAL": { "label": "Right character/rival", "default": "a knight in blue armour" }
+  },
+  "camera": {
+    "shot": "cowboy",
+    "angle": "low",
+    "lens": 35,
+    "horizon": 0.65,
+    "dof": 0.4
+  },
+  "light": {
+    "azimuth": 0,
+    "key": "neon",
+    "time": "night",
+    "contrast": 0.8,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": ["#e74c3c", "#3498db", "#111216"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Arena background",
+      "kind": "scene",
+      "desc": "A smoky dark arena, red light rays on the left and blue on the right",
+      "depth": 100
+    },
+    {
+      "type": "subject",
+      "name": "Left rival",
+      "desc": "{{LEFT_RIVAL}}, looking determined and angry",
+      "pose": "ayakta",
+      "expression": "kizgin",
+      "crop": "waist",
+      "facing": "right",
+      "color": "#e74c3c",
+      "x": 0.05,
+      "y": 0.15,
+      "w": 0.38,
+      "h": 0.85,
+      "depth": 20,
+      "importance": 3
+    },
+    {
+      "type": "subject",
+      "name": "Right rival",
+      "desc": "{{RIGHT_RIVAL}}, ready to fight",
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "waist",
+      "facing": "left",
+      "flip": true,
+      "color": "#3498db",
+      "x": 0.57,
+      "y": 0.15,
+      "w": 0.38,
+      "h": 0.85,
+      "depth": 20,
+      "importance": 3
+    },
+    {
+      "type": "text",
+      "name": "VS text",
+      "content": "VS",
+      "font": "Impact",
+      "size": 0.22,
+      "fill": "#f1c40f",
+      "stroke": "#000000",
+      "strokeW": 0.08,
+      "shadow": true,
+      "x": 0.40,
+      "y": 0.35,
+      "w": 0.20,
+      "h": 0.30,
+      "depth": 5
+    }
+  ]
+}

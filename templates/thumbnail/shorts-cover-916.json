@@ -1,0 +1,86 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "shorts-cover-916",
+  "name": "Shorts cover (9:16)",
+  "desc": "Vertical 9:16 format; a huge title area at the top, the main subject in the middle and a safe zone at the bottom reserved for the YouTube Shorts interface.",
+  "format": "9:16",
+  "tags": ["shorts", "vertical", "mobile", "reels", "tiktok"],
+  "slots": {
+    "TITLE": { "label": "Top title (2-3 lines)", "default": "NOBODY TELLS YOU THIS!" },
+    "CHARACTER": { "label": "Centre character", "default": "an excited young narrator" },
+    "SUBJECT": { "label": "Background theme", "default": "a bright neon studio background" }
+  },
+  "camera": {
+    "shot": "medium-close",
+    "angle": "eye",
+    "lens": 35,
+    "horizon": 0.5,
+    "dof": 0.4
+  },
+  "light": {
+    "azimuth": 45,
+    "key": "cool",
+    "time": "studio-three-point",
+    "contrast": 0.7,
+    "rim": true
+  },
+  "style": {
+    "preset": "bold-graphic",
+    "palette": ["#1e1b4b", "#ef4444", "#38bdf8"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Vertical background",
+      "kind": "scene",
+      "desc": "{{SUBJECT}}, vertical composition, dynamic light rays",
+      "depth": 100
+    },
+    {
+      "type": "text",
+      "name": "Big top title",
+      "content": "{{TITLE}}",
+      "font": "youtube-bold",
+      "color": "#ffff00",
+      "stroke": "#000000",
+      "strokeWidth": 0.16,
+      "shadow": true,
+      "x": 0.05,
+      "y": 0.04,
+      "w": 0.9,
+      "h": 0.22,
+      "size": 0.16,
+      "depth": 0
+    },
+    {
+      "type": "subject",
+      "name": "Centre presenter",
+      "desc": "{{CHARACTER}}, pointing up at the title",
+      "pose": "isaret-ediyor",
+      "expression": "heyecanli",
+      "crop": "waist",
+      "x": 0.12,
+      "y": 0.26,
+      "w": 0.76,
+      "h": 0.52,
+      "depth": 20,
+      "importance": 3
+    },
+    {
+      "type": "zone",
+      "name": "Shorts interface area",
+      "desc": "Safe area covered by the Shorts like/title/channel buttons",
+      "x": 0.0,
+      "y": 0.8,
+      "w": 1.0,
+      "h": 0.2,
+      "color": "rgba(0, 0, 0, 0.45)",
+      "depth": 10
+    }
+  ]
+}

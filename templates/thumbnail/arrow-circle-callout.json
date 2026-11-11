@@ -1,0 +1,112 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "arrow-circle-callout",
+  "name": "Arrow + circle callout",
+  "desc": "A hidden detail in a realistic scene marked with a red circle and arrow, with a reacting investigator's face at the bottom right.",
+  "format": "16:9",
+  "tags": ["callout", "arrow", "circle", "mystery", "exploration", "reaction"],
+  "slots": {
+    "TITLE": { "label": "Bottom title", "default": "DID YOU NOTICE THIS?" },
+    "SUBJECT": { "label": "Overall scene", "default": "an old historical photo or place" },
+    "DETAIL": { "label": "Marked detail", "default": "an unexplained strange detail in the background" },
+    "CHARACTER": { "label": "Reaction character", "default": "a surprised investigator" }
+  },
+  "camera": {
+    "shot": "wide",
+    "angle": "eye",
+    "lens": 35,
+    "horizon": 0.5,
+    "dof": 0.3
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "warm",
+    "time": "golden-hour",
+    "contrast": 0.6,
+    "rim": false
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": ["#1c1917", "#ef4444", "#fbbf24"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Main scene",
+      "kind": "scene",
+      "desc": "{{SUBJECT}}, rich detail, realistic atmosphere",
+      "depth": 100
+    },
+    {
+      "type": "object",
+      "name": "Hidden detail",
+      "desc": "{{DETAIL}}, a suspicious element hidden in the scene",
+      "x": 0.36,
+      "y": 0.28,
+      "w": 0.2,
+      "h": 0.24,
+      "depth": 60,
+      "importance": 3
+    },
+    {
+      "type": "effect",
+      "name": "Red circle",
+      "shape": "circle",
+      "color": "#ef4444",
+      "desc": "A red ring drawn around the detail",
+      "x": 0.32,
+      "y": 0.23,
+      "w": 0.28,
+      "h": 0.34,
+      "depth": 30
+    },
+    {
+      "type": "effect",
+      "name": "Red callout arrow",
+      "shape": "arrow",
+      "color": "#ef4444",
+      "desc": "A thick red arrow pointing towards the circle",
+      "x": 0.18,
+      "y": 0.16,
+      "w": 0.18,
+      "h": 0.16,
+      "depth": 25
+    },
+    {
+      "type": "subject",
+      "name": "Bottom-right reaction character",
+      "desc": "{{CHARACTER}}, pointing a finger towards the circle",
+      "pose": "isaret-ediyor",
+      "expression": "saskin",
+      "crop": "chest",
+      "flip": false,
+      "x": 0.68,
+      "y": 0.42,
+      "w": 0.3,
+      "h": 0.58,
+      "depth": 15,
+      "importance": 3
+    },
+    {
+      "type": "text",
+      "name": "Eye-catching title",
+      "content": "{{TITLE}}",
+      "font": "youtube-bold",
+      "color": "#ffffff",
+      "stroke": "#000000",
+      "strokeWidth": 0.15,
+      "shadow": true,
+      "x": 0.05,
+      "y": 0.76,
+      "w": 0.65,
+      "h": 0.18,
+      "size": 0.12,
+      "depth": 0
+    }
+  ]
+}

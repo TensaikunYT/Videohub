@@ -1,0 +1,180 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "chorus-of-emotions",
+  "name": "Chorus of emotions",
+  "desc": "A large black-and-white face in the centre, small colourful reaction faces on both sides. Comedy, psychology and the different sides of one person.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "emotion",
+    "portrait",
+    "comedy",
+    "collage"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Short title",
+      "default": "EVERYONE IS WATCHING HIM"
+    },
+    "CHARACTER": {
+      "label": "Person in the centre",
+      "default": "a bearded comedian with a blank stare"
+    },
+    "REACTIONS": {
+      "label": "Shared person of the small faces",
+      "default": "different moods of the same person"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.05,
+    "focusLayer": "t_6"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "neutral",
+    "time": "studio",
+    "contrast": 0.75,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#25171c",
+      "#b4b6b9",
+      "#c88155"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "funny",
+    "custom": "One very large monochrome neutral face in the center, four much smaller warm-color reaction faces around the sides. Clear hierarchy, central eyes uncovered, no additional faces."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Dark studio",
+      "kind": "scene",
+      "desc": "Dark burgundy and anthracite backdrop, narrow warm light at the edges, a calm area in the centre",
+      "color": "#25171c",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "subject",
+      "name": "Top-left reaction",
+      "desc": "{{REACTIONS}}, very surprised, small warm-toned portrait",
+      "x": 0.035,
+      "y": 0.07,
+      "w": 0.21,
+      "h": 0.37,
+      "depth": 55,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "saskin",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#c88155",
+      "id": "t_2"
+    },
+    {
+      "type": "subject",
+      "name": "Top-right reaction",
+      "desc": "{{REACTIONS}}, looking suspicious, small warm-toned portrait",
+      "x": 0.76,
+      "y": 0.07,
+      "w": 0.205,
+      "h": 0.37,
+      "depth": 55,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "supheci",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#c88155",
+      "id": "t_3"
+    },
+    {
+      "type": "subject",
+      "name": "Bottom-left reaction",
+      "desc": "{{REACTIONS}}, laughing excitedly, small portrait",
+      "x": 0.055,
+      "y": 0.5,
+      "w": 0.2,
+      "h": 0.36,
+      "depth": 45,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "heyecanli",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#c88155",
+      "id": "t_4"
+    },
+    {
+      "type": "subject",
+      "name": "Bottom-right reaction",
+      "desc": "{{REACTIONS}}, horrified, small portrait",
+      "x": 0.745,
+      "y": 0.5,
+      "w": 0.2,
+      "h": 0.36,
+      "depth": 45,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "korkmus",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#c88155",
+      "id": "t_5"
+    },
+    {
+      "type": "subject",
+      "name": "Calm centre",
+      "desc": "{{CHARACTER}}, a single large black-and-white portrait with a calm, neutral expression; the outer faces stay in colour",
+      "x": 0.29,
+      "y": 0.04,
+      "w": 0.42,
+      "h": 0.9,
+      "depth": 15,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "notr",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#b4b6b9",
+      "id": "t_6"
+    },
+    {
+      "type": "text",
+      "name": "Chorus title",
+      "content": "{{TITLE}}",
+      "x": 0.1,
+      "y": 0.815,
+      "w": 0.72,
+      "h": 0.12,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.115,
+      "fill": "#ffffff",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "center",
+      "uppercase": true,
+      "bg": "#17191c",
+      "id": "t_7"
+    }
+  ]
+}

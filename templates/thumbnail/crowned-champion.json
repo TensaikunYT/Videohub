@@ -1,0 +1,154 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "crowned-champion",
+  "name": "Crowned champion",
+  "desc": "A giant crowned piece on the left, the winner's smiling portrait on the right; gold and dark green. Success, winning streaks and game analysis.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "success",
+    "chess",
+    "crown",
+    "champion"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Victory title",
+      "default": "THE NEW KING"
+    },
+    "CHARACTER": {
+      "label": "Winner",
+      "default": "a happy tournament champion"
+    },
+    "SYMBOL": {
+      "label": "Crowned object",
+      "default": "a white chess king"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.35,
+    "focusLayer": "t_5"
+  },
+  "light": {
+    "azimuth": 240,
+    "key": "warm",
+    "time": "studio",
+    "contrast": 0.75,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#102725",
+      "#eac45b",
+      "#f4efe2"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "exciting",
+    "custom": "A playful but premium winner portrait: crowned white chess king at left, joyful person large at right. Gold highlights against a deep green background."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Dark green arena",
+      "kind": "scene",
+      "desc": "A blurred black and dark green tournament hall, a little gold bokeh in the background",
+      "color": "#102725",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "effect",
+      "name": "Golden rim halo",
+      "kind": "glow",
+      "x": 0.07,
+      "y": 0.18,
+      "w": 0.37,
+      "h": 0.62,
+      "depth": 75,
+      "stroke": "#f4bb45",
+      "fill": null,
+      "id": "t_2"
+    },
+    {
+      "type": "object",
+      "name": "Championship symbol",
+      "desc": "{{SYMBOL}}, white porcelain surface, slightly low angle",
+      "x": 0.09,
+      "y": 0.3,
+      "w": 0.3,
+      "h": 0.6,
+      "depth": 35,
+      "importance": 3,
+      "shape": "rect",
+      "color": "#e9dfcb",
+      "material": "porcelain",
+      "id": "t_3"
+    },
+    {
+      "type": "object",
+      "name": "Floating golden crown",
+      "desc": "A five-pointed golden king's crown resting on {{SYMBOL}}, with jewels and metallic reflections",
+      "x": 0.12,
+      "y": 0.1,
+      "w": 0.26,
+      "h": 0.24,
+      "depth": 25,
+      "importance": 2,
+      "shape": "rect",
+      "color": "#eac45b",
+      "material": "gold",
+      "id": "t_4"
+    },
+    {
+      "type": "subject",
+      "name": "Winner's portrait",
+      "desc": "{{CHARACTER}}, big natural smile, black suit, warm gold rim light",
+      "x": 0.49,
+      "y": 0.09,
+      "w": 0.47,
+      "h": 0.89,
+      "depth": 15,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "gulen",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#c6b193",
+      "id": "t_5"
+    },
+    {
+      "type": "text",
+      "name": "Championship title",
+      "content": "{{TITLE}}",
+      "x": 0.055,
+      "y": 0.065,
+      "w": 0.5,
+      "h": 0.14,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.14,
+      "fill": "#ffe284",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_6"
+    }
+  ]
+}

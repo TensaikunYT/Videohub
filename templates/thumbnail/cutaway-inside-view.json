@@ -1,0 +1,125 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "cutaway-inside-view",
+  "name": "Cutaway / show the inside",
+  "desc": "An architectural cutaway of a building, vehicle or place; interior sections layer by layer with pointer arrows.",
+  "format": "16:9",
+  "tags": ["cutaway", "architecture", "schematic", "science", "technical"],
+  "slots": {
+    "TITLE": { "label": "Main title", "default": "WHAT'S HIDDEN INSIDE?" },
+    "SUBJECT": { "label": "Structure / vehicle in cutaway", "default": "a nuclear bunker complex beneath a mountain" },
+    "SECTION1": { "label": "Key section 1", "default": "Secret Control Room" },
+    "SECTION2": { "label": "Key section 2", "default": "Escape Tunnel" }
+  },
+  "camera": {
+    "shot": "wide",
+    "angle": "low",
+    "lens": 24,
+    "horizon": 0.45,
+    "dof": 0.15
+  },
+  "light": {
+    "azimuth": 45,
+    "key": "cool",
+    "time": "blue-hour",
+    "contrast": 0.7,
+    "rim": true
+  },
+  "style": {
+    "preset": "cutaway-architecture",
+    "palette": ["#0f172a", "#0284c7", "#f59e0b"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Geological ground section",
+      "kind": "scene",
+      "desc": "Rock strata, a soil cross-section and blue technical grid lines",
+      "depth": 100
+    },
+    {
+      "type": "object",
+      "name": "Cutaway structure",
+      "desc": "{{SUBJECT}}, walls opened up into a schematic interior plan, layered rooms",
+      "x": 0.18,
+      "y": 0.18,
+      "w": 0.64,
+      "h": 0.74,
+      "depth": 50,
+      "importance": 3
+    },
+    {
+      "type": "effect",
+      "name": "Section 1 arrow",
+      "shape": "arrow",
+      "color": "#ef4444",
+      "x": 0.08,
+      "y": 0.35,
+      "w": 0.15,
+      "h": 0.1,
+      "depth": 25
+    },
+    {
+      "type": "text",
+      "name": "Section 1 label",
+      "content": "{{SECTION1}}",
+      "font": "temiz-modern",
+      "color": "#ffffff",
+      "stroke": "#000000",
+      "strokeWidth": 0.12,
+      "x": 0.04,
+      "y": 0.28,
+      "w": 0.22,
+      "h": 0.07,
+      "size": 0.05,
+      "depth": 0
+    },
+    {
+      "type": "effect",
+      "name": "Section 2 arrow",
+      "shape": "arrow",
+      "color": "#eab308",
+      "x": 0.77,
+      "y": 0.62,
+      "w": 0.15,
+      "h": 0.1,
+      "depth": 25
+    },
+    {
+      "type": "text",
+      "name": "Section 2 label",
+      "content": "{{SECTION2}}",
+      "font": "temiz-modern",
+      "color": "#ffffff",
+      "stroke": "#000000",
+      "strokeWidth": 0.12,
+      "x": 0.74,
+      "y": 0.55,
+      "w": 0.22,
+      "h": 0.07,
+      "size": 0.05,
+      "depth": 0
+    },
+    {
+      "type": "text",
+      "name": "Top title",
+      "content": "{{TITLE}}",
+      "font": "youtube-bold",
+      "color": "#ffffff",
+      "stroke": "#000000",
+      "strokeWidth": 0.15,
+      "shadow": true,
+      "x": 0.15,
+      "y": 0.05,
+      "w": 0.7,
+      "h": 0.15,
+      "size": 0.13,
+      "depth": 0
+    }
+  ]
+}

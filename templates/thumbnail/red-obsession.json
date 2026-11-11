@@ -1,0 +1,151 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "red-obsession",
+  "name": "Red obsession",
+  "desc": "Short repeated words surrounding a red monochrome close-up portrait. Pressure, anxiety, obsession or the inner voice of a difficult character.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "red",
+    "portrait",
+    "psychology",
+    "typography"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Main title",
+      "default": "NOT ENOUGH"
+    },
+    "REPEAT": {
+      "label": "Repeated short phrase",
+      "default": "MORE"
+    },
+    "CHARACTER": {
+      "label": "Main person",
+      "default": "a young actor with a tense smile"
+    }
+  },
+  "camera": {
+    "shot": "extreme-close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.2,
+    "focusLayer": "t_4"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "neon",
+    "time": "studio",
+    "contrast": 0.9,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#211415",
+      "#d44545",
+      "#eed6cf"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "dramatic",
+    "custom": "Tense photographic close-up in red duotone, right-aligned portrait. Left third is reserved for repeated overlay typography, with dark negative space between the face and words."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Red duotone backdrop",
+      "kind": "scene",
+      "desc": "Dark red light on a matte black backdrop; grainy editorial texture",
+      "color": "#211415",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "text",
+      "name": "Inner voice · top left",
+      "content": "{{REPEAT}}\n{{REPEAT}}\n{{REPEAT}}",
+      "x": 0.045,
+      "y": 0.07,
+      "w": 0.28,
+      "h": 0.29,
+      "depth": 0,
+      "font": "Bahnschrift",
+      "size": 0.055,
+      "fill": "#eed6cf",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "left",
+      "uppercase": true,
+      "lineHeight": 1.35,
+      "id": "t_2"
+    },
+    {
+      "type": "text",
+      "name": "Inner voice · middle left",
+      "content": "{{REPEAT}}\n{{REPEAT}}\n{{REPEAT}}",
+      "x": 0.045,
+      "y": 0.4,
+      "w": 0.28,
+      "h": 0.29,
+      "depth": 0,
+      "font": "Bahnschrift",
+      "size": 0.055,
+      "fill": "#eed6cf",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "left",
+      "uppercase": true,
+      "lineHeight": 1.35,
+      "id": "t_3"
+    },
+    {
+      "type": "subject",
+      "name": "Red portrait",
+      "desc": "{{CHARACTER}}, intense red duotone, slightly tense eyes, natural photographic facial detail",
+      "x": 0.35,
+      "y": 0.025,
+      "w": 0.6,
+      "h": 0.94,
+      "depth": 15,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "supheci",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#d44545",
+      "id": "t_4"
+    },
+    {
+      "type": "text",
+      "name": "Obsession title",
+      "content": "{{TITLE}}",
+      "x": 0.045,
+      "y": 0.79,
+      "w": 0.58,
+      "h": 0.15,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.13,
+      "fill": "#fff0dc",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_5"
+    }
+  ]
+}

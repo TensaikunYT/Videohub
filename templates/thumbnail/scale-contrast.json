@@ -1,0 +1,87 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "scale-contrast",
+  "name": "Scale contrast",
+  "desc": "A tiny human figure at the bottom, a giant structure rising into the sky behind; worm's-eye view and ultra-wide lens.",
+  "format": "16:9",
+  "tags": ["scale", "architecture", "epic", "dramatic"],
+  "slots": {
+    "TITLE": { "label": "Title", "default": "NOBODY KNEW" },
+    "STRUCTURE": { "label": "Giant structure / being", "default": "a giant ancient temple gate" },
+    "CHARACTER": { "label": "Tiny character in front", "default": "a lone traveller" }
+  },
+  "camera": {
+    "shot": "extreme-wide",
+    "angle": "worms-eye",
+    "lens": 14,
+    "horizon": 0.8,
+    "dof": 0.2
+  },
+  "light": {
+    "azimuth": 220,
+    "key": "cool",
+    "time": "blue-hour",
+    "contrast": 0.8,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": ["#0f172a", "#38bdf8", "#f1f5f9"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Sky and fog",
+      "kind": "scene",
+      "desc": "Deep sky, foggy ground and a vast horizon line",
+      "depth": 100
+    },
+    {
+      "type": "object",
+      "name": "Giant structure",
+      "desc": "{{STRUCTURE}}, imposing detail, a monumental scale rising into the sky",
+      "x": 0.15,
+      "y": 0.05,
+      "w": 0.7,
+      "h": 0.82,
+      "depth": 85,
+      "importance": 3
+    },
+    {
+      "type": "subject",
+      "name": "Tiny human",
+      "desc": "{{CHARACTER}}, a small silhouette that emphasises the size of the structure",
+      "pose": "ayakta-normal",
+      "expression": "notr",
+      "crop": "full",
+      "facing": "away",
+      "x": 0.46,
+      "y": 0.72,
+      "w": 0.08,
+      "h": 0.24,
+      "depth": 20,
+      "importance": 2
+    },
+    {
+      "type": "text",
+      "name": "Title text",
+      "content": "{{TITLE}}",
+      "font": "youtube-bold",
+      "color": "#ffffff",
+      "stroke": "#000000",
+      "strokeWidth": 0.15,
+      "shadow": true,
+      "x": 0.08,
+      "y": 0.06,
+      "w": 0.84,
+      "h": 0.18,
+      "size": 0.14,
+      "depth": 0
+    }
+  ]
+}

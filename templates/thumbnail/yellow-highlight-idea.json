@@ -1,0 +1,132 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "yellow-highlight-idea",
+  "name": "One idea, yellow highlight",
+  "desc": "A single sentence with a yellow highlighter mark in plenty of white space. A clean cover for storytelling, education and essay videos.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "minimal",
+    "text",
+    "yellow",
+    "education"
+  ],
+  "slots": {
+    "INTRO": {
+      "label": "Small lead-in words",
+      "default": "step one:"
+    },
+    "TITLE": {
+      "label": "Highlighted short phrase",
+      "default": "TRULY CARE"
+    },
+    "KICKER": {
+      "label": "Small supporting sentence",
+      "default": "What all good stories share."
+    }
+  },
+  "camera": {
+    "shot": "wide",
+    "angle": "eye",
+    "lens": 50,
+    "horizon": 0.5,
+    "dof": 0
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "neutral",
+    "time": "studio",
+    "contrast": 0.15,
+    "rim": false
+  },
+  "style": {
+    "preset": "design-canvas",
+    "palette": [
+      "#f7f6f1",
+      "#151719",
+      "#f5dc30"
+    ],
+    "saturation": 0.4,
+    "detail": 0.2,
+    "mood": "curious",
+    "custom": "Almost empty off-white paper. No people, objects, drawings, symbols or decorative elements. Editorial typography is added separately."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Off-white paper",
+      "kind": "scene",
+      "desc": "Flat off-white paper, a slight edge shadow, no photos or decoration; a completely plain typography backdrop",
+      "color": "#f7f6f1",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "text",
+      "name": "Short lead-in",
+      "content": "{{INTRO}}",
+      "x": 0.1,
+      "y": 0.3,
+      "w": 0.8,
+      "h": 0.11,
+      "depth": 0,
+      "font": "Segoe UI",
+      "size": 0.085,
+      "fill": "#25282c",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "center",
+      "uppercase": false,
+      "id": "t_2"
+    },
+    {
+      "type": "text",
+      "name": "Main idea with yellow highlight",
+      "content": "{{TITLE}}",
+      "x": 0.08,
+      "y": 0.445,
+      "w": 0.84,
+      "h": 0.16,
+      "depth": 0,
+      "font": "Arial Black",
+      "size": 0.13,
+      "fill": "#151719",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "center",
+      "uppercase": true,
+      "bg": "#f5dc30",
+      "id": "t_3"
+    },
+    {
+      "type": "text",
+      "name": "Supporting sentence",
+      "content": "{{KICKER}}",
+      "x": 0.13,
+      "y": 0.675,
+      "w": 0.74,
+      "h": 0.085,
+      "depth": 0,
+      "font": "Segoe UI",
+      "size": 0.05,
+      "fill": "#636765",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "center",
+      "uppercase": false,
+      "id": "t_4"
+    }
+  ]
+}

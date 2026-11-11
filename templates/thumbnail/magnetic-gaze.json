@@ -1,0 +1,169 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "magnetic-gaze",
+  "name": "Magnetic gaze",
+  "desc": "A face staring straight out from the exact centre, hands on both sides and a single golden object in front. Directors, mind games and mysterious ideas.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "portrait",
+    "mystery",
+    "symmetry",
+    "cinema"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Short title",
+      "default": "HE CONTROLS EVERYTHING"
+    },
+    "CHARACTER": {
+      "label": "Main person",
+      "default": "a film director with an intense gaze"
+    },
+    "OBJECT": {
+      "label": "Object between the hands",
+      "default": "a small golden spinning top"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.35,
+    "focusLayer": "t_6"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "warm",
+    "time": "studio",
+    "contrast": 0.75,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#163c30",
+      "#91c57d",
+      "#f0cf63"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "mysterious",
+    "custom": "Symmetrical intense photographic portrait with a real hand entering from each lower side, framing ONE small golden object at the center. Emerald circular bokeh behind the head, natural anatomy."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Deep green rings",
+      "kind": "scene",
+      "desc": "Dark emerald-green backdrop, soft-focus concentric rings of light behind, symmetrical layout",
+      "color": "#163c30",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "effect",
+      "name": "Centre halo",
+      "kind": "glow",
+      "x": 0.26,
+      "y": 0.03,
+      "w": 0.48,
+      "h": 0.78,
+      "depth": 85,
+      "stroke": "#91c57d",
+      "fill": null,
+      "id": "t_2"
+    },
+    {
+      "type": "subject",
+      "name": "Direct gaze",
+      "desc": "{{CHARACTER}}, serious, steady gaze, head and shoulders, dark suit",
+      "x": 0.295,
+      "y": 0.065,
+      "w": 0.41,
+      "h": 0.78,
+      "depth": 45,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#d1b08c",
+      "id": "t_3"
+    },
+    {
+      "type": "object",
+      "name": "Left framing hand",
+      "desc": "A realistic left human hand, palm down, fingers reaching towards the centre; framing the golden object",
+      "x": 0.065,
+      "y": 0.42,
+      "w": 0.3,
+      "h": 0.37,
+      "depth": 20,
+      "importance": 2,
+      "shape": "rect",
+      "color": "#c9b091",
+      "rot": 8,
+      "id": "t_4"
+    },
+    {
+      "type": "object",
+      "name": "Right framing hand",
+      "desc": "A realistic right human hand, palm down, fingers reaching towards the centre; symmetrical with the other hand",
+      "x": 0.635,
+      "y": 0.42,
+      "w": 0.3,
+      "h": 0.37,
+      "depth": 20,
+      "importance": 2,
+      "shape": "rect",
+      "color": "#c9b091",
+      "rot": -8,
+      "id": "t_5"
+    },
+    {
+      "type": "object",
+      "name": "Central secret",
+      "desc": "{{OBJECT}}, in the gap between the hands, clear metallic reflections, razor-sharp focus",
+      "x": 0.43,
+      "y": 0.565,
+      "w": 0.14,
+      "h": 0.2,
+      "depth": 12,
+      "importance": 3,
+      "shape": "ellipse",
+      "color": "#f0cf63",
+      "material": "gold metal",
+      "id": "t_6"
+    },
+    {
+      "type": "text",
+      "name": "Control title",
+      "content": "{{TITLE}}",
+      "x": 0.075,
+      "y": 0.82,
+      "w": 0.76,
+      "h": 0.11,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.1,
+      "fill": "#f5e9b7",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "center",
+      "uppercase": true,
+      "id": "t_7"
+    }
+  ]
+}

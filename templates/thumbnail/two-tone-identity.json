@@ -1,0 +1,140 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "two-tone-identity",
+  "name": "Two colours, two identities",
+  "desc": "Two moods of the same face; cold petrol-blue and warm red halves. Psychology, acting and character analyses.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "portrait",
+    "two-tone",
+    "psychology",
+    "split"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Short title",
+      "default": "TWO DIFFERENT PEOPLE"
+    },
+    "CHARACTER": {
+      "label": "Same person",
+      "default": "a bearded actor"
+    },
+    "LEFT_MOOD": {
+      "label": "Mood on the left half",
+      "default": "calm and thoughtful"
+    },
+    "RIGHT_MOOD": {
+      "label": "Mood on the right half",
+      "default": "tense and angry"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.35,
+    "focusLayer": "t_2"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "neon",
+    "time": "studio",
+    "contrast": 0.75,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#124956",
+      "#ce3039",
+      "#f6e7cf"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "dramatic",
+    "custom": "One recognizable face composed of two perfectly aligned photographic half portraits, cyan left and crimson right. Do not create two complete side-by-side faces."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Cold / warm backdrop",
+      "kind": "scene",
+      "desc": "Left half petrol blue, right half dark red; a vertically symmetrical two-tone studio",
+      "color": "#152c31",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "object",
+      "name": "Left half of the face",
+      "desc": "{{CHARACTER}}, {{LEFT_MOOD}}; a photo of only the left half of the face, the nose axis touching the exact centre line, cyan duotone",
+      "x": 0.16,
+      "y": 0.035,
+      "w": 0.34,
+      "h": 0.89,
+      "depth": 22,
+      "importance": 3,
+      "shape": "rect",
+      "color": "#2e8d96",
+      "id": "t_2"
+    },
+    {
+      "type": "object",
+      "name": "Right half of the face",
+      "desc": "The same {{CHARACTER}}, {{RIGHT_MOOD}}; only the right half of the face at the same scale, the nose axis touching the centre line, red duotone",
+      "x": 0.5,
+      "y": 0.035,
+      "w": 0.34,
+      "h": 0.89,
+      "depth": 22,
+      "importance": 3,
+      "shape": "rect",
+      "color": "#df3c3c",
+      "id": "t_3"
+    },
+    {
+      "type": "effect",
+      "name": "Thin centre split",
+      "kind": "split",
+      "x": 0.495,
+      "y": 0.035,
+      "w": 0.01,
+      "h": 0.89,
+      "depth": 8,
+      "stroke": "#f0dfca",
+      "fill": null,
+      "id": "t_4"
+    },
+    {
+      "type": "text",
+      "name": "Identity title",
+      "content": "{{TITLE}}",
+      "x": 0.08,
+      "y": 0.775,
+      "w": 0.76,
+      "h": 0.15,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.13,
+      "fill": "#ffffff",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "center",
+      "uppercase": true,
+      "bg": "#101719",
+      "id": "t_5"
+    }
+  ]
+}

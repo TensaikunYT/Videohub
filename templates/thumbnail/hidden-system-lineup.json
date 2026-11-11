@@ -1,0 +1,202 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "hidden-system-lineup",
+  "name": "Hidden system · lineup",
+  "desc": "A black title with a red highlight on white at the top; a strong five-person lineup below. Creator economy, team and industry breakdowns.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "lineup",
+    "system",
+    "YouTube",
+    "collage"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "First part of the title",
+      "default": "HIDDEN"
+    },
+    "HIGHLIGHT": {
+      "label": "Red highlighted word",
+      "default": "SYSTEM"
+    },
+    "LEADER": {
+      "label": "Main person in the middle",
+      "default": "a successful content creator"
+    },
+    "TEAM": {
+      "label": "Description of the other four people",
+      "default": "four creators of different ages and looks"
+    }
+  },
+  "camera": {
+    "shot": "medium",
+    "angle": "eye",
+    "lens": 50,
+    "horizon": 0.5,
+    "dof": 0.1,
+    "focusLayer": "t_6"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "neutral",
+    "time": "studio",
+    "contrast": 0.45,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#f1eee8",
+      "#18191b",
+      "#dc2542"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "dramatic",
+    "custom": "Clean editorial group portrait. Five distinct faces in a shallow pyramid, central figure largest; clean white upper band for the title, muted clothing."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Light editorial backdrop",
+      "kind": "scene",
+      "desc": "Clean off-white backdrop, a very subtle warm grey texture at the bottom, a wide empty title area at the top",
+      "color": "#f1eee8",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "subject",
+      "name": "Lineup · far left",
+      "desc": "the first person from {{TEAM}}; plain dark clothing",
+      "x": 0.035,
+      "y": 0.4,
+      "w": 0.18,
+      "h": 0.57,
+      "depth": 55,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#8b9fa5",
+      "id": "t_2"
+    },
+    {
+      "type": "subject",
+      "name": "Lineup · far right",
+      "desc": "the fourth person from {{TEAM}}; plain dark clothing",
+      "x": 0.785,
+      "y": 0.4,
+      "w": 0.18,
+      "h": 0.57,
+      "depth": 55,
+      "importance": 1,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#8b9fa5",
+      "id": "t_3"
+    },
+    {
+      "type": "subject",
+      "name": "Lineup · inner left",
+      "desc": "the second person from {{TEAM}}; a larger close portrait",
+      "x": 0.185,
+      "y": 0.335,
+      "w": 0.22,
+      "h": 0.635,
+      "depth": 40,
+      "importance": 2,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#b9a092",
+      "id": "t_4"
+    },
+    {
+      "type": "subject",
+      "name": "Lineup · inner right",
+      "desc": "the third person from {{TEAM}}; a larger close portrait",
+      "x": 0.595,
+      "y": 0.335,
+      "w": 0.22,
+      "h": 0.635,
+      "depth": 40,
+      "importance": 2,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#b9a092",
+      "id": "t_5"
+    },
+    {
+      "type": "subject",
+      "name": "Lineup leader",
+      "desc": "{{LEADER}}, looking straight into the camera, the largest and sharpest face in the centre",
+      "x": 0.365,
+      "y": 0.285,
+      "w": 0.27,
+      "h": 0.685,
+      "depth": 15,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "chest",
+      "facing": "camera",
+      "color": "#d5b9a2",
+      "id": "t_6"
+    },
+    {
+      "type": "text",
+      "name": "Title · black",
+      "content": "{{TITLE}}",
+      "x": 0.055,
+      "y": 0.06,
+      "w": 0.36,
+      "h": 0.16,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.155,
+      "fill": "#18191b",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "right",
+      "uppercase": true,
+      "id": "t_7"
+    },
+    {
+      "type": "text",
+      "name": "Title · red",
+      "content": "{{HIGHLIGHT}}",
+      "x": 0.435,
+      "y": 0.06,
+      "w": 0.51,
+      "h": 0.16,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.155,
+      "fill": "#dc2542",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_8"
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "torn-identity-collage",
+  "name": "Torn identity collage",
+  "desc": "Face fragments cut from four different eras of the same person; asymmetric paper edges and a single short title. Biography and identity videos.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "collage",
+    "identity",
+    "biography",
+    "paper"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Short title",
+      "default": "WHICH ONE IS REAL?"
+    },
+    "CHARACTER": {
+      "label": "Person whose portrait is torn apart",
+      "default": "an actor known for many different roles"
+    },
+    "ERAS": {
+      "label": "Four visually distinct eras",
+      "default": "youth, first success, a dark period and maturity"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.05,
+    "focusLayer": "t_2"
+  },
+  "light": {
+    "azimuth": 315,
+    "key": "neutral",
+    "time": "studio",
+    "contrast": 0.55,
+    "rim": true
+  },
+  "style": {
+    "preset": "retro-poster",
+    "palette": [
+      "#e5ddc9",
+      "#e7bd4c",
+      "#42a7ab",
+      "#292c2f"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "dramatic",
+    "custom": "Torn-paper photographic portrait collage. All fragments belong to the same person and align to form ONE face, with different ages, yellow and teal patches, visible ripped paper edges."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Paper collage backdrop",
+      "kind": "scene",
+      "desc": "Faded cream paper texture and torn photo edges, editorial collage",
+      "color": "#e5ddc9",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "object",
+      "name": "Base portrait",
+      "desc": "{{CHARACTER}}, a single large frontal face photo, the maturity era from {{ERAS}}, the face at the same scale for every fragment",
+      "x": 0.18,
+      "y": 0.035,
+      "w": 0.64,
+      "h": 0.91,
+      "depth": 65,
+      "importance": 3,
+      "shape": "rect",
+      "color": "#b4a091",
+      "id": "t_2"
+    },
+    {
+      "type": "object",
+      "name": "Top-left face fragment",
+      "desc": "The same {{CHARACTER}}, youth from {{ERAS}}; only the left eye and forehead, a cut-out yellow photo, aligned with the main face",
+      "x": 0.14,
+      "y": 0.12,
+      "w": 0.38,
+      "h": 0.3,
+      "depth": 40,
+      "importance": 2,
+      "shape": "rect",
+      "color": "#e7bd4c",
+      "rot": -4,
+      "id": "t_3"
+    },
+    {
+      "type": "object",
+      "name": "Top-right face fragment",
+      "desc": "The same {{CHARACTER}}, first success from {{ERAS}}; only the right eye and cheek, turquoise paper, aligned on the same face",
+      "x": 0.49,
+      "y": 0.26,
+      "w": 0.38,
+      "h": 0.29,
+      "depth": 30,
+      "importance": 2,
+      "shape": "rect",
+      "color": "#42a7ab",
+      "rot": 3,
+      "id": "t_4"
+    },
+    {
+      "type": "object",
+      "name": "Lower face fragment",
+      "desc": "The same {{CHARACTER}}, the dark period from {{ERAS}}; only the mouth and chin, a torn black-and-white photo",
+      "x": 0.29,
+      "y": 0.49,
+      "w": 0.45,
+      "h": 0.28,
+      "depth": 20,
+      "importance": 2,
+      "shape": "rect",
+      "color": "#96999b",
+      "rot": -3,
+      "id": "t_5"
+    },
+    {
+      "type": "text",
+      "name": "Identity question",
+      "content": "{{TITLE}}",
+      "x": 0.08,
+      "y": 0.8,
+      "w": 0.72,
+      "h": 0.13,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.12,
+      "fill": "#f7f0d8",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "center",
+      "uppercase": true,
+      "bg": "#171b1f",
+      "id": "t_6"
+    }
+  ]
+}

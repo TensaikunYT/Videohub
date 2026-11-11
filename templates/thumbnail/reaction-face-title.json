@@ -1,0 +1,76 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "reaction-face-title",
+  "name": "Reaction face + big title",
+  "desc": "A surprised face in close-up on the right, 2 lines of big text on the left, a blurred subject in the background.",
+  "format": "16:9",
+  "tags": ["face", "text", "classic"],
+  "slots": {
+    "TITLE": { "label": "Title (2-4 words)", "default": "HOW IS THIS POSSIBLE?" },
+    "SUBJECT": { "label": "Subject in the background", "default": "an ancient temple" },
+    "CHARACTER": { "label": "Person", "default": "a young explorer" }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 50,
+    "horizon": 0.5,
+    "dof": 0.7
+  },
+  "light": {
+    "azimuth": 45,
+    "key": "warm",
+    "time": "golden-hour",
+    "contrast": 0.7,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": ["#1b2a3a", "#f08a3c", "#ffe9b0"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Background",
+      "kind": "scene",
+      "desc": "{{SUBJECT}}, dramatic atmosphere, light fog",
+      "depth": 100
+    },
+    {
+      "type": "subject",
+      "name": "Reaction character",
+      "desc": "{{CHARACTER}}, looking at the camera in astonishment",
+      "pose": "saskin-eller-yuzde",
+      "expression": "saskin",
+      "crop": "chest",
+      "x": 0.55,
+      "y": 0.08,
+      "w": 0.42,
+      "h": 0.92,
+      "depth": 10,
+      "importance": 3
+    },
+    {
+      "type": "text",
+      "name": "Main title",
+      "content": "{{TITLE}}",
+      "font": "Impact",
+      "size": 0.16,
+      "fill": "#ffffff",
+      "stroke": "#000000",
+      "strokeW": 0.06,
+      "shadow": true,
+      "uppercase": true,
+      "x": 0.04,
+      "y": 0.20,
+      "w": 0.50,
+      "h": 0.40,
+      "depth": 0
+    }
+  ]
+}

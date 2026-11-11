@@ -1,0 +1,98 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "before-after",
+  "name": "Before / After",
+  "desc": "A scene split in two by a vertical dividing line, 'before' on the left, 'after' on the right, an arrow effect in the middle.",
+  "format": "16:9",
+  "tags": ["comparison", "transformation", "before after"],
+  "slots": {
+    "BEFORE_SUBJECT": { "label": "Left side (Before)", "default": "a ruined old house" },
+    "AFTER_SUBJECT": { "label": "Right side (After)", "default": "a luxurious modern villa" }
+  },
+  "camera": {
+    "shot": "wide",
+    "angle": "eye",
+    "lens": 35,
+    "horizon": 0.5,
+    "dof": 0.2
+  },
+  "light": {
+    "azimuth": 90,
+    "key": "warm",
+    "time": "day",
+    "contrast": 0.5,
+    "rim": false
+  },
+  "style": {
+    "preset": "hyper-real-photo",
+    "palette": ["#7f8c8d", "#2ecc71", "#ffffff"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Split background",
+      "kind": "scene",
+      "desc": "{{BEFORE_SUBJECT}} on the left half, {{AFTER_SUBJECT}} on the right half",
+      "depth": 100
+    },
+    {
+      "type": "effect",
+      "name": "Dividing line",
+      "kind": "split",
+      "stroke": "#ffffff",
+      "x": 0.49,
+      "y": 0.0,
+      "w": 0.02,
+      "h": 1.0,
+      "depth": 0
+    },
+    {
+      "type": "text",
+      "name": "Before label",
+      "content": "BEFORE",
+      "font": "Impact",
+      "size": 0.12,
+      "fill": "#ffffff",
+      "stroke": "#000000",
+      "strokeW": 0.05,
+      "bg": "#e74c3c",
+      "x": 0.05,
+      "y": 0.08,
+      "w": 0.25,
+      "h": 0.15,
+      "depth": 0
+    },
+    {
+      "type": "text",
+      "name": "After label",
+      "content": "AFTER",
+      "font": "Impact",
+      "size": 0.12,
+      "fill": "#ffffff",
+      "stroke": "#000000",
+      "strokeW": 0.05,
+      "bg": "#2ecc71",
+      "x": 0.70,
+      "y": 0.08,
+      "w": 0.25,
+      "h": 0.15,
+      "depth": 0
+    },
+    {
+      "type": "effect",
+      "name": "Transformation arrow",
+      "kind": "arrow",
+      "stroke": "#f1c40f",
+      "x": 0.40,
+      "y": 0.40,
+      "w": 0.20,
+      "h": 0.20,
+      "depth": 5
+    }
+  ]
+}

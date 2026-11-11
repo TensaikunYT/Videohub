@@ -1,0 +1,7 @@
+{
+  "name": "new-film",
+  "private": true,
+  "type": "commonjs",
+  "scripts": { "render": "node render.js", "audio": "node make-audio.js" },
+  "optionalDependencies": { "puppeteer-core": "^25.0.0" }
+}

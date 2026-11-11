@@ -1,0 +1,131 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "three-object-list",
+  "name": "3 objects / list",
+  "desc": "3 objects or options side by side, with 1-2-3 number badges on them and an eye-catching list title on top.",
+  "format": "16:9",
+  "tags": ["list", "comparison", "choice", "technology"],
+  "slots": {
+    "TITLE": { "label": "List title", "default": "TOP 3 PICKS" },
+    "OBJECT1": { "label": "Object 1", "default": "the classic model" },
+    "OBJECT2": { "label": "Object 2 (the best)", "default": "the next-gen flagship model" },
+    "OBJECT3": { "label": "Object 3", "default": "the budget alternative" }
+  },
+  "camera": {
+    "shot": "medium",
+    "angle": "eye",
+    "lens": 50,
+    "horizon": 0.55,
+    "dof": 0.3
+  },
+  "light": {
+    "azimuth": 90,
+    "key": "neutral",
+    "time": "studio-three-point",
+    "contrast": 0.6,
+    "rim": true
+  },
+  "style": {
+    "preset": "digital-illustration",
+    "palette": ["#1e1b4b", "#6366f1", "#f59e0b"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Studio background",
+      "kind": "gradient",
+      "desc": "Clean studio background, podium floor lighting",
+      "depth": 100
+    },
+    {
+      "type": "object",
+      "name": "Object 1",
+      "desc": "{{OBJECT1}}, on a podium on the left",
+      "x": 0.07,
+      "y": 0.36,
+      "w": 0.25,
+      "h": 0.45,
+      "depth": 35,
+      "importance": 2
+    },
+    {
+      "type": "effect",
+      "name": "Badge 1",
+      "shape": "badge",
+      "color": "#ef4444",
+      "desc": "1",
+      "x": 0.16,
+      "y": 0.28,
+      "w": 0.07,
+      "h": 0.07,
+      "depth": 20
+    },
+    {
+      "type": "object",
+      "name": "Object 2 (centre)",
+      "desc": "{{OBJECT2}}, larger and shining in the middle",
+      "x": 0.37,
+      "y": 0.32,
+      "w": 0.26,
+      "h": 0.5,
+      "depth": 25,
+      "importance": 3
+    },
+    {
+      "type": "effect",
+      "name": "Badge 2 (highlighted)",
+      "shape": "badge",
+      "color": "#f59e0b",
+      "desc": "2",
+      "x": 0.46,
+      "y": 0.23,
+      "w": 0.08,
+      "h": 0.08,
+      "depth": 15
+    },
+    {
+      "type": "object",
+      "name": "Object 3",
+      "desc": "{{OBJECT3}}, on a podium on the right",
+      "x": 0.68,
+      "y": 0.36,
+      "w": 0.25,
+      "h": 0.45,
+      "depth": 35,
+      "importance": 2
+    },
+    {
+      "type": "effect",
+      "name": "Badge 3",
+      "shape": "badge",
+      "color": "#3b82f6",
+      "desc": "3",
+      "x": 0.77,
+      "y": 0.28,
+      "w": 0.07,
+      "h": 0.07,
+      "depth": 20
+    },
+    {
+      "type": "text",
+      "name": "Top title",
+      "content": "{{TITLE}}",
+      "font": "youtube-bold",
+      "color": "#ffffff",
+      "stroke": "#000000",
+      "strokeWidth": 0.15,
+      "shadow": true,
+      "x": 0.1,
+      "y": 0.06,
+      "w": 0.8,
+      "h": 0.18,
+      "size": 0.14,
+      "depth": 0
+    }
+  ]
+}

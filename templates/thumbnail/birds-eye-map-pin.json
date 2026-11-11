@@ -1,0 +1,84 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "birds-eye-map-pin",
+  "name": "Bird's-eye map + pin",
+  "desc": "A straight-down view of a map or terrain, a red target/circle callout on one spot, a title in the corner.",
+  "format": "16:9",
+  "tags": ["map", "bird's-eye", "location", "geography"],
+  "slots": {
+    "REGION": { "label": "Background map / terrain", "default": "a satellite map of the Bermuda Triangle" },
+    "TARGET": { "label": "Marked spot", "default": "the coordinates of a lost island" },
+    "TITLE": { "label": "Title text", "default": "WHAT'S DOWN HERE?" }
+  },
+  "camera": {
+    "shot": "extreme-wide",
+    "angle": "birds-eye",
+    "lens": 35,
+    "horizon": 0.5,
+    "dof": 0.1
+  },
+  "light": {
+    "azimuth": 45,
+    "key": "neutral",
+    "time": "day",
+    "contrast": 0.4,
+    "rim": false
+  },
+  "style": {
+    "preset": "hyper-real-photo",
+    "palette": ["#1c3144", "#a2d2ff", "#e63946"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Map / satellite view",
+      "kind": "scene",
+      "desc": "{{REGION}}, highly detailed topographic satellite map",
+      "depth": 100
+    },
+    {
+      "type": "effect",
+      "name": "Target circle",
+      "kind": "circle",
+      "stroke": "#e63946",
+      "desc": "a red attention circle over {{TARGET}}",
+      "x": 0.52,
+      "y": 0.32,
+      "w": 0.28,
+      "h": 0.38,
+      "depth": 10
+    },
+    {
+      "type": "effect",
+      "name": "Target arrow",
+      "kind": "arrow",
+      "stroke": "#f1c40f",
+      "x": 0.38,
+      "y": 0.45,
+      "w": 0.16,
+      "h": 0.16,
+      "depth": 5
+    },
+    {
+      "type": "text",
+      "name": "Location title",
+      "content": "{{TITLE}}",
+      "font": "Impact",
+      "size": 0.14,
+      "fill": "#ffffff",
+      "stroke": "#000000",
+      "strokeW": 0.06,
+      "bg": "#1c3144",
+      "x": 0.05,
+      "y": 0.08,
+      "w": 0.45,
+      "h": 0.20,
+      "depth": 0
+    }
+  ]
+}

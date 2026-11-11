@@ -1,0 +1,83 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "miniature-diorama",
+  "name": "Miniature diorama",
+  "desc": "A miniature isometric world from a high angle; shallow tilt-shift focus, warm lantern light and a handcrafted look.",
+  "format": "16:9",
+  "tags": ["diorama", "miniature", "tilt-shift", "craft", "game"],
+  "slots": {
+    "TITLE": { "label": "Title", "default": "MINIATURE WORLD" },
+    "SUBJECT": { "label": "Diorama theme / scene", "default": "a small medieval castle and a riverbank" },
+    "DETAIL": { "label": "Featured detail", "default": "a glowing tiny lighthouse" }
+  },
+  "camera": {
+    "shot": "medium",
+    "angle": "high",
+    "lens": 85,
+    "horizon": 0.2,
+    "dof": 0.9
+  },
+  "light": {
+    "azimuth": 60,
+    "key": "warm",
+    "time": "golden-hour",
+    "contrast": 0.7,
+    "rim": true
+  },
+  "style": {
+    "preset": "hd2d-diorama",
+    "palette": ["#166534", "#ca8a04", "#78350f"]
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Blurred dark backdrop",
+      "kind": "scene",
+      "desc": "Dark wooden tabletop, bokeh light rings, deep out-of-focus background",
+      "depth": 100
+    },
+    {
+      "type": "object",
+      "name": "Miniature diorama island",
+      "desc": "{{SUBJECT}}, a cute miniature island with clay and resin textures, {{DETAIL}}",
+      "x": 0.15,
+      "y": 0.22,
+      "w": 0.7,
+      "h": 0.68,
+      "depth": 50,
+      "importance": 3
+    },
+    {
+      "type": "effect",
+      "name": "Warm lantern glow",
+      "shape": "glow",
+      "color": "#fbbf24",
+      "x": 0.42,
+      "y": 0.4,
+      "w": 0.16,
+      "h": 0.16,
+      "depth": 45
+    },
+    {
+      "type": "text",
+      "name": "Title text",
+      "content": "{{TITLE}}",
+      "font": "youtube-bold",
+      "color": "#fef08a",
+      "stroke": "#451a03",
+      "strokeWidth": 0.15,
+      "shadow": true,
+      "x": 0.08,
+      "y": 0.05,
+      "w": 0.84,
+      "h": 0.15,
+      "size": 0.13,
+      "depth": 0
+    }
+  ]
+}

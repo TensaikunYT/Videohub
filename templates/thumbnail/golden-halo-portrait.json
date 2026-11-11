@@ -1,0 +1,143 @@
+{
+  "v": 1,
+  "kind": "thumbstudio-template",
+  "id": "golden-halo-portrait",
+  "name": "Golden halo portrait",
+  "desc": "A sculptural black-and-white close-up portrait in the centre, with a halo shifting from orange to gold behind it. Biographies and portraits of a powerful person.",
+  "format": "16:9",
+  "tags": [
+    "reference-picks",
+    "biography",
+    "portrait",
+    "gold",
+    "documentary"
+  ],
+  "slots": {
+    "TITLE": {
+      "label": "Person's name or short title",
+      "default": "TURNING POINT"
+    },
+    "CHARACTER": {
+      "label": "Main person",
+      "default": "a serious-looking artist"
+    },
+    "KICKER": {
+      "label": "Small top label",
+      "default": "THE STORY OF A CAREER"
+    }
+  },
+  "camera": {
+    "shot": "close",
+    "angle": "eye",
+    "lens": 85,
+    "horizon": 0.5,
+    "dof": 0.35,
+    "focusLayer": "t_3"
+  },
+  "light": {
+    "azimuth": 290,
+    "key": "warm",
+    "time": "studio",
+    "contrast": 0.85,
+    "rim": true
+  },
+  "style": {
+    "preset": "cinematic-photo",
+    "palette": [
+      "#a66024",
+      "#ffd977",
+      "#bfc0bb"
+    ],
+    "saturation": 0.65,
+    "detail": 0.85,
+    "mood": "dramatic",
+    "custom": "Iconic black-and-white head-and-shoulders photographic portrait centered against a colored amber-gold halo. Only the person is monochrome, backdrop stays richly warm. Minimal documentary poster."
+  },
+  "text": {
+    "policy": "overlay",
+    "reserve": true
+  },
+  "layers": [
+    {
+      "type": "background",
+      "name": "Orange-gold studio",
+      "kind": "scene",
+      "desc": "Photo studio with a warm gold centre and dark orange edges, plain backdrop, light analogue grain",
+      "color": "#a66024",
+      "x": 0,
+      "y": 0,
+      "w": 1,
+      "h": 1,
+      "depth": 100,
+      "id": "t_1"
+    },
+    {
+      "type": "effect",
+      "name": "Golden halo",
+      "kind": "glow",
+      "x": 0.235,
+      "y": 0.025,
+      "w": 0.53,
+      "h": 0.81,
+      "depth": 80,
+      "stroke": "#ffd977",
+      "fill": null,
+      "id": "t_2"
+    },
+    {
+      "type": "subject",
+      "name": "Black-and-white sculptural portrait",
+      "desc": "{{CHARACTER}}, only the person in black-and-white photography, soft shadow on one half of the face, shoulders filling the frame; the background stays in colour",
+      "x": 0.24,
+      "y": 0.1,
+      "w": 0.52,
+      "h": 0.86,
+      "depth": 20,
+      "importance": 3,
+      "pose": "ayakta",
+      "expression": "ciddi",
+      "crop": "head",
+      "facing": "camera",
+      "color": "#bfc0bb",
+      "id": "t_3"
+    },
+    {
+      "type": "text",
+      "name": "Documentary label",
+      "content": "{{KICKER}}",
+      "x": 0.055,
+      "y": 0.06,
+      "w": 0.4,
+      "h": 0.08,
+      "depth": 0,
+      "font": "Bahnschrift",
+      "size": 0.045,
+      "fill": "#fff0c8",
+      "stroke": "#111111",
+      "strokeW": 0,
+      "shadow": false,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_4"
+    },
+    {
+      "type": "text",
+      "name": "Portrait title",
+      "content": "{{TITLE}}",
+      "x": 0.055,
+      "y": 0.81,
+      "w": 0.76,
+      "h": 0.12,
+      "depth": 0,
+      "font": "Impact",
+      "size": 0.115,
+      "fill": "#fff0c8",
+      "stroke": "#111111",
+      "strokeW": 0.035,
+      "shadow": true,
+      "align": "left",
+      "uppercase": true,
+      "id": "t_5"
+    }
+  ]
+}
