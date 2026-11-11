@@ -71,7 +71,7 @@ VideoHub works the same; renders just run unprotected.
 
 ## Install
 ### The easy way: let Claude Code install it
-1. Download the ZIP (or `git clone <this repository> VideoHub`) and unpack it anywhere you like.
+1. Download the ZIP (or `git clone [<this repository>](https://github.com/TensaikunYT/Videohub) VideoHub`) and unpack it anywhere you like.
 2. Open that folder in [Claude Code](https://claude.com/claude-code) and say: **"Install VideoHub for me."**
 3. Claude checks what your PC has, asks you a few plain questions in its own window (where your video work should
    live, whether to use the graphics card, whether to add the example film …), then runs the setup once with your
