@@ -1,0 +1,8 @@
+{
+  "name": "hello-film",
+  "private": true,
+  "description": "VideoHub example film: a 10-second canvas film with live preview and a chunked render script.",
+  "type": "commonjs",
+  "scripts": { "render": "node render.js", "audio": "node make-audio.js" },
+  "optionalDependencies": { "puppeteer-core": "^25.0.0" }
+}
