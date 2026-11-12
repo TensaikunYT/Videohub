@@ -4,10 +4,13 @@
 // encoders.test.js checks that the two stay the same. Measurements and what is unverified: docs/RENDER-SPEED.md.
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
+import { gpuNames as gpuNamesMac } from './mac.js';
 
-export const ENCODERS = ['auto', 'nvenc', 'amf', 'qsv', 'x264'];
-export const PROBE_ORDER = ['nvenc', 'amf', 'qsv'];   // auto: the first that works, else x264
-export const LABELS = { auto: 'Automatic (graphics card if it can, else processor)', nvenc: 'NVIDIA graphics card (NVENC)', amf: 'AMD graphics card (AMF)', qsv: 'Intel graphics (Quick Sync)', x264: 'Processor (x264)' };
+// A Mac has one hardware encoder, Apple's VideoToolbox (the media engine of Apple silicon); Windows has the cards'.
+const MAC = process.platform === 'darwin';
+export const ENCODERS = MAC ? ['auto', 'vt', 'x264'] : ['auto', 'nvenc', 'amf', 'qsv', 'x264'];
+export const PROBE_ORDER = MAC ? ['vt'] : ['nvenc', 'amf', 'qsv'];   // auto: the first that works, else x264
+export const LABELS = { auto: MAC ? 'Automatic (Apple media engine if it can, else processor)' : 'Automatic (graphics card if it can, else processor)', nvenc: 'NVIDIA graphics card (NVENC)', amf: 'AMD graphics card (AMF)', qsv: 'Intel graphics (Quick Sync)', vt: 'Apple media engine (VideoToolbox)', x264: 'Processor (x264)' };
 // Candidate argument sets per encoder, best first (the probe keeps the first one the card accepts). Same picture
 // quality as x264 or better, measured against a lossless reference: see docs/RENDER-SPEED.md.
 export const ENCODER_ARGS = {
@@ -19,6 +22,9 @@ export const ENCODER_ARGS = {
     ['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18']],
   // unverified (no Intel GPU was available): global quality 18 with look-ahead
   qsv: [['-c:v', 'h264_qsv', '-preset', 'veryslow', '-global_quality', '18', '-look_ahead', '1']],
+  // measured on an Apple M5 Pro: constant quality 70 is at or above x264 on a clean and a grainy clip (VMAF/SSIM/PSNR,
+  // docs/RENDER-SPEED.md). Constant quality exists on Apple silicon only: on an Intel Mac the probe fails and x264 is used.
+  vt: [['-c:v', 'h264_videotoolbox', '-q:v', '70', '-profile:v', 'high', '-allow_sw', '0']],
   x264: [['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16']],
 };
 
@@ -48,8 +54,9 @@ export function probeWith(ffmpeg = 'ffmpeg') {
   });
 }
 
-// the graphics cards Windows reports (names only; virtual display adapters left out)
+// the graphics cards Windows reports (names only; virtual display adapters left out); a Mac: its chip / GPUs
 export function gpuNames() {
+  if (MAC) return gpuNamesMac();
   return new Promise(resolve => {
     let out = '', c;
     try { c = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '(Get-CimInstance Win32_VideoController).Name'], { windowsHide: true }); } catch { return resolve([]); }
@@ -76,4 +83,4 @@ export async function detectEncoders({ ffmpeg = 'ffmpeg', cacheFile = null, refr
 }
 
 // the environment a render job gets: the job's own VIDEOHUB_ENCODER wins, else the configured choice
-export const encoderEnv = (jobEnv = {}, configured = 'auto') => jobEnv.VIDEOHUB_ENCODER ? {} : { VIDEOHUB_ENCODER: ENCODERS.includes(configured) ? configured : 'auto' };
+export const encoderEnv = (jobEnv = {}, configured = 'auto', list = ENCODERS) => jobEnv.VIDEOHUB_ENCODER ? {} : { VIDEOHUB_ENCODER: list.includes(configured) ? configured : 'auto' };

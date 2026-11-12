@@ -26,7 +26,7 @@ frames, draws on them and leaves notes, and where renders are queued one at a ti
 
 **Without the MCP tools** (the server is not loaded in this session) the same tools run from the command line:
 `node "{{VIDEOHUB_DIR}}\server\cli.js" <tool> "<json>"`, e.g.
-`node "{{VIDEOHUB_DIR}}\server\cli.js" hub_live "{\"project\":\"C:\\path\\to\\film\"}"`. The tools start the hub
+`node "{{VIDEOHUB_DIR}}\server\cli.js" hub_live "{\"project\":\"<full path of the film folder>\"}"`. The tools start the hub
 themselves when it is not running.
 
 ## 1. The user asks for a video → build it as code
@@ -107,5 +107,5 @@ title text into the image: the user adds it in VideoHub's Final step. New templa
 
 ## Cleanup
 Intermediate files (silent renders next to a voiced final, old chunks, browser profiles, old QA frames, old versions)
-are listed by `hub_cleanup` and removed by the user from VideoHub → Disk (Recycle Bin; old versions to the archive).
+are listed by `hub_cleanup` and removed by the user from VideoHub → Disk (Recycle Bin, the Trash on a Mac; old versions to the archive).
 Do not delete them yourself.

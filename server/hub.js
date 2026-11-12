@@ -9,7 +9,8 @@ import { detectEncoders, LABELS as ENC_LABELS } from './encoders.js';
 import { scan, index, project, rescanProject, thumbnail, onScan, dropProject, hideKey } from './scan.js';
 import { findCandidates, startClean, cleanStatus, onClean, busyProjects, RULES, invalidate, summary, recyclePaths, busyWhy } from './janitor.js';
 import { guardState, guardHistory, guardCommand, snippRenders, guardSettings, saveGuardSettings, ensureGuard, quitGuard, guardExe } from './guard.js';
-import { HUB_DIR, DATA_DIR, TOOLS, isInside, readJson, writeJson, shortPath } from './util.js';
+import { HUB_DIR, DATA_DIR, TOOLS, IS_MAC, isInside, readJson, writeJson, shortPath } from './util.js';
+import * as mac from './mac.js';
 import { readMeta, normalizeMeta } from './legacy.js';
 import * as example from './example.js';
 import * as notesApi from './notes.js';
@@ -51,10 +52,10 @@ onScan(ev => { if (ev.phase === 'done' || ev.type === 'project') invalidate(); b
 onScan(ev => { if (ev.phase === 'done') setTimeout(() => { findCandidates().catch(() => { }); }, 200); });
 // a finished full scan re-walks every project's code in the background (cards' live revision / thumbVersion)
 onScan(ev => { if (ev.phase === 'done' && ev.full) refreshSources(index().projects); });
-// a render ended: a Windows notification too (the open VideoHub window shows its own notice)
-jobs.onJob(ev => { if (ev.type === 'done') outputsApi.notifyWindows(`Render finished: ${ev.job.projectName}${ev.job.version ? ' v' + ev.job.version : ''}`, ev.job.outputPath || ev.job.output || ''); else if (ev.type === 'failed') outputsApi.notifyWindows(`Render failed: ${ev.job.projectName}`, ev.job.error || ''); });
-// a custom command waits for a yes: a Windows notification, and an open VideoHub window jumps to the Renders page
-jobs.onJob(ev => { if (ev.type === 'approval') { outputsApi.notifyWindows('A render command needs your approval', `${ev.job.projectName}: ${ev.job.cmd || ''}`); broadcast('navigate', { hash: '#/renders' }); } });
+// a render ended: a desktop notification too (the open VideoHub window shows its own notice)
+jobs.onJob(ev => { if (ev.type === 'done') outputsApi.notifyDesktop(`Render finished: ${ev.job.projectName}${ev.job.version ? ' v' + ev.job.version : ''}`, ev.job.outputPath || ev.job.output || ''); else if (ev.type === 'failed') outputsApi.notifyDesktop(`Render failed: ${ev.job.projectName}`, ev.job.error || ''); });
+// a custom command waits for a yes: a desktop notification, and an open VideoHub window jumps to the Renders page
+jobs.onJob(ev => { if (ev.type === 'approval') { outputsApi.notifyDesktop('A render command needs your approval', `${ev.job.projectName}: ${ev.job.cmd || ''}`); broadcast('navigate', { hash: '#/renders' }); } });
 jobs.onJob(ev => { broadcast('job', ev); if (ev.type === 'running' && !GUARD_OFF) ensureGuard().catch(() => { }); });   // a render always runs under RenderGuard
 setInterval(() => { if (clients.size) broadcast('renders', rendersPayload(false)); }, 2000);
 
@@ -100,8 +101,8 @@ function integrations() {
   const studio = config().studioDir && fs.existsSync(path.join(config().studioDir, 'engine', 'audio', 'synth.js'));
   return {
     ffmpeg: fs.existsSync(TOOLS.ffmpeg) || TOOLS.ffmpeg !== 'ffmpeg',
-    browser: TOOLS.edge || TOOLS.chrome || null,
-    agent: { ok: !!guardExe(), exe: guardExe(), why: guardExe() ? null : 'The render protection agent is not built (guard\\build.ps1 needs the .NET Framework C# compiler). Renders still work, without CPU/RAM protection.' },
+    browser: IS_MAC ? TOOLS.chrome || TOOLS.edge || null : TOOLS.edge || TOOLS.chrome || null,
+    agent: { ok: !!guardExe(), exe: guardExe(), why: guardExe() ? null : IS_MAC ? 'The render protection agent is missing (guard/agent-mac.mjs). Renders still work, without CPU/RAM protection.' : 'The render protection agent is not built (guard\\build.ps1 needs the .NET Framework C# compiler). Renders still work, without CPU/RAM protection.' },
     sfx: { ok: !!studio, why: studio ? null : 'Ready-made sound effects need the optional 3D studio engine (studioDir). Your own sound folder works without it.' },
   };
 }
@@ -134,7 +135,7 @@ route('GET', '/api/find', async (req, url) => {
 route('GET', '/api/project/:id', async (req, url, { id }) => {
   const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 });
   const name = p.name.toLowerCase();
-  const history = guardHistory(1000).filter(h => h.project && (h.project.toLowerCase().endsWith('\\' + name) || h.project.toLowerCase() === name)).slice(0, 60);
+  const history = guardHistory(1000).filter(h => h.project && (h.project.toLowerCase().replace(/\\/g, '/').endsWith('/' + name) || h.project.toLowerCase() === name)).slice(0, 60);
   // the review page does not need the cleanup list (lite=1); the project page waits at most 1.5 s for it
   const cand = url.searchParams.get('lite') ? null : await Promise.race([findCandidates().catch(() => []), new Promise(r => setTimeout(() => r(null), 1500))]);
   return { ...p, label: shortPath(p.path), cleanup: (cand || []).filter(c => c.project === id), cleanupPending: !cand && !url.searchParams.get('lite'), busy: busyProjects().find(b => b.project === id)?.reason || null, notes: notesApi.list(p), versionsLog: notesApi.versions(p), history };
@@ -232,7 +233,7 @@ route('POST', '/api/open', async (req) => {
   if (typeof p !== 'string' || !p || !allowedFile(p)) throw Object.assign(new Error('not allowed'), { code: 403 });
   return openFile(p, how || 'file');
 });
-// "Open folder": the project folder in Explorer, or (file) the folder of one of its videos with that file selected.
+// "Open folder": the project folder in Explorer / Finder, or (file) the folder of one of its videos with that file selected.
 // Only folders inside a configured root (or the archive); test hubs (VIDEOHUB_NO_WINDOW) answer without opening.
 route('POST', '/api/project/:id/open-folder', async (req, url, { id }) => {
   const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 });
@@ -242,7 +243,9 @@ route('POST', '/api/project/:id/open-folder', async (req, url, { id }) => {
   const target = o ? o.path : (p.groupFiles ? path.dirname(p.outputs[0]?.path || p.path) : p.path);
   if (!allowedFile(target) || !fs.existsSync(target)) throw Object.assign(new Error('This folder cannot be opened (outside VideoHub\'s folders, or missing)'), { code: 403 });
   const args = o ? `/select,"${target}"` : `"${target}"`;
-  if (!process.env.VIDEOHUB_NO_WINDOW) spawn('explorer.exe', [args], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+  if (process.env.VIDEOHUB_NO_WINDOW) { }
+  else if (IS_MAC) mac.openPath(target, !!o);
+  else spawn('explorer.exe', [args], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
   return { ok: true, path: target, select: !!o };
 });
 // ---------- removing a project from the Projects page
@@ -304,7 +307,7 @@ route('GET', '/api/disk/clean', () => cleanStatus() || { state: 'none' });
 onClean(st => { broadcast('clean', st); if (st.state === 'done') { ciktilar.afterClean(st.results).catch(() => { }); scan().catch(() => { }); } });
 // after every scan: each project's newest final in the outputs folder (the first scan fills it)
 onScan(ev => { if (ev.phase === 'done') try { ciktilar.sync(); } catch (e) { console.error('ciktilar sync:', e.message); } });
-route('GET', '/api/config', () => ({ ...config(), workspace: baseDir(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations() }));
+route('GET', '/api/config', () => ({ ...config(), workspace: baseDir(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations(), platform: process.platform }));
 example.routes(route, readBody, () => scan());
 route('POST', '/api/config', async (req) => { const body = await readBody(req); const c = saveConfig(body); scan().catch(() => { }); return c; });
 // render encoders this PC can use (one tiny test encode each, cached in data/encoders.json; ?refresh=1 probes again)
@@ -339,7 +342,8 @@ route('POST', '/api/show', async (req) => {
   if (clients.size) { broadcast('navigate', { hash }); return { ok: true, how: 'window' }; }
   if (process.env.VIDEOHUB_NO_WINDOW) return { ok: true, how: 'none' };
   const url = `http://127.0.0.1:${port}/${hash}`, exe = TOOLS.edge || TOOLS.chrome;
-  if (exe) spawn(exe, ['--app=' + url], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
+  if (IS_MAC) mac.openAppWindow(url, TOOLS.chrome || TOOLS.edge);   // a Chrome/Edge app window, else the default browser
+  else if (exe) spawn(exe, ['--app=' + url], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
   else spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   return { ok: true, how: 'opened' };
 });

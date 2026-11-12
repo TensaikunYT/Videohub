@@ -6,15 +6,16 @@ import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { refersToHub, isInside } from './util.js';
-import { ENCODERS, LABELS, encoderEnv } from './encoders.js';
+import { LABELS, encoderEnv } from './encoders.js';
+const ENCODERS = ['auto', 'nvenc', 'amf', 'qsv', 'x264'];   // the Windows list: these cases test the Windows queue on any OS
 
 // Run the actual queue with in-memory files and fake child processes: never renders a film.
 const code = fs.readFileSync(new URL('./jobs.js', import.meta.url), 'utf8')
   .replace(/^import .+;\r?$/gm, '').replace(/\bexport /g, '');
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-function harness() {
+function harness({ mac = false } = {}) {
   const base = path.resolve('.test-tmp', 'queue-fixture');
-  const files = new Set(), children = [], timers = [], events = [], log = [];
+  const files = new Set(), children = [], timers = [], events = [], log = [], killed = [], awake = [];
   let pid = 100, workers = 1, maxParallel = 1, guard = { running: false }, encoder = 'auto';
   const projects = new Map(['p1', 'p2'].map(id => [id, { id, name: id, path: path.join(base, id), studio: base, outDir: path.join(base, 'out', id), outputs: [], render: {} }]));
   const spawn = (cmd, args, opts) => {
@@ -33,16 +34,17 @@ function harness() {
     process: { env: {} }, setTimeout: fn => { timers.push(fn); return timers.length; },
     readJson: (file, fallback) => file.endsWith('project.json') ? { render: { workers } }
       : file.endsWith('manifest.json') ? { dur: 2, fps: 60, chunkFrames: 120, chunkSec: 2 } : fallback,
-    writeJson() {}, config: () => ({ maxParallelRenders: maxParallel, render: { encoder } }), ENCODERS, LABELS, encoderEnv, project: id => projects.get(id),
+    writeJson() {}, config: () => ({ maxParallelRenders: maxParallel, render: { encoder } }), ENCODERS, LABELS, encoderEnv: (e, c) => encoderEnv(e, c, ENCODERS), project: id => projects.get(id),
     guardState: () => guard, ramHogsNow: async () => [], ramNote: () => null,
     vhDir: p => path.join(p.path, '.videohub'), listNotes: () => [], updateNote() {},
     linkOutput: () => null, rescanProject: async () => {}, now: () => new Date().toISOString(),
     pLimit: async (items, n, fn) => Promise.all(items.map(fn)), pickFolderWin() {},
     HUB_DIR: base, audioOf: () => null, refersToHub: s => refersToHub(s, base), isInside,   // no audio file of its own: a first render stays silent here
+    IS_MAC: mac, killTree: async pid => { killed.push(pid); return 1; }, keepAwake: pid => { awake.push(pid); },
   };
   vm.createContext(ctx); vm.runInContext(code + '\nglobalThis.queue = {create,cancel,approve,get,pump,spawnLogged,runJob,recipe,procs,executing,onJob};', ctx);
   ctx.queue.onJob(event => events.push(event));
-  return { ...ctx.queue, children, events, files, log, projects, timers,
+  return { ...ctx.queue, children, events, files, log, projects, timers, killed, awake,
     setWorkers: value => { workers = value; }, setGuard: value => { guard = value; }, setParallel: value => { maxParallel = value; }, setEncoder: value => { encoder = value; },
     async close(child, output = '', status = 0) {
       if (status === 0) {
@@ -190,4 +192,15 @@ test('render scripts get the encoder from Settings as VIDEOHUB_ENCODER, unless t
   const h2 = harness(); h2.projects.get('p1').studio = null; h2.setEncoder('amf');
   await h2.create({ project: 'p1', mode: 'full', env: { VIDEOHUB_ENCODER: 'x264' } }); await flush();
   assert.equal(h2.children[0].opts.env.VIDEOHUB_ENCODER, 'x264');
+});
+
+test('a Mac: command mode runs the command with /bin/sh, a cancelled render stops its whole tree, renders keep the Mac awake', async () => {
+  const h = harness({ mac: true }), cmd = 'node -e "console.log(process.argv.slice(1))" "a b" c';
+  const held = await h.create({ project: 'p1', mode: 'command', cmd }); await flush();
+  assert.equal(h.approve(held.id), true); await flush();
+  const child = h.children[0]; assert.equal(child.cmd, '/bin/sh'); assert.deepEqual([...child.args], ['-c', cmd]); assert.equal(child.opts.windowsVerbatimArguments, undefined);
+  assert.deepEqual(h.awake, [child.pid]);   // caffeinate -w <pid>
+  assert.equal(h.cancel(held.id), true); await flush();
+  assert.deepEqual(h.killed, [child.pid]); assert.equal(h.children.some(c => c.cmd === 'taskkill'), false);
+  await h.close(child, '', 143); assert.equal(h.get(held.id).state, 'cancelled');
 });

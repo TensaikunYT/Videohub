@@ -8,7 +8,9 @@ you are happy do you render — once, in a queue that keeps your PC usable, and 
 changed. It is for people who make explainers, shorts and animations with Claude Code and are tired of rendering a
 whole film to check one fix.
 
-> **Windows 10/11 only.** VideoHub uses Windows APIs (Job Objects, the Recycle Bin, Explorer, Edge) and PowerShell.
+> **Windows 10/11 and macOS 11+** (Apple silicon and Intel). The same code runs on both; where it calls the system
+> (Job Objects / the Recycle Bin / Explorer / Edge on Windows, signals and Darwin task policy / the Trash / Finder /
+> Chrome on a Mac) each has its own part. Mac details: [docs/MACOS.md](docs/MACOS.md).
 
 ![Live preview with a note on a frame](docs/screenshots/review-live-preview.png)
 
@@ -21,14 +23,15 @@ whole film to check one fix.
   a short message; Claude reads the notes (time, frame, chunk, a close-up picture of your drawing) with `hub_notes`.
 - **Check fixes** — a tour through the notes Claude marked fixed, with before/after; "Still there" sends one back.
 - **Render queue** — one render at a time on the PC, waits for renders started elsewhere, progress and ETA, a
-  render dialog with size/fps/workers/encoder, a copy to any folder, a Windows notification when it is done.
+  render dialog with size/fps/workers/encoder, a copy to any folder, a desktop notification when it is done; a Mac
+  does not go to sleep in the middle of a render.
 - **Partial re-render** — a film rendered in 2-second chunks re-renders only the chunks your notes touched, joins the
   film again and saves `film_vN.mp4` with the changed ranges; **Watch only the changes** plays just those.
 - **Render protection** (optional agent) — see below.
 - **Recent renders & outputs folder** — every finished render, newest first; each one also hard-linked into one
   outputs folder (a folder per day, no extra disk space).
 - **Disk cleanup** — what can safely go (old chunks, silent copies, browser profiles, check frames, old versions) and
-  why; always to the Recycle Bin or the archive, never deleted outright, always with your approval.
+  why; always to the Recycle Bin (the Trash on a Mac) or the archive, never deleted outright, always with your approval.
 - **Sound** — mute/solo/levels per stem, remove the music, duck it under a range, add sounds from your library or
   disk on the timeline; renders use the rebuilt mix.
 - **Thumbnail Studio** — sketch a thumbnail (posed mannequins, objects, text, camera/depth/light), send the brief to
@@ -51,15 +54,23 @@ renders from freezing the PC:
   programs holding a lot of RAM (it never closes anything).
 - **Partial re-renders** of only the fixed chunks, and per-render workers / encoder and fps options.
 - **Faster renders, same quality** — the film template reads frames straight from the canvas (lossless, no JPEG) and
-  encodes on the graphics card when the PC has one (NVIDIA NVENC, AMD AMF, Intel Quick Sync; else x264). On the test PC
-  the example film rendered ~1.3× faster. Settings → *Render speed*; details and measurements:
-  [docs/RENDER-SPEED.md](docs/RENDER-SPEED.md).
+  encodes on the graphics card when the PC has one (NVIDIA NVENC, AMD AMF, Intel Quick Sync; on a Mac with Apple
+  silicon the media engine, VideoToolbox; else x264). On the test PC the example film rendered ~1.3× faster; on an
+  M5 Pro the media engine used a third less CPU at x264's quality or better. Settings → *Render speed*; details and
+  measurements: [docs/RENDER-SPEED.md](docs/RENDER-SPEED.md), [docs/MACOS.md](docs/MACOS.md).
 All thresholds are sliders on the Renders page (the RAM range scales with your machine's memory). Without the agent
 VideoHub works the same; renders just run unprotected.
+
+**On a Mac** the agent is `guard/agent-mac.mjs` (Node, nothing to build) with the same settings and Renders page: the
+CPU cap stops and continues the render in 100 ms cycles, *Quiet* runs renders on the efficiency cores while you work
+(Apple silicon), the RAM watchdog also listens to macOS's own memory pressure, and the hotkeys are **⌃⌥⌘P** (pause
+every render) / **⌃⌥⌘R** (resume) when the Command Line Tools can build the small helper. See
+[docs/MACOS.md](docs/MACOS.md).
 
 ![Renders](docs/screenshots/renders.png)
 
 ## Requirements
+**Windows**
 - Windows 10 or 11
 - [Node.js 22+](https://nodejs.org) — `winget install -e --id OpenJS.NodeJS.LTS`
 - ffmpeg on PATH — `winget install -e --id Gyan.FFmpeg`
@@ -68,6 +79,15 @@ VideoHub works the same; renders just run unprotected.
 - [Claude Code](https://claude.com/claude-code) — for the Claude side
 - Optional: the .NET Framework 4 C# compiler (ships with Windows) for the render protection agent
 - Optional: a graphics card with a video encoder (most NVIDIA, AMD and Intel ones) for faster renders
+
+**Mac**
+- macOS 11 Big Sur or newer, Apple silicon or Intel
+- [Node.js 22+](https://nodejs.org) — `brew install node`, or the LTS installer from nodejs.org
+- ffmpeg — `brew install ffmpeg` ([Homebrew](https://brew.sh); or ffmpeg + ffprobe in /usr/local/bin)
+- Google Chrome (or Microsoft Edge, Brave, Chromium) — renders drive it headless; Safari cannot be driven
+- [Claude Code](https://claude.com/claude-code)
+- Optional: the Command Line Tools (`xcode-select --install`) for the pause/resume hotkeys
+- Apple silicon encodes on its media engine (VideoToolbox); Intel Macs use x264
 
 ## Install
 ### The easy way: let Claude Code install it
@@ -94,6 +114,16 @@ VideoHub works the same; renders just run unprotected.
    `setup.ps1`, e.g. `-Workspace D:\Videos\VideoHub`), and `setup.ps1 -DryRun` prints every step without changing
    anything.
 3. Open **VideoHub** from the Desktop shortcut. Start a new Claude Code session so it sees the tools.
+
+### On a Mac
+Same steps, Mac files: let Claude Code install it (step 1 of *The easy way* works the same), or by hand:
+1. `git clone <this repository> VideoHub` anywhere (or download the ZIP; the Downloads folder is fine).
+2. Double-click **`SETUP.command`** (the first time macOS may say it is from the internet: right-click it → *Open*), or
+   in Terminal: `bash setup.sh`. Same questions as on Windows: the workspace (default **`~/Movies/VideoHub`**, which
+   iCloud does not sync, so renders are not uploaded while they are made), folders found, the media engine, the
+   global rule, **VideoHub.app** in your Applications folder (Spotlight, Launchpad, the Dock), open at login, the
+   example film. `bash setup.sh --dry-run` / `--yes` / `--workspace ~/Videos/VideoHub` … (`bash setup.sh --help`).
+3. Open **VideoHub** from Spotlight (⌘ Space, "VideoHub") and start a new Claude Code session.
 
 ## Your first film
 1. If setup added the example film, its card is on the Projects page. Otherwise the page shows **Welcome to
@@ -132,9 +162,10 @@ projects, so **never expose port 7788** (no port forwarding, no tunnels, no `0.0
 inside your watched folders, the archive and its own folders.
 
 ## Uninstall
-Run `powershell -ExecutionPolicy Bypass -File uninstall.ps1` (`-DryRun` first to see what it would do). It stops this
+Run `powershell -ExecutionPolicy Bypass -File uninstall.ps1` (`-DryRun` first to see what it would do); on a Mac
+`bash uninstall.sh` (`--dry-run` first; what it removes goes to the Trash). It stops this
 install's server and agent, removes the MCP server, the skill and the rule block it added (only if they belong to this
-install), the Desktop shortcut and the start-up entry. Your films, their notes, the outputs folder and this folder stay;
+install), the Desktop shortcut (VideoHub.app) and the start-up entry (login item). Your films, their notes, the outputs folder and this folder stay;
 delete them yourself if you want.
 
 ## Troubleshooting
@@ -152,9 +183,17 @@ delete them yourself if you want.
   film's render script (VideoHub ships one; run `npm install` in VideoHub's folder).
 - **Port 7788 is taken** — set `"port"` in `data\config.json`.
 - **Coming from an older (Turkish) build** — see [docs/MIGRATING.md](docs/MIGRATING.md).
+- **Mac: double-clicking SETUP.command does nothing or says you lack permission** — run `bash setup.sh` in Terminal
+  from the VideoHub folder (a browser download can drop the file's "executable" mark; setup puts it back).
+- **Mac: VideoHub.app opens nothing** — `~/Library/Logs/VideoHub/hub.log` says why; usually Node moved (an nvm or
+  Node upgrade): run setup again, it writes the new path into the app.
+- **Mac: the hotkeys do nothing** — they need `guard/VideoHubKeys`: install the Command Line Tools
+  (`xcode-select --install`) and run setup again (it then says "Emergency hotkeys: ok"). Pause all / Resume all on the
+  Renders page always work.
 
 ## Development
-`npm test` runs the suites; see [CLAUDE.md](CLAUDE.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+`npm test` runs the suites (on Windows and on a Mac); see [CLAUDE.md](CLAUDE.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+and [docs/MACOS.md](docs/MACOS.md).
 
 ## License
 [MIT](LICENSE) © 2026 VideoHub contributors.

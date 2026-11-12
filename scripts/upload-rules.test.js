@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { droppedByBrowser, ALLOWED_DOT_FILES } from './upload-rules.mjs';
+import { droppedByBrowser, ALLOWED_DOT_FILES, FINDER_FILES } from './upload-rules.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LOCAL = new Set(['.git', '.test-tmp', 'node_modules', 'data']);   // this PC's own, never uploaded
@@ -23,6 +23,7 @@ test('no file VideoHub needs starts with a dot (GitHub\'s browser upload would d
       const r = rel ? rel + '/' + e.name : e.name;
       if (!rel && (LOCAL.has(e.name) || ALLOWED_DOT_FILES.has(e.name))) continue;
       if (e.isDirectory() && (e.name === 'node_modules' || e.name === 'render')) continue;
+      if (FINDER_FILES.has(e.name)) continue;
       if (droppedByBrowser(r)) { bad.push(r); continue; }
       if (e.isDirectory()) walk(path.join(d, e.name), r);
     }

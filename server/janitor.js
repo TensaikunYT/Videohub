@@ -9,7 +9,8 @@ import { config } from './config.js';
 import { index } from './scan.js';
 import * as jobs from './jobs.js';
 import { guardState } from './guard.js';
-import { DATA_DIR, TEMP, powershell, fingerprint, processAlive, shortPath, writeJson, now, isInside } from './util.js';
+import { DATA_DIR, TEMP, IS_MAC, powershell, fingerprint, processAlive, shortPath, writeJson, now, isInside } from './util.js';
+import { trashStream } from './mac.js';
 
 const DONE = new Set(['approved', 'published', 'archived', 'done']);
 // Presets for "Clean render leftovers in all projects" (each candidate carries one):
@@ -64,7 +65,7 @@ const cid = s => crypto.createHash('sha1').update(s.toLowerCase()).digest('hex')
 function busyWhy(p) {
   if (jobs.list().some(j => j.project === p.id && (j.state === 'running' || j.state === 'queued'))) return 'a render is in the VideoHub queue';
   try { const g = guardState(); if (g.running && (g.renders || []).some(r => [r.project, r.dir, r.cwd, r.path].some(x => typeof x === 'string' && x && (isInside(x, p.path) || isInside(p.path, x))))) return 'currently rendering'; } catch { }
-  for (const f of ['render\\log.txt', 'render.log', 'render_log.txt']) { try { if (Date.now() - fs.statSync(path.join(p.path, f)).mtimeMs < 10 * 60e3) return 'render log updated in the last 10 minutes'; } catch { } }
+  for (const f of [path.join('render', 'log.txt'), 'render.log', 'render_log.txt']) { try { if (Date.now() - fs.statSync(path.join(p.path, f)).mtimeMs < 10 * 60e3) return 'render log updated in the last 10 minutes'; } catch { } }
   try { if (fs.readdirSync(path.join(p.outDir || p.path, 'render', 'chunks')).some(f => f.endsWith('.tmp.mp4') && Date.now() - fs.statSync(path.join(p.outDir || p.path, 'render', 'chunks', f)).mtimeMs < 10 * 60e3)) return 'unfinished render chunk found (a render may still be running)'; } catch { }
   return null;
 }
@@ -163,7 +164,7 @@ async function computeCandidates() {
       const m = await mediaIn(full); if (m.size < 1 << 20) continue;
       const old = Date.now() - m.newest > QA_DAYS * 864e5, what = m.onlyMedia ? 'folder' : `${m.files.length} items, scripts stay`;
       add({ rule: 'qa', preset: old ? 'safe' : 'deep', project: p.id, projectName: p.name, path: full, size: m.size, ...(m.onlyMedia ? { dir: true } : { files: m.files }), action: 'recycle', checked: old,
-        reason: `QA/test frames and clips (${d}\\, ${what}); ${old ? 'older than ' + QA_DAYS + ' days' : 'recent, the film may still be in progress'}. Can be regenerated if needed.` });
+        reason: `QA/test frames and clips (${d}${path.sep}, ${what}); ${old ? 'older than ' + QA_DAYS + ' days' : 'recent, the film may still be in progress'}. Can be regenerated if needed.` });
     }
     // 4a. preview renders (PREVIEW=1): once a full-quality final is newer they are only leftovers
     {
@@ -190,7 +191,7 @@ async function computeCandidates() {
     }
     // 5. chunks / parts of a finished film (needed only for partial re-renders while still being reviewed)
     if (DONE.has(p.status) && !p.statusAuto && !(p.notesOpen > 0) && newestFinal) {
-      for (const d of ['render\\chunks', 'render\\preview']) {
+      for (const d of [path.join('render', 'chunks'), path.join('render', 'preview')]) {   // path.join: 'render\\chunks' is one odd file name on a Mac
         const full = path.join(p.outDir || p.path, d); if (!exists(full)) continue;
         const s = await dirSize(full); if (s.size < 20 << 20) continue;
         add({ rule: 'chunks', preset: 'deep', project: p.id, projectName: p.name, path: full, size: s.size, dir: true, action: 'recycle', checked: !p.statusAuto,
@@ -280,7 +281,9 @@ function why(code) {
 // to the Recycle Bin through SHFileOperation with no UI at all (FOF_NOERRORUI: a hidden error dialog used to be able
 // to hang the run), one PowerShell for the whole list, one result line per item as it goes. Items bigger than the
 // Bin of their drive are refused: Windows would delete those permanently without asking.
+// On a Mac: the Trash (server/mac.js, NSFileManager), same per-item stream; there is no size limit to check there.
 function recycleStream(items, onItem) {
+  if (IS_MAC) return trashStream(items, onItem, { dataDir: DATA_DIR });
   return new Promise(resolve => {
     if (!items.length) return resolve();
     const listFile = path.join(DATA_DIR, `recycle-${Date.now()}.json`);
@@ -339,9 +342,9 @@ foreach ($i in @($items)) {
 // old versions: copy (async, so the hub keeps answering), check, then remove the original
 async function archiveOne(i) {
   const root = config().archiveDir;
-  const rel = shortPath(i.path).replace(/^~\\/, '').replace(/^[A-Za-z]:\\/, '');
+  const rel = shortPath(i.path).replace(/^~[\\/]/, '').replace(/^[A-Za-z]:\\/, '').replace(/^\/+/, '');
   let dest = path.join(root, rel);
-  for (let k = 2; fs.existsSync(dest); k++) dest = path.join(root, rel.replace(/(\.[^.\\]+)?$/, m => `_${k}${m}`));   // keep the older archived copy
+  for (let k = 2; fs.existsSync(dest); k++) dest = path.join(root, rel.replace(/(\.[^.\\/]+)?$/, m => `_${k}${m}`));   // keep the older archived copy
   await fsp.mkdir(path.dirname(dest), { recursive: true });
   await fsp.copyFile(i.path, dest, fs.constants.COPYFILE_EXCL);
   const a = fs.statSync(i.path), b = fs.statSync(dest);

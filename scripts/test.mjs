@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const dirs = ['server', 'server/thumbstudio', 'ui', 'ui/review', 'scripts'];
+const dirs = ['server', 'server/thumbstudio', 'ui', 'ui/review', 'scripts', 'guard'];
 const files = dirs.flatMap(d => fs.readdirSync(path.join(root, d)).filter(f => f.endsWith('.test.js')).map(f => path.join(d, f)));
 const base = path.join(root, '.test-tmp', 'base');
 fs.mkdirSync(base, { recursive: true });

@@ -12,7 +12,8 @@ import { project, rescanProject } from './scan.js';
 import { guardState } from './guard.js';
 import { ramHogsNow, ramNote } from './ramhogs.js';
 import { vhDir, list as listNotes, update as updateNote } from './notes.js';
-import { DATA_DIR, HUB_DIR, readJson, writeJson, run, TOOLS, now, pLimit, refersToHub, isInside } from './util.js';
+import { DATA_DIR, HUB_DIR, IS_MAC, readJson, writeJson, run, TOOLS, now, pLimit, refersToHub, isInside } from './util.js';
+import { killTree, keepAwake } from './mac.js';
 import { audioOf } from './live.js';
 import { ENCODERS, LABELS, encoderEnv } from './encoders.js';
 
@@ -176,6 +177,8 @@ function spawnLogged(job, cmd, args, opts = {}) {
     log.write(`\n# ${now()}  ${cmd} ${args.join(' ')}\n`);
     const child = spawn(cmd, args, { ...opts, windowsHide: true, shell: opts.shell || false });
     const children = procs.get(job.id) || new Set(); children.add(child); procs.set(job.id, children);
+    // a Mac does not idle-sleep while a render step runs (caffeinate ends with the process; the display may sleep)
+    if (IS_MAC && child.pid && !process.env.VIDEOHUB_NO_WINDOW) keepAwake(child.pid);
     job.pid = child.pid; emit('running', job);
     let q0 = null, done = 0, t0 = Date.now(), stdout = '', stderr = '', settled = false;
     const lines = { stdout: '', stderr: '' };
@@ -222,8 +225,10 @@ async function runJob(job) {
 
   if (job.mode === 'command') {
     setPhase(job, 'render');
-    // quoted whole and passed verbatim: Node would escape inner quotes as \" which cmd.exe does not understand
-    const { code } = await spawnLogged(job, 'cmd.exe', ['/d', '/s', '/c', '"' + job.cmd + '"'], { cwd: p.path, env, windowsVerbatimArguments: true });
+    // quoted whole and passed verbatim: Node would escape inner quotes as \" which cmd.exe does not understand.
+    // A Mac runs it with the POSIX shell (no profile: the PATH is the hub's, which includes Homebrew).
+    const { code } = IS_MAC ? await spawnLogged(job, '/bin/sh', ['-c', job.cmd], { cwd: p.path, env })
+      : await spawnLogged(job, 'cmd.exe', ['/d', '/s', '/c', '"' + job.cmd + '"'], { cwd: p.path, env, windowsVerbatimArguments: true });
     assertActive(job);
     if (code !== 0) throw new Error(`The command ended with code ${code} (log: ${job.log})`);
     if (job.output) await register(p, job, path.resolve(p.path, job.output), vN, job.changedRanges || null);
@@ -402,7 +407,9 @@ export function cancel(id) {
   if (!['queued', 'running'].includes(j.state)) return false;
   if (j.state === 'queued') { j.state = 'cancelled'; j.finishedAt = now(); emit('cancelled', j); return true; }
   const children = procs.get(id); if (children) for (const c of children) if (c.pid) {
-    spawn('taskkill', ['/PID', String(c.pid), '/T', '/F'], { windowsHide: true }).on('error', () => { try { c.kill(); } catch { } });
+    // the whole tree (a render's Chrome copies and ffmpeg too): taskkill /T on Windows, TERM then KILL on a Mac
+    if (IS_MAC) killTree(c.pid).catch(() => { try { c.kill('SIGKILL'); } catch { } });
+    else spawn('taskkill', ['/PID', String(c.pid), '/T', '/F'], { windowsHide: true }).on('error', () => { try { c.kill(); } catch { } });
   }
   j.state = 'cancelled'; j.finishedAt = now(); emit('cancelled', j); return true;
 }
@@ -444,7 +451,7 @@ async function renderInfo(p) {
 }
 async function renderOptions0(p) {
   const rc = await recipe(p);
-  if (p.studio) return { studio: true, partial: !!rc.chunkSec, preview: false, fps: null, workers: { default: rc.workers, max: 4 }, codecs: ['auto', 'x264', 'nvenc', 'amf'], dur: +rc.env.DUR || null };
+  if (p.studio) return { studio: true, partial: !!rc.chunkSec, preview: false, fps: null, workers: { default: rc.workers, max: 4 }, codecs: IS_MAC ? ['auto', 'x264'] : ['auto', 'x264', 'nvenc', 'amf'], dur: +rc.env.DUR || null };
   let src = ''; try { src = fs.readFileSync(path.join(p.path, rc.script), 'utf8'); } catch { }
   const env = new Set([...src.matchAll(/process\.env\.([A-Z_]+)/g)].map(m => m[1]));
   return { studio: false, script: fs.existsSync(path.join(p.path, rc.script)) ? rc.script : null, partial: p.family === 'A' && !!rc.chunkSec,

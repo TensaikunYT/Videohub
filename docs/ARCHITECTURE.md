@@ -18,6 +18,13 @@ What film projects must look like is in [PROJECT-CONTRACT.md](PROJECT-CONTRACT.m
   resumes. It writes `%APPDATA%\RenderGuard\state.json` (~2 s), reads commands from `…\cmd\` and settings from
   `settings.txt` (written by the hub), and logs to `history.log`. Test copies run with `--only TAG` in their own folder
   (`guard/tests/run.ps1`). Without the agent everything works, renders just run unprotected.
+- **Agent on a Mac** — `guard/agent-mac.mjs` (Node: nothing to build), started as `node guard/agent-mac.mjs --agent`,
+  stopped with SIGTERM (`--quit`). Same files in `~/Library/Application Support/RenderGuard`, same commands, settings
+  and history lines, so `server/guard.js` and the Renders page are unchanged. CPU caps are SIGSTOP/SIGCONT cycles of
+  the render's process tree, low priority is Darwin background policy (efficiency cores on Apple silicon), the RAM
+  watchdog also reads macOS memory pressure, the hotkeys (⌃⌥⌘P / ⌃⌥⌘R) come from `guard/VideoHubKeys` (Swift,
+  optional). Every stop is followed by a continue; quitting continues everything; a new agent and the hub continue
+  what a dead agent left stopped. Details: [MACOS.md](MACOS.md).
 - **MCP server** — `server/mcp.js` (stdio) exposes `server/tools.js`; `server/cli.js` runs the same tools from a shell;
   `server/mcp-selftest.js` checks the MCP wiring. Tools talk to the hub over HTTP (`VIDEOHUB_PORT` overrides the port).
 
@@ -35,6 +42,10 @@ What film projects must look like is in [PROJECT-CONTRACT.md](PROJECT-CONTRACT.m
 | `server/jobs.js` | Render queue (`data/jobs.json`): one at a time, partial re-renders, concat, sound, versions, `register()`. |
 | `server/media.js` | Film strip, waveform/peaks, full frames, review copies (`data/proxy`). |
 | `server/guard.js`, `ramhogs.js` | Agent state/commands/settings/history; programs holding RAM next to a render (never closes anything). |
+| `server/mac.js` | A Mac's counterparts of the Windows calls: Finder (`open`, `open -R`), the Trash (NSFileManager via `osascript -l JavaScript`), notifications, the folder dialog, the login item (LaunchAgent), caffeinate, `killTree`, the process table (`ps`), memory pressure. `IS_MAC` (util.js) picks the branch. |
+| `guard/agent-mac.mjs`, `guard/keys-mac.swift` | The Mac render protection agent and its optional hotkeys helper (`guard/build-mac.sh`). |
+| `ui/platform.js` | What the UI calls things on this OS (Trash/Recycle Bin, Finder/Explorer, hotkeys, the speed presets). |
+| `scripts/mac-install.mjs`, `setup.sh`, `update.sh`, `uninstall.sh`, `open-mac.sh` | The Mac install: setup.sh asks, mac-install.mjs writes (skill, rule, MCP fallback, VideoHub.app, login item). |
 | `server/outputs.js`, `ciktilar.js`, `ciktilar-dir.js` | "Recent renders" list; the global outputs folder (hard links, one folder per day). |
 | `server/janitor.js` | Cleanup candidates (safe/deep), Recycle Bin, archive; one cleanup at a time. |
 | `server/tools.js` | The `hub_*` tools. |
@@ -55,6 +66,9 @@ What film projects must look like is in [PROJECT-CONTRACT.md](PROJECT-CONTRACT.m
   reflowed ~100 note cards every frame (10.6 ms → 0.4 ms after the fix).
 - **Never hard-delete.** Recycle Bin (refuse items bigger than the Bin) or archive (copy, verify, then remove; never
   overwrite, `_2`). The user approves every cleanup in the UI.
+- **Paths on both OSes**: `path.join` / `path.sep`, never a literal `\` in a joined path (on a Mac `render\chunks` is one
+  file name: the cleanup once never found a finished film's chunks there). Rules written with `\` (scan.js
+  `category`) get the path with `/` turned into `\` first.
 - **Windows `fs.watch` reports reads as changes** (last-access time): count an event only when the mtime is really newer
   (`reallyChanged` in live.js, the same idea in scan.js).
 - **Note pictures are cut by ffmpeg** from the original video by frame number, never from the browser's `<video>`
@@ -84,4 +98,7 @@ What film projects must look like is in [PROJECT-CONTRACT.md](PROJECT-CONTRACT.m
   JOBS=off never picks up the queue, NO_WINDOW opens no Explorer/Edge. The hub reads its config only from its own
   `data/`, so a test with other roots needs a copy of the code (or a clone) with its own `data/`. When calling the CLI
   against a test hub, set `VIDEOHUB_PORT` in the same command — otherwise the tool talks to (or starts) a hub on 7788.
-- Agent: `guard/tests/run.ps1` (isolated `--only` copies).
+- Agent: `guard/tests/run.ps1` (isolated `--only` copies). Mac agent: `guard/agent-mac.test.js` and a `--only TAG --dir
+  <scratch>` copy with dummy renders (MACOS.md, "Checking it").
+- On a Mac `npm test` runs every suite: Windows-path cases use `path.win32`, Mac-only cases skip on Windows.
+  `VIDEOHUB_TEST_TRASH=1` adds the real Trash check.

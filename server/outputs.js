@@ -13,6 +13,7 @@ import * as jobs from './jobs.js';
 import { guardHistory } from './guard.js';
 import { vhDir } from './notes.js';
 import { DATA_DIR, DESKTOP, HOME, readJson, writeJson, refersToHub } from './util.js';
+import { notify as notifyMac } from './mac.js';
 // RenderGuard writes a render's folder shortened (relative to the Desktop, or ~\ for the home folder): back to a full path
 const guardPath = s => !s ? '' : s.startsWith('~') ? path.join(HOME, s.slice(1)) : path.isAbsolute(s) ? s : path.join(DESKTOP, s);
 
@@ -79,7 +80,7 @@ function collect() {
     if (secs < 60) continue;
     // already in the list: a render of the same folder that ended within 15 min (the queue's own, or a version a chat registered)
     const at = Date.parse(g.at) || 0, seg = String(g.project || '').split(/[\\/]/).pop().toLowerCase();
-    if (seg && out.some((x) => x.file && x.file.toLowerCase().includes('\\' + seg + '\\') && Math.abs((Date.parse(x.finishedAt) || 0) - at) < 15 * 60e3)) continue;
+    if (seg && out.some((x) => x.file && x.file.toLowerCase().replace(/\\/g, '/').includes('/' + seg + '/') && Math.abs((Date.parse(x.finishedAt) || 0) - at) < 15 * 60e3)) continue;
     out.push({ key: 'guard:' + g.at + g.project, source: 'RenderGuard', state: /^FINISHED/i.test(g.event) ? 'done' : 'failed', file: null, projectName: g.project, finishedAt: iso(g.at),
       session: g.session || null, manual: !g.session, mode: null, error: /^FINISHED/i.test(g.event) ? null : g.event, detail: g.detail });
   }
@@ -105,9 +106,10 @@ export function outputs(limit = 150) {
 export function markSeen(key) { const s = seenMap() || (seen = {}); if (key) s[key.includes(':') && !/^[a-z]:\\/i.test(key) ? key : keyOf(key)] = new Date().toISOString(); saveSeen(); }
 export function markAllSeen() { const s = seenMap() || (seen = {}); for (const it of collect()) if (it.exists) s[it.key] = s[it.key] || new Date().toISOString(); saveSeen(); }
 
-// a Windows notification (the hub's PC): render finished or failed. Nothing on test hubs.
-export function notifyWindows(title, body) {
+// a desktop notification (the hub's PC): render finished or failed. Nothing on test hubs. A Mac: Notification Center.
+export function notifyDesktop(title, body) {
   if (process.env.VIDEOHUB_NO_WINDOW) return;
+  if (process.platform === 'darwin') { notifyMac(title, body); return; }
   const q = (s) => "'" + String(s || '').replace(/'/g, "''").slice(0, 200) + "'";
   const ps = [
     '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null',

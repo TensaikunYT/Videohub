@@ -1,6 +1,7 @@
 // Review studio v2: always-visible tools, a real transport bar, timeline with strip + waveform,
 // zoom/pan, compare (side / wipe / difference), review copy for instant frame stepping.
 import { h, api, toast, TC, DUR, AGO, onHubEvent, openFolder } from './app.js';
+import { W, IS_MAC } from './platform.js';
 import { COLORS, WIDTHS, paint, bbox, hit, pinR, PIN_HEAD } from './review/shapes.js';
 import { createTimeline } from './review/timeline.js';
 import { createNotesPanel } from './review/notes.js';
@@ -149,7 +150,7 @@ export async function reviewPage(page, id, relArg = '') {
   const changedBtn = h('button', { hidden: true, onclick: () => playChanged() }, 'Watch only the changes');
   const proxyPill = h('span', { class: 'pill', title: 'Lightweight review copy for smooth frame stepping' }, '…');
   const helpBtn = h('button', { class: 'ghost', title: 'How to use, all keyboard shortcuts (?)', onclick: () => toggleHelp() }, '❔ Help');
-  const folderBtn = h('button', { class: 'ghost', title: 'Open project folder in Explorer: ' + p.path, onclick: () => openFolder(id) }, '📂 Folder');
+  const folderBtn = h('button', { class: 'ghost', title: `Open project folder in ${W.files}: ` + p.path, onclick: () => openFolder(id) }, '📂 Folder');
   const liveRefreshBtn = liveMode ? h('button', { class: 'ghost', title: 'Find the current page again and reload the code', onclick: async () => {
     try { const fresh = await api('/api/project/' + id + '/live'); if (fresh.ok) liveSrc.reload(fresh); else toast(fresh.reason, true); }
     catch (e) { toast(e.message, true); }
@@ -1013,8 +1014,10 @@ export async function reviewPage(page, id, relArg = '') {
       if (k === 'Escape') { endTour(); return; }
     }
     if (!e.ctrlKey && lk === 'c' && trData) { toggleCaptions(); return; }
-    if (e.ctrlKey && !e.altKey && lk === 'z') { e.preventDefault(); e.shiftKey ? routeRedo() : routeUndo(); return; }
-    if (e.ctrlKey && !e.altKey && lk === 'y') { e.preventDefault(); routeRedo(); return; }
+    // undo / redo: Ctrl, and ⌘ on a Mac (⌘Z, ⇧⌘Z, ⌘Y)
+    const undoMod = (e.ctrlKey || (IS_MAC && e.metaKey)) && !e.altKey;
+    if (undoMod && lk === 'z') { e.preventDefault(); e.shiftKey ? routeRedo() : routeUndo(); return; }
+    if (undoMod && lk === 'y') { e.preventDefault(); routeRedo(); return; }
     // Turkish Q types [ ] \ with AltGr, which Chrome reports as Ctrl+Alt: these run before the modifier check below
     const altGr = e.getModifierState?.('AltGraph') || (e.ctrlKey && e.altKey), plain = !e.ctrlKey && !e.altKey && !e.metaKey;
     if ((k === '[' || k === ']') && (plain || altGr)) { e.preventDefault(); speedStep(k === ']' ? 1 : -1); return; }

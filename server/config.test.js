@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
+import nodePath from 'node:path';
 import vm from 'node:vm';
-import { ENCODERS } from './encoders.js';
 
+// Windows paths and encoders on every OS (path.win32), so these run the same on a Mac; a Mac case at the end
+const path = nodePath.win32, WIN_ENCODERS = ['auto', 'nvenc', 'amf', 'qsv', 'x264'];
 // config.js with in-memory files: never writes data/config.json
-function load(saved = { port: 7788, roots: [{ path: 'X:\\films', type: 'container', enabled: true }] }, env = { VIDEOHUB_BASE_DIR: 'X:\\base' }) {
+function load(saved = { port: 7788, roots: [{ path: 'X:\\films', type: 'container', enabled: true }] }, env = { VIDEOHUB_BASE_DIR: 'X:\\base' }, mac = false) {
   const code = fs.readFileSync(new URL('./config.js', import.meta.url), 'utf8').replace(/^import .+;\r?$/gm, '').replace(/\bexport /g, '');
   const written = [];
-  const ctx = { fs: { existsSync: () => false, readdirSync: () => [], mkdirSync() { } }, path, DATA_DIR: 'X:\\data', DESKTOP: 'X:\\desk', DOCUMENTS: 'X:\\docs', ENCODERS,
+  const os = mac ? { path: nodePath.posix, DATA_DIR: '/vh/data', DESKTOP: '/Users/x/Desktop', DOCUMENTS: '/Users/x/Documents', HOME: '/Users/x', ENCODERS: ['auto', 'vt', 'x264'] }
+    : { path, DATA_DIR: 'X:\\data', DESKTOP: 'X:\\desk', DOCUMENTS: 'X:\\docs', HOME: 'X:\\home', ENCODERS: WIN_ENCODERS };
+  const ctx = { fs: { existsSync: () => false, readdirSync: () => [], mkdirSync() { } }, ...os, IS_MAC: mac,
     process: { env }, readJson: () => saved && JSON.parse(JSON.stringify(saved)), writeJson: (f, d) => written.push(JSON.parse(JSON.stringify(d))) };
   vm.createContext(ctx); vm.runInContext(code + '\nglobalThis.api = { config, saveConfig, baseDir, defaultFilmsDir };', ctx);
   return { ...ctx.api, written };
@@ -48,4 +51,14 @@ test('an existing config keeps its values: explicit folders win over the workspa
   s = c.saveConfig({ render: { encoder: 'warp9' } }); assert.equal(s.render.encoder, 'auto');
   // an install from before baseDir: no key is added, Documents\VideoHub as before
   const old = load({ port: 7788, outputsDir: 'D:\\o', roots: [] }, {}); assert.equal(old.config().baseDir, undefined); assert.equal(old.baseDir(), path.join('X:\\docs', 'VideoHub'));
+});
+
+test('a Mac: the workspace defaults to ~/Movies/VideoHub (not the iCloud-synced Documents); its encoders are auto, vt and x264', () => {
+  const p = nodePath.posix, c = load(null, {}, true), f = c.config();
+  assert.equal(c.baseDir(), '/Users/x/Movies/VideoHub'); assert.equal(f.baseDir, '/Users/x/Movies/VideoHub');
+  assert.equal(f.roots[0].path, p.join('/Users/x/Movies/VideoHub', 'films')); assert.equal(f.outputsDir, '/Users/x/Movies/VideoHub/outputs');
+  assert.equal(c.saveConfig({ render: { encoder: 'vt' } }).render.encoder, 'vt');
+  assert.equal(c.saveConfig({ render: { encoder: 'nvenc' } }).render.encoder, 'auto');   // a Windows choice copied to a Mac
+  const set = load({ baseDir: '/Volumes/Work/VH', roots: [] }, {}, true); set.config(); assert.equal(set.baseDir(), '/Volumes/Work/VH');
+  const old = load({ roots: [] }, {}, true); old.config(); assert.equal(old.baseDir(), '/Users/x/Movies/VideoHub');
 });

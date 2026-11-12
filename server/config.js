@@ -4,7 +4,7 @@
 // or in data/config.json. See docs/MIGRATING.md for older installs.
 import fs from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR, DESKTOP, DOCUMENTS, readJson, writeJson } from './util.js';
+import { DATA_DIR, DESKTOP, DOCUMENTS, HOME, IS_MAC, readJson, writeJson } from './util.js';
 import { ENCODERS } from './encoders.js';
 
 const FILE = path.join(DATA_DIR, 'config.json');
@@ -14,12 +14,17 @@ const FILE = path.join(DATA_DIR, 'config.json');
 //   project   : the folder itself is one project
 //   media     : finished videos lying around (an export folder)
 const SKIP = new Set(['node_modules', '.git', '.claude', 'VideoHub', '$RECYCLE.BIN']);
+// a Mac's app libraries (iMovie, Final Cut, Photos, Music/TV …) are folders on disk but belong to their apps
+const MAC_BUNDLE = /\.(imovielibrary|fcpbundle|photoslibrary|tvlibrary|musiclibrary|theater|localized|app)$/i;
 
 // the workspace: the base folder for everything VideoHub creates by default. VIDEOHUB_BASE_DIR (tests and test hubs
 // point it at a scratch folder) → config.baseDir (chosen in setup) → Documents\VideoHub. Installs from before baseDir
 // existed have no key and keep Documents\VideoHub; their explicit folders are kept anyway (see config()).
+// A Mac: ~/Movies/VideoHub — the Mac's place for video, never synced by "Desktop & Documents in iCloud" (a render's
+// chunks would upload all the time) and outside the folders macOS asks permission for (Desktop, Documents, Downloads).
 const okBase = b => typeof b === 'string' && path.isAbsolute(b) ? b : null;
-export const DEFAULT_BASE = () => path.join(DOCUMENTS, 'VideoHub');
+export const MOVIES = path.join(HOME, 'Movies');
+export const DEFAULT_BASE = () => IS_MAC ? path.join(MOVIES, 'VideoHub') : path.join(DOCUMENTS, 'VideoHub');
 export const baseDir = () => process.env.VIDEOHUB_BASE_DIR || okBase(cfg ? cfg.baseDir : savedBase) || DEFAULT_BASE();
 export const defaultFilmsDir = () => path.join(baseDir(), 'films');
 // container sub-folders never listed as projects (helpers next to films) unless they have their own render script.
@@ -37,14 +42,15 @@ export function discoverRoots() {
   const roots = [];
   const add = (p, type, enabled) => { if (fs.existsSync(p) && !roots.some(r => r.path.toLowerCase() === p.toLowerCase())) roots.push({ path: p, type, enabled }); };
   const lower = p => p.toLowerCase();
-  for (const top of [DESKTOP, DOCUMENTS]) {
+  for (const top of IS_MAC ? [DESKTOP, DOCUMENTS, MOVIES] : [DESKTOP, DOCUMENTS]) {
     let entries = []; try { entries = fs.readdirSync(top, { withFileTypes: true }); } catch { }
     for (const e of entries) {
       if (!e.isDirectory() || SKIP.has(e.name) || e.name.startsWith('.')) continue;
+      if (IS_MAC && (MAC_BUNDLE.test(e.name) || (top === MOVIES && e.name === 'TV'))) continue;   // the Apps' libraries, not films
       const p = path.join(top, e.name), lp = lower(p);
       if (lp === lower(baseDir())) continue;
       // skip folders that are a root, sit inside one, or contain one
-      if (roots.some(r => lower(r.path) === lp || lp.startsWith(lower(r.path) + '\\') || lower(r.path).startsWith(lp + '\\'))) continue;
+      if (roots.some(r => lower(r.path) === lp || lp.startsWith(lower(r.path) + path.sep) || lower(r.path).startsWith(lp + path.sep))) continue;
       if (fs.existsSync(path.join(p, 'server', 'hub.js'))) continue;   // a VideoHub install
       if (hasRenderCode(p)) { add(p, 'project', false); continue; }
       let subs = []; try { subs = fs.readdirSync(p, { withFileTypes: true }).filter(s => s.isDirectory() && !SKIP.has(s.name)); } catch { }
@@ -79,7 +85,7 @@ export const DEFAULTS = (base = baseDir()) => ({
   tempMaxAgeDays: 14,
   bloatWarnRatio: 3,
   thumbstudio: defaultThumbstudioDirs(base),
-  // render.encoder: auto | nvenc | amf | qsv | x264, passed to render scripts as VIDEOHUB_ENCODER (server/encoders.js)
+  // render.encoder: auto | nvenc | amf | qsv | x264 (a Mac: auto | vt | x264), passed to render scripts as VIDEOHUB_ENCODER (server/encoders.js)
   render: { encoder: 'auto' },
 });
 function firstRoots() {
