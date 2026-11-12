@@ -1,10 +1,11 @@
-// Windows' own "Select folder" window (the Explorer-style one, IFileOpenDialog with FOS_PICKFOLDERS), opened by a hidden
+// Windows' own "Select folder" window (on a Mac: the standard folder dialog, see server/mac.js) (the Explorer-style one, IFileOpenDialog with FOS_PICKFOLDERS), opened by a hidden
 // PowerShell on top of every window (an invisible topmost owner), so it never hides behind the VideoHub window. Returns
 // the chosen folder or null (cancelled). Falls back to the old folder tree if the modern one cannot start.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pickFolder as pickFolderMac } from './mac.js';
 
 const CS = `
 using System; using System.Runtime.InteropServices;
@@ -37,6 +38,7 @@ public static class VhPick {
 const q = (s) => "'" + String(s ?? '').replace(/'/g, "''") + "'";
 export function pickFolder(start, title = 'Choose folder') {
   if (process.env.VIDEOHUB_NO_WINDOW) return Promise.resolve(null);
+  if (process.platform === 'darwin') return pickFolderMac(start, title);   // the macOS "Choose" dialog (osascript)
   const ps = [
     '[Console]::OutputEncoding = [Text.Encoding]::UTF8',
     'Add-Type -AssemblyName System.Windows.Forms',

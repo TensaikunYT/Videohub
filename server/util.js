@@ -20,21 +20,39 @@ export const DOCUMENTS = (() => {
   for (const d of [path.join(HOME, 'Documents'), path.join(HOME, 'OneDrive', 'Documents')]) if (fs.existsSync(d)) return d;
   return path.join(HOME, 'Documents');
 })();
-export const APPDATA = process.env.APPDATA || path.join(HOME, 'AppData', 'Roaming');
+export const IS_MAC = process.platform === 'darwin';
+// where per-user app state lives: %APPDATA% on Windows, ~/Library/Application Support on a Mac
+export const APPDATA = IS_MAC ? path.join(HOME, 'Library', 'Application Support') : process.env.APPDATA || path.join(HOME, 'AppData', 'Roaming');
 export const TEMP = os.tmpdir();
 fs.mkdirSync(DATA_DIR, { recursive: true });
+// A Mac app opened from the Dock or a login item gets launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin): add the places
+// Homebrew (Apple silicon, Intel), MacPorts and this Node live, so ffmpeg, node and a film's own commands are found.
+if (IS_MAC) {
+  const have = (process.env.PATH || '').split(':').filter(Boolean);
+  const want = [path.dirname(process.execPath), '/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  process.env.PATH = [...have, ...want.filter(d => !have.includes(d))].join(':');
+}
 
 export const idOf = p => crypto.createHash('sha1').update(path.resolve(p).toLowerCase()).digest('hex').slice(0, 12);
 export const norm = p => path.resolve(p).toLowerCase();
 // Folders that were moved can leave junctions at their old paths, so compare real paths (cached)
 const realCache = new Map();
-const realNorm = p => { const k = norm(p); let r = realCache.get(k); if (r === undefined) { try { r = fs.realpathSync.native(k).toLowerCase(); realCache.set(k, r); } catch { r = k; } } return r; };
+// A path that does not exist yet is resolved through its nearest existing folder: on a Mac the temp folder is
+// /var/… → /private/var/…, and a new file inside it must still count as inside it.
+function realOf(k) {
+  for (let head = k, tail = ''; ;) {
+    try { return path.join(fs.realpathSync.native(head), tail).toLowerCase(); } catch { }
+    const up = path.dirname(head); if (up === head) return k;
+    tail = path.join(path.basename(head), tail); head = up;
+  }
+}
+const realNorm = p => { const k = norm(p); let r = realCache.get(k); if (r === undefined) { r = realOf(k); if (fs.existsSync(k)) realCache.set(k, r); } return r; };
 export const isInside = (child, parent) => { const c = realNorm(child), p = realNorm(parent); return c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep); };
 // does a command line or path refer to a path inside this install? Never by folder name: films live in Documents\VideoHub\films
 // and the install folder can have any name (a GitHub ZIP unpacks as VideoHub-main). Case-insensitive, both slash styles.
 const slashes = s => String(s || '').toLowerCase().replace(/[\\/]+/g, '/');
 export const refersToHub = (s, hub = HUB_DIR) => new RegExp(slashes(hub).replace(/\/$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:/|["\'\\s]|$)').test(slashes(s));
-export const shortPath = p => (isInside(p, DESKTOP) ? path.relative(DESKTOP, p) : isInside(p, HOME) ? '~\\' + path.relative(HOME, p) : p) || p;
+export const shortPath = p => (isInside(p, DESKTOP) ? path.relative(DESKTOP, p) : isInside(p, HOME) ? '~' + path.sep + path.relative(HOME, p) : p) || p;
 
 export function readJson(file, fallback = null) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); } catch { return fallback; }
@@ -67,12 +85,24 @@ export async function pLimit(items, n, fn) {
 }
 
 // ---------- tools on this PC
-function which(name, extra = []) {
+export function which(name, extra = []) {
   const dirs = (process.env.PATH || '').split(path.delimiter).concat(extra);
   for (const d of dirs) { const f = path.join(d, name); if (d && fs.existsSync(f)) return f; }
   return null;
 }
-export const TOOLS = {
+// Chromium browsers a Mac may have (renders drive one headless; the VideoHub window opens in one as an app window):
+// /Applications and ~/Applications, Chrome first (what puppeteer is tested with), then Edge, Brave, Chromium
+export const MAC_BROWSERS = [['chrome', 'Google Chrome'], ['edge', 'Microsoft Edge'], ['brave', 'Brave Browser'], ['chromium', 'Chromium']];
+const macApp = name => [path.join('/Applications', name + '.app'), path.join(HOME, 'Applications', name + '.app')]
+  .map(a => path.join(a, 'Contents', 'MacOS', name)).find(f => fs.existsSync(f)) || null;
+export const TOOLS = IS_MAC ? {
+  ffmpeg: which('ffmpeg') || 'ffmpeg',
+  ffprobe: which('ffprobe') || 'ffprobe',
+  node: process.execPath,
+  // edge/chrome keep their names (Settings and the render dialog read them); brave/chromium count as "chrome" when Chrome is missing
+  chrome: macApp('Google Chrome') || macApp('Brave Browser') || macApp('Chromium'),
+  edge: macApp('Microsoft Edge'),
+} : {
   ffmpeg: which('ffmpeg.exe', ['C:\\ffmpeg\\bin']) || 'ffmpeg',
   ffprobe: which('ffprobe.exe', ['C:\\ffmpeg\\bin']) || 'ffprobe',
   node: process.execPath,

@@ -14,6 +14,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { index } from './scan.js';
 import { recyclePaths } from './janitor.js';
+import { openPath } from './mac.js';
 import { vhDir } from './notes.js';
 import { outputsDir } from './ciktilar-dir.js';
 import { DATA_DIR, readJson, writeJson, isInside } from './util.js';
@@ -127,7 +128,7 @@ export function routes(route) {
   route('GET', '/api/ciktilar', () => stats());
   route('POST', '/api/ciktilar/open', () => {
     const dir = outputsDir(); fs.mkdirSync(dir, { recursive: true });
-    if (!process.env.VIDEOHUB_NO_WINDOW) spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' }).unref();
+    if (!process.env.VIDEOHUB_NO_WINDOW) { if (process.platform === 'darwin') openPath(dir); else spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' }).unref(); }
     return { ok: true, dir };
   });
 }

@@ -16,8 +16,8 @@
 //   pixels are read straight from the canvas, handed to a Web Worker and sent to this script over a local WebSocket;
 //   ffmpeg gets raw RGBA (lossless, no JPEG). Any other page is captured as PNG screenshots (also lossless).
 //   VIDEOHUB_TRANSPORT=png forces screenshots (the WebSocket server is built in: no package needed). Every frame is a pure function of t, so workers can render in parallel.
-// - Encoder: VIDEOHUB_ENCODER = auto | nvenc | amf | qsv | x264 (auto: the first graphics-card encoder whose test
-//   encode works, else x264). A named encoder that does not work here falls back to x264.
+// - Encoder: VIDEOHUB_ENCODER = auto | nvenc | amf | qsv | vt | x264 (auto: the first graphics-card encoder whose test
+//   encode works — on a Mac Apple's VideoToolbox — else x264). A named encoder that does not work here falls back to x264.
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os');
 const { spawn, spawnSync, execFileSync } = require('child_process');
@@ -35,9 +35,10 @@ function loadPuppeteer() {
   console.error('puppeteer-core not found: run "npm install" in this folder (or render through VideoHub, which ships it).');
   process.exit(2);
 }
-// the browser: CHROME env, else Edge, else Chrome
+// the browser: CHROME env, else Edge, else Chrome (a Mac: Chrome, Edge, Brave, Chromium in /Applications or ~/Applications)
 function browserPath() {
-  const c = [process.env.CHROME,
+  const mac = ['Google Chrome', 'Microsoft Edge', 'Brave Browser', 'Chromium'].flatMap(n => ['/Applications', path.join(os.homedir(), 'Applications')].map(d => `${d}/${n}.app/Contents/MacOS/${n}`));
+  const c = [process.env.CHROME, ...(process.platform === 'darwin' ? mac : []),
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
     'C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(os.homedir(), 'AppData/Local/Google/Chrome/Application/chrome.exe')].filter(Boolean);
   const f = c.find(x => fs.existsSync(x));
@@ -58,6 +59,7 @@ const ENCODER_ARGS = {
   amf: [['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18', '-bf', '3'],
     ['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18']],
   qsv: [['-c:v', 'h264_qsv', '-preset', 'veryslow', '-global_quality', '18', '-look_ahead', '1']],
+  vt: [['-c:v', 'h264_videotoolbox', '-q:v', '70', '-profile:v', 'high', '-allow_sw', '0']],
   x264: [['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16']],
   lossless: [['-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0']],   // for checks only (huge files)
 };
@@ -66,8 +68,8 @@ function pickEncoder() {
   const want = String(process.env.VIDEOHUB_ENCODER || 'auto').toLowerCase();
   const works = n => (ENCODER_ARGS[n] || []).find(probe) || null;
   if (want === 'x264' || want === 'lossless') return { name: want, args: ENCODER_ARGS[want][0] };
-  for (const n of want === 'auto' ? ['nvenc', 'amf', 'qsv'] : [want]) { const a = works(n); if (a) return { name: n, args: a }; }
-  if (want !== 'auto') console.log(`encoder ${want} does not work on this PC: using x264`);
+  for (const n of want === 'auto' ? (process.platform === 'darwin' ? ['vt'] : ['nvenc', 'amf', 'qsv']) : [want]) { const a = works(n); if (a) return { name: n, args: a }; }
+  if (want !== 'auto') console.log(`encoder ${want} does not work on this computer: using x264`);
   return { name: 'x264', args: ENCODER_ARGS.x264[0] };
 }
 let ENC = null;

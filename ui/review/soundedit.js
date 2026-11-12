@@ -70,7 +70,7 @@ export function createSoundEditor({ projectId, timeline, dur, time, seek, fps = 
       h('button', { class: 'ghost danger', onclick: async () => { if (!await confirmBox('Remove sound', h('div', {}, `Remove "${c.name}" from the film? (The file stays in the film’s vhaudio folder.)`), 'Remove')) return; remove(c.id); } }, '🗑 remove')));
   }
 
-  // ---- P4: sounds dropped on the timeline (library item or files from Explorer) or added from the library list
+  // ---- P4: sounds dropped on the timeline (library item or files from Explorer / Finder) or added from the library list
   // one file from the user's disk → the film's vhaudio/ (as a dataURL up to 35 MB, streamed raw above)
   async function uploadFile(f) {
     if (f.size > BIG) {

@@ -2,7 +2,7 @@
   "name": "videohub",
   "version": "0.1.0",
   "private": true,
-  "description": "Local Windows hub for videos that Claude Code writes as code: project catalog, live preview with no render, frame-accurate review notes sent back to Claude, a protected one-at-a-time render queue with partial re-renders, and MCP tools for Claude.",
+  "description": "Local hub for videos that Claude Code writes as code, on Windows and macOS: project catalog, live preview with no render, frame-accurate review notes sent back to Claude, a protected one-at-a-time render queue with partial re-renders, and MCP tools for Claude.",
   "license": "MIT",
   "keywords": [
     "claude",
@@ -15,12 +15,14 @@
     "puppeteer",
     "ffmpeg",
     "review",
-    "windows"
+    "windows",
+    "macos"
   ],
   "type": "module",
   "main": "server/hub.js",
   "os": [
-    "win32"
+    "win32",
+    "darwin"
   ],
   "scripts": {
     "start": "node server/hub.js",

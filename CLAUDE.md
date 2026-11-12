@@ -1,7 +1,8 @@
 # VideoHub: notes for Claude working on this repo
 
-Local Windows hub for videos written as code (catalog, live preview with no render, review notes, protected render
-queue, MCP tools). Node 22+, ES modules, no build step, vanilla-JS UI, optional C# agent. Architecture, map and the
+Local hub for videos written as code, on Windows and macOS (catalog, live preview with no render, review notes,
+protected render queue, MCP tools). Node 22+, ES modules, no build step, vanilla-JS UI, optional C# agent (Windows) /
+Node agent + optional Swift hotkeys helper (Mac). What differs on a Mac and why: [docs/MACOS.md](docs/MACOS.md). Architecture, map and the
 pitfalls behind past bugs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). What a film project must look like:
 [docs/PROJECT-CONTRACT.md](docs/PROJECT-CONTRACT.md).
 
@@ -42,6 +43,26 @@ them to type a command. Do not change VideoHub's code during an install and touc
    Claude Code session for the `hub_*` tools. Films are made in the workspace's `films` folder, never inside this
    VideoHub folder: for a first film they open the workspace (or any folder) in a new session and ask for a video.
 
+### Installing on a Mac
+The same steps and questions, with the Mac files; never ask the user to type a command.
+1. **Requirements.** `node -v` (22+), `ffmpeg -version`, and Chrome/Edge/Brave/Chromium in /Applications or
+   ~/Applications. Missing ones, with Homebrew (`brew -v`): `brew install node`, `brew install ffmpeg`,
+   `brew install --cask google-chrome` (ask first, one at a time). Without Homebrew: nodejs.org's LTS installer and
+   https://brew.sh — explain, do not work around. The hotkeys helper needs the Command Line Tools (`xcode-select -p`
+   says whether they are there); offer `xcode-select --install` only as optional.
+2. **Look, change nothing.** `bash setup.sh --dry-run`; `node scripts/init-config.mjs --state`;
+   `node scripts/init-config.mjs --detect` (`vt` = the Apple silicon media engine).
+3. **Ask the user** as on Windows. The workspace: offer `~/Movies/VideoHub` (recommended: Movies is not synced by
+   iCloud's "Desktop & Documents", so renders are not uploaded, and macOS does not ask permission for it), a folder
+   they name (check it with `node scripts/init-config.mjs --check "<folder>"`; `~` is fine). "Desktop shortcut"
+   becomes *Add VideoHub to your Applications folder (Spotlight, Launchpad, Dock)?* (yes); "Start with Windows" becomes
+   *Open VideoHub at login?* (no).
+4. **Install once:** `bash setup.sh --workspace "<folder>" --watch-found yes|no --gpu-encoder yes|no --global-rule
+   yes|no --app yes|no --login yes|no --example yes|no`.
+5. **Check it works.** `node server/cli.js hub_workspace`; `open ~/Applications/VideoHub.app` opens the window.
+6. **Tell the user what now**: Spotlight (⌘ Space, "VideoHub") opens it, the first thing to try, and that a **new**
+   Claude Code session sees the tools. Uninstall: `bash uninstall.sh` (`--dry-run` first).
+
 ## Setup on a new PC (what `SETUP.cmd` does)
 `SETUP.cmd` (or `powershell -ExecutionPolicy Bypass -File setup.ps1`; `-DryRun` asks nothing, assumes the recommended
 answers and changes nothing outside this folder; `-Yes` takes every recommended answer). It checks Node 22+, ffmpeg and
@@ -53,6 +74,10 @@ never moves or overwrites folders or `data/config.json` values. It registers the
 installs `skill/videohub` into `~/.claude/skills`.
 Missing Node: `winget install -e --id OpenJS.NodeJS.LTS`; missing ffmpeg: `winget install -e --id Gyan.FFmpeg`. Tell the
 user; do not work around them. Uninstall: `uninstall.ps1` (`-DryRun` too).
+A Mac: `SETUP.command` / `setup.sh` asks the same questions (same `data/setup-answers.json`); the file work is in
+`scripts/mac-install.mjs` (skill, global rule, `~/.claude.json` fallback, VideoHub.app, login item; unit-tested). It
+registers the MCP server with the **absolute** node path (Claude Code started from the Dock has no Homebrew on its
+PATH) and builds `guard/VideoHubKeys` with `guard/build-mac.sh` when swiftc exists. `update.sh`, `uninstall.sh` too.
 
 ## Map (short)
 - `server/hub.js` HTTP + SSE; `scan.js` projects; `live.js` live preview; `notes.js` notes; `jobs.js` render queue;
@@ -60,6 +85,9 @@ user; do not work around them. Uninstall: `uninstall.ps1` (`-DryRun` too).
   `config.js` settings and default folders (the workspace, `Documents\VideoHub\…` by default); `encoders.js` render
   encoders; `scripts/init-config.mjs` setup's config helper.
 - `ui/app.js` pages, `ui/review*` review editor, `ui/thumbstudio*` Thumbnail Studio.
+- Mac: `server/mac.js` (Finder, Trash, notifications, folder dialog, login item, caffeinate, the process table),
+  `guard/agent-mac.mjs` (render protection), `guard/keys-mac.swift` (hotkeys), `ui/platform.js` (the UI's words per
+  OS), `open-mac.sh` (what VideoHub.app runs). Windows code paths are unchanged: Mac branches sit next to them.
 - `guard/` render protection agent; `engine-hooks/` page-side editor hooks; `examples/hello-film` the example film;
   `templates/new-film` the starter for new films; `templates/thumbnail` built-in thumbnail templates.
 
@@ -74,6 +102,10 @@ user; do not work around them. Uninstall: `uninstall.ps1` (`-DryRun` too).
   Set `VIDEOHUB_PORT` on every CLI call too, or the tool starts a hub on the real port.
 - No renders in parallel; use the queue. Never hard-delete files. A `mode:"command"` job waits for the user's approval
   on the Renders page before it runs (`config.render.confirmCommands`).
+- Both OSes: a Windows call gets its Mac branch (`IS_MAC` from util.js, helpers in mac.js), never a replacement. Paths:
+  `path.join`/`path.sep`, never a literal `\` inside a joined path (that is a file name on a Mac). UI words that
+  differ (Recycle Bin/Trash, Explorer/Finder, hotkeys) come from `ui/platform.js`. Tests with Windows paths use
+  `path.win32` so they run on a Mac too; Mac-only tests skip elsewhere.
 - English UI text and comments. Keep each file's dense style. Stored values are English; read old files through
   `legacy.js`.
 - The UI must never import from `server/`. After a UI change open the pages and check the console.

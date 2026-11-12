@@ -113,3 +113,10 @@ reported as measured.
 - Films with heavy 2D effects (large blurs/shadows): software 2D drawing could be slower than GPU drawing there; the
   example film rendered at the same speed either way.
 - Long films: clips were at most 10 s; the watchdog was checked by forcing a tiny time budget.
+
+## On a Mac: VideoToolbox
+`vt` (`h264_videotoolbox -q:v 70 -profile:v high`) is the Apple silicon media engine at constant quality 70, the
+lowest setting at or above x264 veryfast crf 16 on a clean and a grainy clip (VMAF, SSIM and PSNR against a lossless
+reference). On the M5 Pro it rendered the example at the same speed as x264 with 32 % less CPU; an Intel Mac has no
+constant-quality mode in ffmpeg and keeps x264. The raw canvas path gave 300 frames identical to PNG screenshots
+there too. Measurements, the frame-alignment pitfall in the comparison and what was not tested: [MACOS.md](MACOS.md).

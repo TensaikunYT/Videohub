@@ -11,15 +11,21 @@ fs.writeFileSync(file, 'test fixture');
 test.after(() => { fs.unlinkSync(file); fs.rmdirSync(dir); });
 
 test('filenames are passed to Explorer without a command shell', () => {
-  const p = openPlan(file);
+  const p = openPlan(file, 'file', 'win32');
   assert.equal(p.command, 'explorer.exe');
   assert.deepEqual(p.args, ['"' + path.resolve(file) + '"']);
   assert.equal(p.select, false);
 });
 test('folder action selects the exact video, not just its parent', () => {
-  assert.deepEqual(openPlan(file, 'folder').args, ['/select,"' + path.resolve(file) + '"']);
+  assert.deepEqual(openPlan(file, 'folder', 'win32').args, ['/select,"' + path.resolve(file) + '"']);
   assert.equal(openPlan(file, 'folder').select, true);
   assert.equal(openPlan(dir, 'folder').select, false);
+});
+test('a Mac: `open` opens the file in its app, `open -R` shows it selected in Finder; no shell, no quoting', () => {
+  const p = openPlan(file, 'file', 'darwin');
+  assert.equal(p.command, 'open'); assert.deepEqual(p.args, [path.resolve(file)]);
+  const f = openPlan(file, 'folder', 'darwin'); assert.deepEqual(f.args, ['-R', path.resolve(file)]); assert.equal(f.select, true);
+  assert.deepEqual(openPlan(dir, 'folder', 'darwin').args, [path.resolve(dir)]);
 });
 test('missing files and invalid actions return useful errors', () => {
   assert.throws(() => openPlan(path.join(dir, 'missing.mp4')), e => e.code === 404);
