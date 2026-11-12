@@ -21,7 +21,7 @@ const stage = out + '.tmp';
 fs.rmSync(stage, { recursive: true, force: true });
 fs.mkdirSync(stage, { recursive: true });
 const tar = path.join(stage, 'a.tar');
-execFileSync('git', ['archive', '--format=tar', '-o', tar, 'HEAD'], { cwd: root });
+execFileSync('git', ['-c', 'core.autocrlf=false', 'archive', '--format=tar', '-o', tar, 'HEAD'], { cwd: root });
 execFileSync('tar', ['-xf', 'a.tar'], { cwd: stage });
 fs.rmSync(tar);
 

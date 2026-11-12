@@ -9,15 +9,16 @@ What film projects must look like is in [PROJECT-CONTRACT.md](PROJECT-CONTRACT.m
   with no VideoHub window (SSE client), no queued/running job, no cleanup, no note pictures or review copies being made
   and no render seen by the agent for 2 minutes (`VIDEOHUB_IDLE_SEC`), it asks the agent to quit and exits — unless
   "Start with Windows" is on (then it stays up). The `hub_*` tools start it again when needed.
-- **Agent** — `guard/VideoHubAgent.exe` (source `guard/RenderGuard.cs`, C# 5 WinForms, built with the .NET Framework 4
-  `csc.exe` by `guard/build.ps1`). Invisible (no window/tray). The hub starts it (`--agent`) when a window opens or a job
-  starts and stops it (`--quit`). It finds render processes (node/Chrome/ffmpeg trees), puts them in **Job Objects**
-  with a CPU cap (one cap while you use the PC, another while idle), lowers their priority if asked, slows the newest
-  render to a tiny CPU share when free RAM drops below a threshold (the oldest keeps going unless RAM is critical) and
-  speeds them back up when RAM frees, and has global hotkeys: **Ctrl+Alt+End** pauses every render, **Ctrl+Alt+Home**
-  resumes. It writes `%APPDATA%\RenderGuard\state.json` (~2 s), reads commands from `…\cmd\` and settings from
-  `settings.txt` (written by the hub), and logs to `history.log`. Test copies run with `--only TAG` in their own folder
-  (`guard/tests/run.ps1`). Without the agent everything works, renders just run unprotected.
+- **Render protection** — `server/guard.js`, inside the hub (no separate program since Nov 2026: the old C# agent,
+  `guard/VideoHubAgent.exe`, was compiled on each PC and Windows Smart App Control blocked it as an unsigned app). The
+  queue reports every process it starts (`guardTrack`); protection gives that process tree a CPU limit (processor
+  affinity: a share of the cores) and low priority with `os.setPriority` and one short PowerShell script per change
+  (children started later inherit both), watches `os.freemem()` every 3 s and slows the newest render to the lowest
+  priority on a few cores when free RAM drops below `PauseMB` (every render below `CriticalMB`), back to normal when RAM
+  frees, oldest first. It runs while the hub is used and puts renders back to normal when the hub idles out. Settings
+  stay in `%APPDATA%\RenderGuard\settings.txt`; the old agent's `history.log` is still read. It no longer freezes
+  processes, has no hotkeys and does not see renders started outside the queue. `update.ps1` quits and removes an old
+  install's agent program.
 - **MCP server** — `server/mcp.js` (stdio) exposes `server/tools.js`; `server/cli.js` runs the same tools from a shell;
   `server/mcp-selftest.js` checks the MCP wiring. Tools talk to the hub over HTTP (`VIDEOHUB_PORT` overrides the port).
 

@@ -45,7 +45,7 @@ them to type a command. Do not change VideoHub's code during an install and touc
 ## Setup on a new PC (what `SETUP.cmd` does)
 `SETUP.cmd` (or `powershell -ExecutionPolicy Bypass -File setup.ps1`; `-DryRun` asks nothing, assumes the recommended
 answers and changes nothing outside this folder; `-Yes` takes every recommended answer). It checks Node 22+, ffmpeg and
-Edge/Chrome, runs `npm install`, builds the agent if the .NET Framework `csc.exe` exists, then asks plain questions
+Edge/Chrome, runs `npm install` (render protection is part of the server: nothing is compiled), then asks plain questions
 (each also a parameter): the workspace folder (default `Documents\VideoHub`: films, outputs, sounds, thumbnails,
 archive), watching video folders it found, the graphics-card encoder, the global rule, the Desktop shortcut, start with
 Windows, the example film. The logic lives in `scripts/init-config.mjs` (unit-tested); a re-run keeps every answer and

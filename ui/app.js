@@ -126,8 +126,8 @@ function updateLive() {
   const c = $('#renderCount'); c.hidden = !n; c.textContent = n;
   $('#live').innerHTML = '';
   $('#live').append(
-    g?.running ? h('div', {}, `RAM ${(g.ramAvailMB / 1024).toFixed(1)} GB free · CPU ${Math.round(g.cpu || 0)}%`) : h('div', { class: 'dim' }, 'Render protection is off'),
-    g?.running && g.renders?.some(r => r.paused) ? h('div', { class: 'red' }, '⏸ a render is paused') : '',
+    g?.running ? h('div', {}, `RAM ${(g.ramAvailMB / 1024).toFixed(1)} GB free`) : h('div', { class: 'dim' }, 'Render protection is off'),
+    g?.running && g.renders?.some(r => r.slow) ? h('div', { class: 'accent' }, '🐢 a render is slowed down') : '',
   );
 }
 
@@ -499,11 +499,10 @@ async function rendersPage(page) {
       tile('CPU limit', g.running ? (g.capNow >= 100 ? 'unlimited' : g.capNow + '%') : '—'),
       tile('Running', active.filter(r => r.state === 'running').length),
     ));
-    // the emergency stop for every render (same as the Ctrl+Alt+End / Ctrl+Alt+Home hotkeys); lived in the old tray menu
+    // slow every render down at once (and back): frees the computer for a moment without stopping anything
     if (g.running && (g.renders || []).length) live.append(h('div', { class: 'row', style: { gap: '8px', margin: '4px 0 8px' } },
-      h('button', { title: 'Pause all renders (shortcut: Ctrl+Alt+End)', onclick: () => cmd('pauseAll') }, '⏸ Pause all'),
-      h('button', { title: 'Resume all paused renders (shortcut: Ctrl+Alt+Home)', onclick: () => cmd('resumeAll') }, '▶ Resume all'),
-      h('span', { class: 'dim', style: { fontSize: '12px' } }, 'Shortcuts: Ctrl+Alt+End pauses, Ctrl+Alt+Home resumes (even when this window is closed).')));
+      h('button', { title: 'Run every render at the lowest speed, so the computer is free for you', onclick: () => cmd('slow') }, '🐢 Slow all down'),
+      h('button', { title: 'Back to normal render speed', onclick: () => cmd('normal') }, '▶ Normal speed for all')));
     // programs that hold RAM next to the renders (only shown; closing them is the user's call)
     const hogs = (d.hogs || []).filter(x => x.bytes >= 1024 ** 3);
     if (hogs.length) live.append(h('div', { class: 'panel hogs' },
@@ -527,12 +526,11 @@ async function rendersPage(page) {
             row.progress != null ? [h('div', { class: 'progress' }, h('i', { style: { width: Math.max(0, Math.min(100, row.progress * 100)) + '%' } })), Math.round(row.progress * 100) + '%'] : h('span', { class: 'dim' }, 'Waiting for progress'))),
         timerCell('elapsed', 'Time since the job actually started; excludes queue time and includes pauses.'),
         timerCell('remaining', 'Estimate based on the latest progress. Render speed, pauses and joining can change the remaining time.'),
-        h('td', { class: 'num' }, r ? Math.round(r.cpu || 0) + '%' : '—'),
-        h('td', { class: 'num' }, r ? GB((r.ramMB || 0) * 1048576) : '—'),
+        h('td', { class: 'num' }, r && r.cpu != null ? Math.round(r.cpu) + '%' : '—'),
+        h('td', { class: 'num' }, r && r.ramMB != null ? GB(r.ramMB * 1048576) : '—'),
         h('td', { class: 'num render-controls' },
           r ? [
             h('button', { onclick: () => cmd(r.slow ? 'normal' : 'slow', r.rootPid) }, r.slow ? 'Normal speed' : 'Slow down'),
-            h('button', { onclick: () => cmd(r.paused ? 'resume' : 'pause', r.rootPid) }, r.paused ? 'Resume' : 'Pause'),
             h('button', { class: 'danger', onclick: async () => { if (await confirmBox('Stop this render?', h('p', {}, label), 'Stop')) { if (j) await api('/api/jobs/' + j.id + '/cancel', { method: 'POST' }).catch(e => toast(e.message, true)); else await cmd('kill', r.rootPid); } } }, 'Stop')
           ] : j ? [
             j.needsApproval ? h('button', { class: 'primary', title: 'Claude asked to run this command in the project folder. Run it only if you know what it does.', onclick: async () => { if (await confirmBox('Run this command?', h('div', {}, h('p', {}, 'Claude asked VideoHub to run this command in the folder of "' + label + '":'), h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, j.cmd), h('p', { class: 'dim' }, 'A command can do anything on this computer. Approve it only if it is what you expected.')), 'Run it')) await api('/api/jobs/' + j.id + '/approve', { method: 'POST' }).catch(e => toast(e.message, true)); } }, 'Approve') : null,
@@ -565,9 +563,9 @@ async function outputsPage(page) {
 
 // ---------- render settings (RenderGuard): presets, a temporary full-power window, and the sliders
 const PRESETS = [
-  ['Full power', 'no CPU limit, normal priority', { CapActive: 100, CapIdle: 100, LowPrio: false }],
-  ['Balanced', '90% while active, low priority (default)', { CapActive: 90, CapIdle: 100, LowPrio: true }],
-  ['Quiet', '50% while active; keeps your computer responsive', { CapActive: 50, CapIdle: 100, LowPrio: true }],
+  ['Full power', 'every core, normal priority', { CapActive: 100, LowPrio: false }],
+  ['Balanced', '90% of the cores, low priority (default)', { CapActive: 90, LowPrio: true }],
+  ['Quiet', 'half of the cores; keeps your computer responsive', { CapActive: 50, LowPrio: true }],
 ];
 function guardPanel(gs, { full = false } = {}) {
   const box = h('div', { class: 'panel gpanel' });
@@ -593,13 +591,11 @@ function guardPanel(gs, { full = false } = {}) {
     temp ? [h('span', { class: 'accent' }, `Full power until ${hhmm(temp.until)}, then previous settings`), h('button', { onclick: async () => { await api('/api/guard/temp', { method: 'POST', body: { cancel: true } }); toast('Previous settings restored'); redraw(); } }, 'End now')]
       : [h('span', { class: 'dim' }, 'Full power, then automatically restore previous settings:'), [1, 2, 4, 8].map(hr => h('button', { onclick: async () => { const r = await api('/api/guard/temp', { method: 'POST', body: { hours: hr } }); toast(`Full power until ${hhmm(r.until)}`); redraw(); } }, `${hr} h`))]);
   box.append(
-    h('div', { class: 'sub', style: { marginBottom: '8px' } }, gs.exe ? 'Render protection is part of VideoHub and runs in the background. Emergency pause: Ctrl+Alt+End, resume: Ctrl+Alt+Home.' : 'Render protection is not installed: run SETUP.cmd again (it needs the .NET Framework C# compiler that comes with Windows). Renders still work, without CPU/RAM protection.'),
+    h('div', { class: 'sub', style: { marginBottom: '8px' } }, 'Render protection is part of VideoHub: renders started from VideoHub get a CPU limit and low priority, and slow down when free RAM runs low.'),
     presets, tempRow,
-    slider('CapActive', 'Render power while using the computer', 10, 100, 5, pct),
-    slider('CapIdle', 'Render power while idle', 10, 100, 5, pct),
+    slider('CapActive', 'Render power', 10, 100, 5, pct),
     toggle('LowPrio', 'Run renders at low priority', 'keeps open apps responsive; rendering slows slightly'));
   const more = h('div', {},
-    slider('IdleMin', 'Consider idle after', 1, 30, 1, v => `${v} min of inactivity`),
     slider('PauseMB', 'Slow down when free RAM reaches', 300, Math.max(4000, Math.round((gs.ramTotalMB || 16384) / 4 / 100) * 100), 100, v => `${(v / 1024).toFixed(1)} GB free`, 'the newest render slows down; the oldest continues'),
     slider('SlowCapPct', 'Speed in slow mode', 1, 30, 1, v => `${v}% CPU`, 'rendering continues at a lower speed'),
     slider('CriticalMB', 'Critical RAM', 200, 2000, 100, v => `${(v / 1024).toFixed(1)} GB`, 'below this, the oldest render also slows down'),
@@ -713,7 +709,7 @@ async function settingsPage(page) {
   page.append(h('h2', {}, 'Optional parts on this computer'), h('div', { class: 'panel kv' },
     okRow('ffmpeg', I.ffmpeg, I.ffmpeg ? 'found (frame pictures, previews, renders)' : 'not found — install it: winget install -e --id Gyan.FFmpeg'),
     okRow('Browser for renders', !!I.browser, I.browser || 'no Edge or Chrome found — renders need one'),
-    okRow('Render protection agent', I.agent?.ok, I.agent?.ok ? 'installed (CPU caps, RAM slow mode, pause hotkeys)' : I.agent?.why || 'not installed'),
+    okRow('Render protection', true, 'built in (CPU limit, low priority, RAM slow mode)'),
     okRow('Ready-made sound effects', I.sfx?.ok, I.sfx?.ok ? 'available' : I.sfx?.why || 'not available')));
   page.append(h('h2', {}, 'Workspace'), h('div', { class: 'sub' }, 'The folder chosen in setup: the default home of every folder below (films, outputs, sounds, thumbnails, archive). Each folder can still be changed on its own here.'),
     h('div', { class: 'row', style: { marginTop: '6px' } }, h('span', { class: 'mono' }, c.workspace || '—')),

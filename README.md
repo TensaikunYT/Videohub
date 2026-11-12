@@ -39,14 +39,14 @@ whole film to check one fix.
 ![Projects](docs/screenshots/projects.png)
 
 ### Render protection and speed
-The optional agent (`guard\VideoHubAgent.exe`, built from C# source by setup; no window, no tray icon) keeps long
-renders from freezing the PC:
-- **CPU caps through Windows Job Objects** — renders together use at most N % of the CPU while you use the computer
-  (default 90 %) and up to 100 % when you are idle; presets *Full power / Balanced / Quiet*, or "full power for 1–8 h".
-- **RAM slow mode** — when free RAM falls below a threshold, the newest render slows to a few % CPU instead of being
-  killed (the oldest keeps going unless RAM is critical) and speeds up again when RAM frees.
-- **Pause / resume hotkeys** — **Ctrl+Alt+End** pauses every render, **Ctrl+Alt+Home** resumes; per-render Slow down /
-  Pause / Stop on the Renders page; renders can run at low priority.
+Built into the VideoHub server (plain Node and Windows' own tools, no extra program), it keeps long renders from
+freezing the PC:
+- **CPU limit** — every render VideoHub starts runs on a share of the processor cores (default 90 %) and at low
+  priority; Windows passes both on to the Chrome and ffmpeg processes the render starts. Presets *Full power /
+  Balanced / Quiet*, or "full power for 1–8 h".
+- **RAM slow mode** — when free RAM falls below a threshold, the newest render slows down to a few cores at the lowest
+  priority instead of being killed (the oldest keeps going unless RAM is critical) and speeds up again when RAM frees.
+- **Slow down / Normal speed / Stop** per render on the Renders page, or for all of them at once.
 - **One render at a time**, and the queue waits while another session is rendering; the Renders page also lists
   programs holding a lot of RAM (it never closes anything).
 - **Partial re-renders** of only the fixed chunks, and per-render workers / encoder and fps options.
@@ -71,7 +71,7 @@ VideoHub works the same; renders just run unprotected.
 
 ## Install
 ### The easy way: let Claude Code install it
-1. Download the ZIP (or `git clone [<this repository>](https://github.com/TensaikunYT/Videohub) VideoHub`) and unpack it anywhere you like.
+1. Download the ZIP (or `git clone <this repository> VideoHub`) and unpack it anywhere you like.
 2. Open that folder in [Claude Code](https://claude.com/claude-code) and say: **"Install VideoHub for me."**
 3. Claude checks what your PC has, asks you a few plain questions in its own window (where your video work should
    live, whether to use the graphics card, whether to add the example film …), then runs the setup once with your
@@ -119,7 +119,6 @@ If the MCP tools are not loaded in a session, Claude uses `node <VideoHub>\serve
 ## Optional integrations
 | Feature | Needs | Without it |
 |---|---|---|
-| Render protection | .NET Framework 4 `csc.exe` (built by setup) | renders run unprotected |
 | Ready-made sound effects | a 3D studio engine with `engine/audio/synth.js` (`studioDir` in Settings) | your own sound folder and files from disk |
 | Scene editor / 2D layers in the preview | the page includes the hooks from `engine-hooks/` | those editors are hidden |
 | Snipp export status | Snipp writing `.renders\*.json` in a watched folder | not shown |
