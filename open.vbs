@@ -1,6 +1,6 @@
 ' Opens VideoHub without any console window (the Desktop shortcut runs this).
 ' "--server": only start the VideoHub server, no window (the Windows start-up entry runs this at log-in).
-' VideoHub starts its render protection (guard\VideoHubAgent.exe) by itself.
+' Render protection runs inside the VideoHub server.
 Set fso = CreateObject("Scripting.FileSystemObject")
 here = fso.GetParentFolderName(WScript.ScriptFullName)
 extra = ""

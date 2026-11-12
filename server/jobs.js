@@ -9,7 +9,7 @@ import { linkOutput } from './ciktilar.js';
 import { pickFolder as pickFolderWin } from './pickfolder.js';
 import { config } from './config.js';
 import { project, rescanProject } from './scan.js';
-import { guardState } from './guard.js';
+import { guardState, guardTrack } from './guard.js';
 import { ramHogsNow, ramNote } from './ramhogs.js';
 import { vhDir, list as listNotes, update as updateNote } from './notes.js';
 import { DATA_DIR, HUB_DIR, readJson, writeJson, run, TOOLS, now, pLimit, refersToHub, isInside } from './util.js';
@@ -176,7 +176,7 @@ function spawnLogged(job, cmd, args, opts = {}) {
     log.write(`\n# ${now()}  ${cmd} ${args.join(' ')}\n`);
     const child = spawn(cmd, args, { ...opts, windowsHide: true, shell: opts.shell || false });
     const children = procs.get(job.id) || new Set(); children.add(child); procs.set(job.id, children);
-    job.pid = child.pid; emit('running', job);
+    job.pid = child.pid; guardTrack(child.pid, { cwd: opts.cwd || '', project: job.projectName || '', what: job.mode || '' }); emit('running', job);
     let q0 = null, done = 0, t0 = Date.now(), stdout = '', stderr = '', settled = false;
     const lines = { stdout: '', stderr: '' };
     const onLine = line => {

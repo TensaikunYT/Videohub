@@ -46,9 +46,8 @@ if ($procs.Count -and -not $DryRun) { Start-Sleep -Milliseconds 800 }
 # 4. backup of the code being replaced (data\update-backup\<time>), then copy
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $bak = Join-Path $Target "data\update-backup\$stamp"
-$items = @('server', 'ui', 'templates', 'skill', 'claude', 'examples', 'engine-hooks', 'docs', 'scripts', 'CLAUDE.md', 'README.md', 'LICENSE', 'SETUP.cmd', 'UPDATE.cmd', 'update.ps1', 'setup.ps1', 'uninstall.ps1', 'open.ps1', 'open.vbs', 'package.json', 'package-lock.json', 'guard\RenderGuard.cs', 'guard\build.ps1', 'guard\tests')
+$items = @('server', 'ui', 'templates', 'skill', 'claude', 'examples', 'engine-hooks', 'docs', 'scripts', 'CLAUDE.md', 'README.md', 'LICENSE', 'SETUP.cmd', 'UPDATE.cmd', 'update.ps1', 'setup.ps1', 'uninstall.ps1', 'open.ps1', 'open.vbs', 'package.json', 'package-lock.json')
 $lockOld = Join-Path $Target 'package-lock.json'; $lockHashOld = if (Test-Path $lockOld) { (Get-FileHash $lockOld).Hash } else { '' }
-$csOld = Join-Path $Target 'guard\RenderGuard.cs'; $csHashOld = if (Test-Path $csOld) { (Get-FileHash $csOld).Hash } else { '' }
 if ($DryRun) { Plan "back up the replaced code to $bak and copy: $($items -join ', ')"; Say 'Dry run finished: nothing was changed.' Yellow; exit 0 }
 New-Item -ItemType Directory -Force $bak | Out-Null
 $n = 0
@@ -75,12 +74,22 @@ if ($lockHashNew -ne $lockHashOld -or -not (Test-Path (Join-Path $Target 'node_m
   Say 'Packages updated' Green
 } else { Say 'Packages unchanged' }
 
-# 6. the render protection agent (guard\VideoHubAgent.exe) only when its source changed or it is missing
-if (-not $NoAgent) {
-  $csHashNew = if (Test-Path $csOld) { (Get-FileHash $csOld).Hash } else { '' }
-  if ($csHashNew -ne $csHashOld -or -not (Test-Path (Join-Path $Target 'guard\VideoHubAgent.exe'))) {
-    try { & (Join-Path $Target 'guard\build.ps1'); Say 'Render protection agent (VideoHubAgent.exe) rebuilt' Green } catch { Say "The render protection agent could not be built: $_" Yellow }
-  } else { Say 'Render protection agent unchanged' }
+# 6. render protection is now part of the VideoHub server: an old install's agent program (guard\VideoHubAgent.exe or
+#    guard\RenderGuard.exe, which Windows Smart App Control blocks) is asked to quit (it lifts its CPU limits) and removed
+$gd = Join-Path $Target 'guard'
+foreach ($name in 'VideoHubAgent.exe', 'RenderGuard.exe') {
+  $exe = Join-Path $gd $name; if (-not (Test-Path $exe)) { continue }
+  $running = @(Get-CimInstance Win32_Process -Filter "Name='$name'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $exe })
+  if ($DryRun) { Plan "quit and remove the old render protection program $exe"; continue }
+  if ($running.Count) { try { Start-Process $exe -ArgumentList '--quit' -WindowStyle Hidden -Wait -ErrorAction Stop } catch { $running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } }
+  Remove-Item $exe -Force -ErrorAction SilentlyContinue
+  Say "Old render protection program removed ($name); protection now runs inside VideoHub" Green
+}
+if (-not $DryRun) {
+  Get-ChildItem $gd -Filter '*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue   # its build backups
+  foreach ($f in 'RenderGuard.cs', 'build.ps1') { Remove-Item (Join-Path $gd $f) -Force -ErrorAction SilentlyContinue }
+  Remove-Item (Join-Path $gd 'tests') -Recurse -Force -ErrorAction SilentlyContinue
+  reg delete 'HKCU\Software\Microsoft\Windows\CurrentVersion\Run' /v RenderGuard /f 2>$null | Out-Null
 }
 
 # 7. the skill Claude reads (with the install's path filled in)

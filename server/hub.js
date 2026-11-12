@@ -55,7 +55,7 @@ onScan(ev => { if (ev.phase === 'done' && ev.full) refreshSources(index().projec
 jobs.onJob(ev => { if (ev.type === 'done') outputsApi.notifyWindows(`Render finished: ${ev.job.projectName}${ev.job.version ? ' v' + ev.job.version : ''}`, ev.job.outputPath || ev.job.output || ''); else if (ev.type === 'failed') outputsApi.notifyWindows(`Render failed: ${ev.job.projectName}`, ev.job.error || ''); });
 // a custom command waits for a yes: a Windows notification, and an open VideoHub window jumps to the Renders page
 jobs.onJob(ev => { if (ev.type === 'approval') { outputsApi.notifyWindows('A render command needs your approval', `${ev.job.projectName}: ${ev.job.cmd || ''}`); broadcast('navigate', { hash: '#/renders' }); } });
-jobs.onJob(ev => { broadcast('job', ev); if (ev.type === 'running' && !GUARD_OFF) ensureGuard().catch(() => { }); });   // a render always runs under RenderGuard
+jobs.onJob(ev => { broadcast('job', ev); if (ev.type === 'running' && !GUARD_OFF) ensureGuard().catch(() => { }); });   // a render always runs protected
 setInterval(() => { if (clients.size) broadcast('renders', rendersPayload(false)); }, 2000);
 
 function rendersPayload(withHistory = true) {
@@ -101,7 +101,7 @@ function integrations() {
   return {
     ffmpeg: fs.existsSync(TOOLS.ffmpeg) || TOOLS.ffmpeg !== 'ffmpeg',
     browser: TOOLS.edge || TOOLS.chrome || null,
-    agent: { ok: !!guardExe(), exe: guardExe(), why: guardExe() ? null : 'The render protection agent is not built (guard\\build.ps1 needs the .NET Framework C# compiler). Renders still work, without CPU/RAM protection.' },
+    agent: { ok: true, builtIn: true, exe: null, why: null },   // render protection is part of the hub (no helper program since Nov 2026)
     sfx: { ok: !!studio, why: studio ? null : 'Ready-made sound effects need the optional 3D studio engine (studioDir). Your own sound folder works without it.' },
   };
 }

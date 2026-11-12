@@ -34,7 +34,7 @@ function harness() {
     readJson: (file, fallback) => file.endsWith('project.json') ? { render: { workers } }
       : file.endsWith('manifest.json') ? { dur: 2, fps: 60, chunkFrames: 120, chunkSec: 2 } : fallback,
     writeJson() {}, config: () => ({ maxParallelRenders: maxParallel, render: { encoder } }), ENCODERS, LABELS, encoderEnv, project: id => projects.get(id),
-    guardState: () => guard, ramHogsNow: async () => [], ramNote: () => null,
+    guardState: () => guard, guardTrack: () => { }, ramHogsNow: async () => [], ramNote: () => null,
     vhDir: p => path.join(p.path, '.videohub'), listNotes: () => [], updateNote() {},
     linkOutput: () => null, rescanProject: async () => {}, now: () => new Date().toISOString(),
     pLimit: async (items, n, fn) => Promise.all(items.map(fn)), pickFolderWin() {},

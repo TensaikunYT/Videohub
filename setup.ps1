@@ -11,7 +11,7 @@
 #   -Shortcut ask|yes|no             Desktop shortcut (recommended: yes); -NoShortcut = no
 #   -Startup ask|yes|no              start VideoHub (server only, no window) when you log in (recommended: no); -StartWithWindows = yes
 #   -Example ask|yes|no              add the example film (recommended: yes)
-#   -NoAgent                         do not build the render protection agent
+#   -NoAgent                         (ignored: nothing is built any more; kept so old commands still run)
 param([switch]$DryRun, [switch]$Yes, [string]$Workspace = '', [ValidateSet('ask', 'yes', 'no')][string]$WatchFound = 'ask',
   [ValidateSet('ask', 'yes', 'no')][string]$GpuEncoder = 'ask', [ValidateSet('ask', 'yes', 'no')][string]$GlobalRule = 'ask',
   [ValidateSet('ask', 'yes', 'no')][string]$Shortcut = 'ask', [ValidateSet('ask', 'yes', 'no')][string]$Startup = 'ask',
@@ -103,14 +103,8 @@ if ((Test-Path $gitInfo) -and -not (Test-Path (Join-Path $hub '.gitignore')) -an
   if ($want) { Add-Content -Path $ex -Value $want -Encoding ascii }
 }
 
-# 3. render protection agent (guard\VideoHubAgent.exe: CPU caps, RAM slow mode, pause hotkeys). Invisible part of VideoHub
-#    (no window, no tray icon); the hub starts and stops it. Optional: without it renders run unprotected.
-$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-if (-not $NoAgent) {
-  if (-not (Test-Path $csc)) { Say "The .NET Framework 4 C# compiler is missing ($csc), so the render protection agent cannot be built. VideoHub works without it; renders just run without CPU/RAM protection. (It ships with Windows 10/11; if it is missing, turn on '.NET Framework 4.8' in Windows Features.)" Yellow; $todo += 'Optional: render protection agent not built (no csc.exe)' }
-  elseif ($DryRun) { Plan "build guard\VideoHubAgent.exe with $csc (guard\build.ps1)" }
-  else { try { & "$hub\guard\build.ps1"; Say 'Render protection agent built (guard\VideoHubAgent.exe)' Green } catch { Say "The render protection agent could not be built: $_  (VideoHub works without it.)" Yellow; $todo += 'Optional: render protection agent not built (guard\build.ps1)' } }
-}
+# 3. render protection is part of the VideoHub server (CPU limit, low priority, RAM slow mode): nothing to build.
+#    (Before Nov 2026 a C# agent, guard\VideoHubAgent.exe, was compiled here; Windows Smart App Control blocked it.)
 
 # 4. the workspace, folders found on this PC and render speed: asked here, decided and written by scripts\init-config.mjs
 $st = (& node $init --state) | ConvertFrom-Json
@@ -243,7 +237,9 @@ if ($wantLnk) {
     $lnk = $wsh.CreateShortcut($lnkPath)
     $lnk.TargetPath = "$env:SystemRoot\System32\wscript.exe"; $lnk.Arguments = "`"$hub\open.vbs`""
     $lnk.WorkingDirectory = $hub
-    if (Test-Path "$hub\guard\app.ico") { $lnk.IconLocation = "$hub\guard\app.ico" }
+    $ico = "$hub\data\app.ico"
+    if (-not (Test-Path $ico)) { try { & "$hub\scripts\make-icon.ps1" -Out $ico } catch { } }
+    if (Test-Path $ico) { $lnk.IconLocation = $ico }
     $lnk.Description = 'VideoHub'
     $lnk.Save()
     Say "Desktop shortcut: $lnkPath" Green
