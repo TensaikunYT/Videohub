@@ -316,24 +316,26 @@ async function withAudio(p, video, out, rc = {}, job) {
     if (r.code !== 0) throw new Error('Adding the sound (edited mix) failed: ' + r.stderr.slice(0, 300));
     return out;
   }
-  // the sound comes from the last film, and only from one about as long as the new picture (never a short test clip)
+  // The film's own current mix (audio/mix.wav …, the file the live preview plays) comes before any older video's sound:
+  // copying the last film's track gave English renders the Turkish voice and a retimed voice-over the old, shifted one.
+  // An English render (FILMLANG / LANG = en) takes audio/mix_en.* only; it never falls back to the other language.
+  const en = [job?.env?.FILMLANG, job?.env?.LANG].some(v => String(v || '').toLowerCase() === 'en');
+  const own = en ? ['audio/mix_en.wav', 'audio/mix_en.mp3', 'mix_en.wav'].map(f => path.join(p.path, f)).find(f => fs.existsSync(f)) : audioOf(p, meta);
+  if (en && !own) throw new Error('No audio/mix_en.wav for this English render; the film\'s other-language sound was not used.');
+  if (own && /\.(wav|mp3|m4a|aac|flac|ogg)$/i.test(own) && fs.existsSync(own)) {
+    const r0 = await spawnLogged(job, TOOLS.ffmpeg, ['-v', 'error', '-y', '-i', video, '-i', own, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '320k', '-shortest', '-movflags', '+faststart', out]);
+    assertActive(job);
+    if (r0.code !== 0) throw new Error('Adding the sound (' + path.basename(own) + ') failed: ' + r0.stderr.slice(0, 300));
+    return out;
+  }
+  // no mix file at all: the sound of the last film, and only of one about as long as the new picture (never a short test clip)
   const vdur = +(await spawnLogged(job, TOOLS.ffprobe, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', video])).stdout || 0;
   assertActive(job);
   const fits = o => o.audio && (!vdur || (o.dur || 0) >= vdur * 0.9);
   const last = lastFilm(p);
   const prev = (last && fits(last) ? last : null) || p.outputs.filter(o => o.role === 'final' && fits(o)).sort((a, b) => b.mtime - a.mtime)[0];
-  if (!prev) {
-    // no earlier film to take the sound from (the first render): the film's own audio file (audio/mix.wav, render.mux
-    // inputs, live.audio …), the same one the live preview plays; only without any is the result silent
-    const own = audioOf(p, meta);
-    if (own && /\.(wav|mp3|m4a|aac|flac|ogg)$/i.test(own)) {
-      const r0 = await spawnLogged(job, TOOLS.ffmpeg, ['-v', 'error', '-y', '-i', video, '-i', own, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '320k', '-shortest', '-movflags', '+faststart', out]);
-      assertActive(job);
-      if (r0.code !== 0) throw new Error('Adding the sound (' + path.basename(own) + ') failed: ' + r0.stderr.slice(0, 300));
-      return out;
-    }
-    fs.copyFileSync(video, out); return out;
-  }
+  // neither a mix nor an earlier video with sound: fail instead of quietly delivering a silent film
+  if (!prev) throw new Error('The film has no sound file (audio/mix.wav) and no earlier version with sound: no silent video was made.');
   const r = await spawnLogged(job, TOOLS.ffmpeg, ['-v', 'error', '-y', '-i', video, '-i', prev.path, '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', '-shortest', '-movflags', '+faststart', out]);
   assertActive(job);
   if (r.code !== 0) throw new Error('Adding the sound failed: ' + r.stderr.slice(0, 300));

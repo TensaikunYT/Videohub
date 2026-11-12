@@ -38,7 +38,7 @@ function harness() {
     vhDir: p => path.join(p.path, '.videohub'), listNotes: () => [], updateNote() {},
     linkOutput: () => null, rescanProject: async () => {}, now: () => new Date().toISOString(),
     pLimit: async (items, n, fn) => Promise.all(items.map(fn)), pickFolderWin() {},
-    HUB_DIR: base, audioOf: () => null, refersToHub: s => refersToHub(s, base), isInside,   // no audio file of its own: a first render stays silent here
+    HUB_DIR: base, audioOf: p => { const f = path.join(p.path, 'audio', 'mix.wav'); return files.has(f) ? f : null; }, refersToHub: s => refersToHub(s, base), isInside,   // the film's own mix, when the test put one there
   };
   vm.createContext(ctx); vm.runInContext(code + '\nglobalThis.queue = {create,cancel,approve,get,pump,spawnLogged,runJob,recipe,procs,executing,onJob};', ctx);
   ctx.queue.onJob(event => events.push(event));
@@ -74,14 +74,36 @@ test('concurrent submissions for the same project queue only one job', async () 
   assert.equal(requests.find(r => r.status === 'rejected').reason.code, 409);
 });
 
-test('regular render scripts still concatenate and preserve their own video when no old audio exists', async () => {
-  const h = harness(), project = h.projects.get('p1'); project.studio = null;
-  const job = await h.create({ project: 'p1', mode: 'full', workers: 1 }); await flush();
+// a regular render script: render.js → concat → then the sound step under test
+async function renderUpToSound(h, body = {}) {
+  const project = h.projects.get('p1'); project.studio = null;
+  const job = await h.create({ project: 'p1', mode: 'full', workers: 1, ...body }); await flush();
   assert.equal(h.children[0].args[0], 'render.js');
   const dir = path.join(project.path, 'render', 'chunks'); h.files.add(dir); h.files.add(path.join(dir, 'c_000.mp4'));
-  await h.close(h.children[0]); assert.equal(h.children.at(-1).cmd, 'ffmpeg');
-  await h.close(h.children.at(-1)); assert.equal(h.children.at(-1).cmd, 'ffprobe');
-  await h.close(h.children.at(-1), '2.0\n'); assert.equal(h.get(job.id).state, 'done');
+  await h.close(h.children[0]); assert.equal(h.children.at(-1).cmd, 'ffmpeg');   // concat
+  await h.close(h.children.at(-1));
+  return { job, project };
+}
+
+test("a regular render gets the film's own audio/mix.wav", async () => {
+  const h = harness(); h.files.add(path.join(h.projects.get('p1').path, 'audio', 'mix.wav'));
+  const { job, project } = await renderUpToSound(h);
+  const mux = h.children.at(-1); assert.equal(mux.cmd, 'ffmpeg'); assert.ok(mux.args.includes(path.join(project.path, 'audio', 'mix.wav')));
+  await h.close(mux); assert.equal(h.get(job.id).state, 'done');
+});
+
+test('an English render takes audio/mix_en.wav and never the other mix', async () => {
+  const h = harness(), base = h.projects.get('p1').path;
+  h.files.add(path.join(base, 'audio', 'mix.wav')); h.files.add(path.join(base, 'audio', 'mix_en.wav'));
+  const { job } = await renderUpToSound(h, { env: { FILMLANG: 'en' } });
+  const mux = h.children.at(-1); assert.ok(mux.args.includes(path.join(base, 'audio', 'mix_en.wav'))); assert.ok(!mux.args.includes(path.join(base, 'audio', 'mix.wav')));
+  await h.close(mux); assert.equal(h.get(job.id).state, 'done');
+});
+
+test('no mix and no earlier video with sound: the render fails instead of making a silent film', async () => {
+  const h = harness(); const { job } = await renderUpToSound(h);
+  assert.equal(h.children.at(-1).cmd, 'ffprobe'); await h.close(h.children.at(-1), '2.0\n');
+  assert.equal(h.get(job.id).state, 'failed'); assert.match(h.get(job.id).error || '', /sound/i);
 });
 
 test('another project waits for a cancelled child to exit before starting', async () => {
