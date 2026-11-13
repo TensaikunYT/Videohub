@@ -1,3 +1,4 @@
+import { trashName } from '../system.js';
 // VideoHub · Thumbnail Studio Home / List Page (#/thumbstudio)
 import { h, api, toast, confirmBox, pill, AGO, onHubEvent } from '../app.js';
 import { openTemplatePickerModal, openTemplateSlotsModal, renderTemplateCard } from './templates.js';
@@ -185,15 +186,15 @@ export async function thumbnailStudioPage(page, ...args) {
           }, '⧉'),
           h('button', {
             class: 'ghost',
-            title: 'Move to Recycle Bin',
+            title: `Move to ${trashName()}`,
             style: { padding: '2px 6px', fontSize: '12px', color: 'var(--red)' },
             onclick: async e => {
               e.stopPropagation();
-              const ok = await confirmBox(`Delete "${t.title}"?`, h('p', {}, 'The thumbnail folder will be moved to the Recycle Bin.'));
+              const ok = await confirmBox(`Delete "${t.title}"?`, h('p', {}, `The thumbnail folder will be moved to the ${trashName()}.`));
               if (!ok) return;
               try {
                 await api(`/api/thumbstudio/${t.pid}/${t.id}/delete`, { method: 'POST' });
-                toast('Moved to Recycle Bin');
+                toast(`Moved to ${trashName()}`);
                 refreshList();
               } catch (err) {
                 toast(err.message, true);

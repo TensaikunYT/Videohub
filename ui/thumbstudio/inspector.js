@@ -274,7 +274,7 @@ function renderLayerInspector(container, layer, brief, { onLayerChange, onDuplic
     );
     form.append(field('Text content', h('div', {}, contentIn, trBtns)));
 
-    // Text preset (font + colours + stroke) and the font itself (only fonts Windows already has)
+    // Text preset (font + colours + stroke) and the font itself (common font families; unavailable fonts use the browser fallback)
     const presetSel = h('select', {
       disabled: isLocked,
       onchange: e => {
@@ -283,13 +283,13 @@ function renderLayerInspector(container, layer, brief, { onLayerChange, onDuplic
       }
     }, h('option', { value: '' }, 'Apply preset…'), TEXT_PRESETS.map(p => h('option', { value: p.id }, p.name)));
     form.append(field('Text Preset', presetSel));
-    const fonts = ['Impact', 'Arial Black', 'Segoe UI', 'Bahnschrift', 'Georgia', 'Cambria', 'Consolas'];
+    const fonts = ['Impact', 'Arial Black', 'Segoe UI', 'Bahnschrift', 'Georgia', 'Cambria', 'Consolas', 'Arial', 'Helvetica Neue', 'DejaVu Sans', 'Liberation Sans', 'sans-serif', 'serif', 'monospace'];
     const family = TEXT_PRESETS.find(p => p.id === layer.font)?.font || layer.font || 'Impact';
     const fontSel = h('select', {
       disabled: isLocked,
       onchange: e => { onLayerChange({ font: e.target.value }); e.target.blur(); }
     }, fonts.map(f => h('option', { value: f, selected: family === f, style: { fontFamily: f } }, f)));
-    form.append(field('Font (Built-in Windows Fonts)', fontSel));
+    form.append(field('Font (installed fonts may vary)', fontSel));
     form.append(field('Alignment', h('select', { disabled: isLocked, onchange: e => { onLayerChange({ align: e.target.value }); e.target.blur(); } },
       [['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([v, t]) => h('option', { value: v, selected: (layer.align || 'center') === v }, t)))));
 

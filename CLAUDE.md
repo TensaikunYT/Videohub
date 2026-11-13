@@ -1,86 +1,47 @@
-# VideoHub: notes for Claude working on this repo
+# VideoHub: notes for agents working on this repo
 
-Local Windows hub for videos written as code (catalog, live preview with no render, review notes, protected render
-queue, MCP tools). Node 22+, ES modules, no build step, vanilla-JS UI, optional C# agent. Architecture, map and the
-pitfalls behind past bugs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). What a film project must look like:
-[docs/PROJECT-CONTRACT.md](docs/PROJECT-CONTRACT.md).
+VideoHub is a local review studio and protected render queue for code-made videos on Windows, Linux and macOS, with Claude Code or OpenCode. Linux and macOS are new, not yet tested on real machines. Node 22+, ES modules, no build step, vanilla-JS UI and built-in render protection. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PLATFORMS.md](docs/PLATFORMS.md) and the film [project contract](docs/PROJECT-CONTRACT.md). Root `AGENTS.md` points to these same instructions.
 
 ## Installing VideoHub for the user
-When the user opened this folder in Claude Code and asks to install, set up or "kur" VideoHub (and `data\config.json`
-does not exist yet, or they ask to redo it), you do the install for them. They may know nothing about computers:
-work one step at a time, in their language, say in one sentence what a step is for before you run it, and never ask
-them to type a command. Do not change VideoHub's code during an install and touch nothing outside what is listed here.
+When the user opens this folder in an agent and asks to install or set up VideoHub, do the install for them. Explain each step briefly in their language. Do not change application code during an install. Keep unrelated user rules and agent settings intact.
 
-1. **Requirements.** Check `node -v` (22 or newer), `ffmpeg -version`, and that Edge or Chrome exists. For each
-   missing one explain what it is for and ask whether you may install it (`winget install -e --id OpenJS.NodeJS.LTS`,
-   `winget install -e --id Gyan.FFmpeg`, `winget install -e --id Google.Chrome`); a new terminal is needed afterwards.
-   Without winget, give them the download page instead. Node is required; without ffmpeg renders do not work.
-2. **Look, change nothing.** `powershell -ExecutionPolicy Bypass -File setup.ps1 -DryRun` prints every step and what it
-   found; `node scripts/init-config.mjs --state` says what is already decided and which video folders were found;
-   `node scripts/init-config.mjs --detect` says whether the graphics card can encode video.
-3. **Ask the user**, with your question tool (not as a wall of text), recommended answer first, skipping anything
-   `--state` shows as decided:
-   - *Where should all your video work live?* One folder holds everything: `films` (one folder per film), `outputs`
-     (every finished video), `sounds`, `thumbnails`, `archive`. Offer `Documents\VideoHub` (recommended), a folder on
-     the Desktop such as `Desktop\ClaudeVideo`, or a path they name. Check a typed path with
-     `node scripts/init-config.mjs --check "<folder>"`.
-   - Only if folders were found: *VideoHub found folders that look like video work (list them). Watch them too?*
-     (recommended: no; nothing is ever moved).
-   - Only if a graphics-card encoder was detected: *Use the graphics card for renders? Same quality, usually faster.*
-     (recommended: yes).
-   - *Should Claude show every new film in VideoHub before rendering it?* This adds a short rule to
-     `~/.claude/CLAUDE.md` (recommended: yes).
-   - *Desktop shortcut?* (yes) · *Start VideoHub with Windows?* (no) · *Add the 10-second example film?* (yes).
-4. **Install once, with their answers, asking nothing more:**
-   `powershell -ExecutionPolicy Bypass -File setup.ps1 -Workspace "<folder>" -WatchFound yes|no -GpuEncoder yes|no -GlobalRule yes|no -Shortcut yes|no -Startup yes|no -Example yes|no`
-   Read its output; if it lists things "left for you to do", handle them with the user. If a step fails, show the
-   error in plain words and stop; do not work around it.
-5. **Check it works.** `node server/cli.js hub_workspace` (starts VideoHub and prints the folders);
-   `wscript open.vbs` opens the window; with the example film, `node server/cli.js hub_project "{\"project\":\"hello-film\"}"`.
-6. **Tell the user what now:** where their workspace is, that the Desktop shortcut opens VideoHub, the first thing to
-   try (click the hello-film card, press Space, click a frame to leave a note), and that they must start a **new**
-   Claude Code session for the `hub_*` tools. Films are made in the workspace's `films` folder, never inside this
-   VideoHub folder: for a first film they open the workspace (or any folder) in a new session and ask for a video.
+1. **Requirements.** Check Node 22+, ffmpeg and a native Chrome/Chromium/Edge browser. Explain missing tools before installing system packages; setup itself only prints instructions. Windows hints: `winget install -e --id OpenJS.NodeJS.LTS`, `winget install -e --id Gyan.FFmpeg`, `winget install -e --id Google.Chrome`. Linux: the distribution's Node 22+ package and `apt install ffmpeg`, `dnf install ffmpeg` or `pacman -S ffmpeg`; use a native browser, not a Snap/Flatpak wrapper. macOS with Homebrew: `brew install node ffmpeg`, `brew install --cask google-chrome`.
+2. **Inspect without changes.** Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -DryRun`. Linux/macOS: `bash setup.sh --dry-run`. `node scripts/init-config.mjs --state` shows existing answers and discovered folders; `--detect` checks graphics encoders. Do not re-ask decisions already saved.
+3. **Collect the missing answers** using a concise question tool and the recommended answer first: workspace (default `Documents/VideoHub`, containing films, outputs, sounds, thumbnails and archive); watch discovered video folders (no); graphics encoding when available (yes); selected agents (Claude Code, OpenCode or both); review-before-render rule (yes); Desktop shortcut (yes); start at login (no); example film (yes). Validate a typed workspace with `node scripts/init-config.mjs --check "<folder>"`. Detect agents by their CLI or config folder. Ask which to use when both or neither are detected, unless already specified.
+4. **Install once with the answers.** Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Workspace "<folder>" -Agents claude,opencode -WatchFound yes|no -GpuEncoder yes|no -GlobalRule yes|no -Shortcut yes|no -Startup yes|no -Example yes|no`. Linux/macOS: `bash setup.sh --workspace "<folder>" --agents claude,opencode --watch-found yes|no --gpu-encoder yes|no --global-rule yes|no --shortcut yes|no --startup yes|no --example yes|no`. Pass only the selected agents and replace each choice with the actual answer. `-Yes` / `--yes` accepts recommendations. Re-runs preserve folders, configuration values and remembered answers. Read the output and explain any remaining step or failure.
+5. **Check the installation.** `node server/cli.js hub_workspace` prints the workspace; open with `open.cmd` on Windows or `bash open.sh` on Linux/macOS. With an example, inspect it using `hub_project`. Show a new film in live preview before any render and wait for the user's review.
+6. **Explain what comes next.** Give the workspace location and launcher, suggest opening the example card and leaving a note, and tell them to start a new selected-agent session for `hub_*` tools. Films belong in `<workspace>/films`, never inside the VideoHub installation.
 
-## Setup on a new PC (what `SETUP.cmd` does)
-`SETUP.cmd` (or `powershell -ExecutionPolicy Bypass -File setup.ps1`; `-DryRun` asks nothing, assumes the recommended
-answers and changes nothing outside this folder; `-Yes` takes every recommended answer). It checks Node 22+, ffmpeg and
-Edge/Chrome, runs `npm install` (render protection is part of the server: nothing is compiled), then asks plain questions
-(each also a parameter): the workspace folder (default `Documents\VideoHub`: films, outputs, sounds, thumbnails,
-archive), watching video folders it found, the graphics-card encoder, the global rule, the Desktop shortcut, start with
-Windows, the example film. The logic lives in `scripts/init-config.mjs` (unit-tested); a re-run keeps every answer and
-never moves or overwrites folders or `data/config.json` values. It registers the MCP server `videohub` (user scope) and
-installs `skill/videohub` into `~/.claude/skills`.
-Missing Node: `winget install -e --id OpenJS.NodeJS.LTS`; missing ffmpeg: `winget install -e --id Gyan.FFmpeg`. Tell the
-user; do not work around them. Uninstall: `uninstall.ps1` (`-DryRun` too).
+On macOS the Desktop launcher is `VideoHub.command` and briefly opens Terminal. If blocked on first use, explain System Settings → Privacy & Security → Open Anyway; `bash open.sh` is also available. No `.app` bundle is created. Finder Trash may require Automation permission. macOS cannot limit CPU cores: priority, background QoS and RAM protection remain available.
 
-## Map (short)
-- `server/hub.js` HTTP + SSE; `scan.js` projects; `live.js` live preview; `notes.js` notes; `jobs.js` render queue;
-  `tools.js` the `hub_*` tools (`mcp.js`, `cli.js`); `legacy.js` + `ui/values.js` stored values and legacy aliases;
-  `config.js` settings and default folders (the workspace, `Documents\VideoHub\…` by default); `encoders.js` render
-  encoders; `scripts/init-config.mjs` setup's config helper.
-- `ui/app.js` pages, `ui/review*` review editor, `ui/thumbstudio*` Thumbnail Studio.
-- `guard/` render protection agent; `engine-hooks/` page-side editor hooks; `examples/hello-film` the example film;
-  `templates/new-film` the starter for new films; `templates/thumbnail` built-in thumbnail templates.
+## Agent integration
+Each selected agent gets its own MCP registration, skill and optional marked VideoHub rule block. The one skill source is `skill/videohub/SKILL.md`; never copy personal rules from one agent to the other. Claude global rules are in `~/.claude/CLAUDE.md`; OpenCode uses `~/.config/opencode/AGENTS.md` (or `$XDG_CONFIG_HOME/opencode/AGENTS.md`). When OpenCode's file exists, it takes precedence over the Claude compatibility rules; setup prints this consequence. MCP changes prefer the agent CLI, and unreadable/conflicting configuration is left untouched. Update/uninstall may change only integration entries owned by the target install. Settings → Agent name controls presentation; stored note values remain compatible.
 
-## Rules
-- Test on copies: a scratch project added as a root of a test hub, never the user's real projects. Other sessions may be
-  rendering.
-- Setup while developing VideoHub: only ever `-DryRun`; test its logic through `scripts/init-config.mjs --data <scratch>`.
-  (A real run is for "Installing VideoHub for the user" above, with their answers.)
-- Render script (`templates/new-film/render.js`, same file as `examples/hello-film/render.js`): test renders only on a
-  scratch copy of the example under `.test-tmp`, short clips, one at a time; see docs/RENDER-SPEED.md for the checks.
-- Test hub: `VIDEOHUB_PORT=7799 VIDEOHUB_GUARD=off VIDEOHUB_JOBS=off VIDEOHUB_NO_WINDOW=1 VIDEOHUB_BASE_DIR=<scratch>`.
-  Set `VIDEOHUB_PORT` on every CLI call too, or the tool starts a hub on the real port.
-- No renders in parallel; use the queue. Never hard-delete files. A `mode:"command"` job waits for the user's approval
-  on the Renders page before it runs (`config.render.confirmCommands`).
-- English UI text and comments. Keep each file's dense style. Stored values are English; read old files through
-  `legacy.js`.
-- The UI must never import from `server/`. After a UI change open the pages and check the console.
-- Before committing: `npm test` and `node --check` on every changed file.
-- Publishing goes through GitHub's browser upload, which drops every name starting with a dot: no file VideoHub needs may
-  have one (`scripts/upload-rules.test.js` checks). Build the folder to drag in with `node scripts/make-upload.mjs`.
+## Updating and uninstalling
+From the new downloaded folder, preview then run `update.ps1` on Windows (`UPDATE.cmd` is the clickable entry point) or `bash update.sh --target "<install>"` on Linux/macOS. The update stops only the identified install after checking no render/cleanup is active, backs up replaced code and preserves data, films and notes. Windows update also retires a recognized old render-protection helper belonging to the target install without executing it; nothing is compiled. Restart the selected agent afterwards.
 
-## Pitfalls
-See "Things that matter when changing the code" in docs/ARCHITECTURE.md (hub blocking, fs.watch reads, per-frame
-layout reads, note pictures from ffmpeg, security of the local server).
+Uninstall from the installed folder with `uninstall.ps1` or `bash uninstall.sh`, using `-DryRun` / `--dry-run` first. It removes only owned integrations and launchers. Films, outputs, notes, settings and program files remain.
+
+## Map
+- `server/platform.js`: operating-system integrations and injectable dependencies. Keep OS selection here; preserve Windows behavior and existing public return shapes.
+- `server/hub.js`: loopback HTTP/SSE; `scan.js`: catalog; `live.js`: preview; `notes.js`: review; `jobs.js`: queue; `tools.js`, `mcp.js`, `cli.js`: agent tools.
+- `server/guard.js`: built-in render protection; `ramhogs.js`: RAM consumers; `encoders.js`: probed encoder arguments.
+- `server/config.js`, `scripts/init-config.mjs`: workspace and settings; `scripts/agents.mjs`: agent integrations; `scripts/install.mjs`: shared Unix install/update/launch decisions.
+- `ui/app.js`, `ui/review*`, `ui/thumbstudio*`: vanilla browser UI. `engine-hooks/`: page hooks; `examples/hello-film`: example; `templates/new-film`: film starter; `templates/thumbnail`: thumbnail templates.
+
+## Development rules
+- Work on scratch copies and test hubs, never the user's films or another install. Other sessions may be rendering.
+- Installer development: use dry-run or a fake home/data/temp entirely under `.test-tmp`, including `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME`. Never run agent CLI registration against the real profile during tests.
+- Test hub: `VIDEOHUB_PORT=7799`, `VIDEOHUB_DATA_DIR=<scratch>`, `VIDEOHUB_BASE_DIR=<scratch>`, `VIDEOHUB_GUARD=off`, `VIDEOHUB_JOBS=off`, `VIDEOHUB_NO_WINDOW=1`. Set the same port on every CLI call so it cannot reach/start the real hub.
+- New code-made films/scenes must open through `hub_live` before rendering. Stop for the user to watch, leave notes and send them to the agent. Fix code only; render only on explicit request, one render at a time through the queue. Render tests use a scratch example copy, only after the required preview review.
+- Never use hard deletion as a fallback for failed Trash. Cleanup requires user approval in the UI; archive copies are verified before removing originals. Custom command jobs retain their approval step.
+- No native modules, compiled helper binaries, unsigned `.app` bundles, inline C#/custom P/Invoke, generated PowerShell runtime files or encoded PowerShell commands. Windows launch/startup uses the installed Node executable; system integrations use transparent commands and installed Windows/.NET libraries. Runtime code (launcher, startup, hub, platform helpers) never overrides the execution policy; only the user-started, visible SETUP.cmd/UPDATE.cmd and the documented manual setup/update/uninstall commands pass a process-scoped `-ExecutionPolicy Bypass`, because Windows blocks every `.ps1` by default. It changes no setting. Unix niceness restoration is best effort; no elevated privileges are requested.
+- English code/comments/UI. Keep the compact ES module style. Read old stored values through `legacy.js`; preserve exported names and result shapes.
+- The UI never imports `server/` or Node modules. After changing UI, check pages and the console with a scratch hub. Do not play or render a film merely to inspect application pages.
+- Before committing: `npm test`, `node --check` changed source files and inspect the staged diff for private paths, identities, tokens and user content. Tests isolate home, temp, workspace and data under `.test-tmp`; OS tests inject dependencies. Linux/macOS desktop and rendering acceptance still requires real hardware.
+- Keep `templates/new-film/render.js` equal to `examples/hello-film/render.js`. See [docs/RENDER-SPEED.md](docs/RENDER-SPEED.md) for render-specific verification.
+- Publish only when asked. Browser upload cannot carry dot-prefixed names; `.github/workflows/test.yml` must be uploaded through a route that supports it. Do not work around upload exclusions. `scripts/make-upload.mjs` prepares the normal upload folder when publishing is authorized.
+
+For a Windows security warning, collect the product, exact alert/detection ID, affected file and version. Distinguish malware detection, SmartScreen reputation, Smart App Control and PowerShell execution policy. Source hardening and passing tests do not establish a false-positive verdict or guarantee future scanner results. Do not disable security tools, add broad exclusions, remove download protections or lower execution policy. A vendor review, when appropriate, uses that vendor's official process and only a file the user has authorized for submission; never upload automatically.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for performance, filesystem watcher, media and local-server security pitfalls.

@@ -1,3 +1,4 @@
+import { agentName } from './agent.js';
 // Review studio v2: always-visible tools, a real transport bar, timeline with strip + waveform,
 // zoom/pan, compare (side / wipe / difference), review copy for instant frame stepping.
 import { h, api, toast, TC, DUR, AGO, onHubEvent, openFolder } from './app.js';
@@ -149,7 +150,7 @@ export async function reviewPage(page, id, relArg = '') {
   const changedBtn = h('button', { hidden: true, onclick: () => playChanged() }, 'Watch only the changes');
   const proxyPill = h('span', { class: 'pill', title: 'Lightweight review copy for smooth frame stepping' }, '…');
   const helpBtn = h('button', { class: 'ghost', title: 'How to use, all keyboard shortcuts (?)', onclick: () => toggleHelp() }, '❔ Help');
-  const folderBtn = h('button', { class: 'ghost', title: 'Open project folder in Explorer: ' + p.path, onclick: () => openFolder(id) }, '📂 Folder');
+  const folderBtn = h('button', { class: 'ghost', title: 'Open project folder in the file manager: ' + p.path, onclick: () => openFolder(id) }, '📂 Folder');
   const liveRefreshBtn = liveMode ? h('button', { class: 'ghost', title: 'Find the current page again and reload the code', onclick: async () => {
     try { const fresh = await api('/api/project/' + id + '/live'); if (fresh.ok) liveSrc.reload(fresh); else toast(fresh.reason, true); }
     catch (e) { toast(e.message, true); }
@@ -288,7 +289,7 @@ export async function reviewPage(page, id, relArg = '') {
     reloadNotes: async () => { notes = await api(`/api/project/${id}/notes`); notesPanel.render(); timeline.draw(); redraw(); notesPanel.refreshOld(); },
     onCount: n => side?.setBadge('notes', n || ''),
   });
-  // side panel: Notes / Sounds / Clip; "Send to Claude" sits under the panes, visible on every tab
+  // side panel: Notes / Sounds / Clip; `Send to ${agentName()}` sits under the panes, visible on every tab
   const soundsHost = h('div', { class: 'rv2-sounds' }), clipHost = h('div', { class: 'rv2-clip' });
   const nfoot = notesPanel.el.querySelector('.rv2-nfoot');
   side = createSidePanel({ tabs: [{ id: 'notes', label: '📝 Notes', el: notesPanel.el }, { id: 'sounds', label: '🎵 Sounds', el: soundsHost }, { id: 'clip', label: '🎚 Selected sound', el: clipHost }], foot: nfoot });
@@ -850,7 +851,7 @@ export async function reviewPage(page, id, relArg = '') {
     tourBar.innerHTML = '';
     tourBar.append(
       h('b', {}, `Check ${tour.i + 1}/${tour.ids.length}`),
-      h('span', { class: 'tnote' }, h('b', {}, `#${n.id} `), n.text || '(no text)', n.reply ? h('span', { class: 'treply' }, ' · Claude: ' + n.reply) : null),
+      h('span', { class: 'tnote' }, h('b', {}, `#${n.id} `), n.text || '(no text)', n.reply ? h('span', { class: 'treply' }, ` · ${agentName()}: ` + n.reply) : null),
       h('span', { class: 'spacer' }),
       h('button', { class: 'bbtn', title: 'Switch between the frame when the note was written and the current frame (B)', onclick: () => showBefore(!S.before) }, 'Before ⇄ After'),
       h('button', { class: 'primary', title: 'Fixed (Y)', onclick: () => verdict('approved') }, '✓ Approve'),
@@ -872,7 +873,7 @@ export async function reviewPage(page, id, relArg = '') {
   function endTour() {
     if (!tour) return;
     const { ok, again } = tour; tour = null; tourBar.hidden = true; showBefore(false); clearRange();   // the range was only for checking
-    toast(`Review finished: ${ok} approved${again ? `, ${again} still there — use "Send to Claude" to send them back` : ''}.`);
+    toast(`Review finished: ${ok} approved${again ? `, ${again} still there — use "Send to ${agentName()}" to send them back` : ''}.`);
   }
 
   // notes changed elsewhere (pictures ready, Claude's replies, another window): merge without reloading the list
@@ -935,7 +936,7 @@ export async function reviewPage(page, id, relArg = '') {
   // P4: the sound library at the top of the Sounds tab (▶ listen, + at the playhead, drag onto the timeline)
   const library = createLibrary({ onAdd: item => soundEd?.dropAdd({ item, t: nowT() }), onFile: () => soundEd?.pickFile() });
   soundsHost.prepend(library.el);
-  // files dragged from Explorer and dropped anywhere but the timeline would make the window open the file
+  // files dragged from your file manager and dropped anywhere but the timeline would make the window open the file
   const dropGuard = e => { if (![...(e.dataTransfer?.types || [])].includes('Files') || e.target?.closest?.('.tl2-body')) return; e.preventDefault(); if (e.type === 'dragover') e.dataTransfer.dropEffect = 'none'; else toast('Drop the sound file onto the timeline'); };
   document.addEventListener('dragover', dropGuard); document.addEventListener('drop', dropGuard);
   setTimeout(() => Promise.all([api(`/api/project/${id}/layers`), api(`/api/project/${id}/sound-info`).catch(() => null), api(`/api/project/${id}/tweaks`).catch(() => ({}))]).then(async ([L, info, tw]) => {

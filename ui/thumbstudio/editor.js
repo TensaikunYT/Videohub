@@ -1,3 +1,4 @@
+import { agentName } from '../agent.js';
 // VideoHub · Thumbnail Studio Editor Shell (#/thumbstudio/<pid>/<tid>)
 import { h, api, toast, confirmBox, pill, onHubEvent } from '../app.js';
 import { History } from './history.js';
@@ -139,7 +140,7 @@ export async function renderEditor(page, pid, tid) {
       }, '💾 Save template'),
       h('button', { class: 'ghost', onclick: () => openReferencesModal(pid, tid, state.brief, { onUpdated: () => onStateChanged() }) }, 'References'),
       h('button', { class: 'ghost', title: 'Writes layout.png, sketch.png, depth.png, prompt.txt and brief.md (Ctrl+S)', onclick: () => doExport(true) }, '⤓ Export'),
-      h('button', { class: 'primary', title: 'Exports and copies a message to paste into a Claude chat', onclick: () => sendToClaude() }, '💬 Send to Claude')
+      h('button', { class: 'primary', title: `Exports and copies a message to paste into a ${agentName()} chat`, onclick: () => sendToClaude() }, `💬 Send to ${agentName()}`)
     )
   );
   root.append(header);
@@ -362,8 +363,8 @@ export async function renderEditor(page, pid, tid) {
     try {
       await doExport(false);
       const { message } = await api(`/api/thumbstudio/${pid}/${tid}/claude-message`, { method: 'POST' });
-      try { await navigator.clipboard.writeText(message); toast('Message copied: paste it into a Claude chat'); }
-      catch { await confirmBox('Send to Claude', h('textarea', { rows: 8, style: { width: '100%' }, readonly: true }, message), 'OK'); }
+      try { await navigator.clipboard.writeText(message); toast(`Message copied: paste it into a ${agentName()} chat`); }
+      catch { await confirmBox(`Send to ${agentName()}`, h('textarea', { rows: 8, style: { width: '100%' }, readonly: true }, message), 'OK'); }
     } catch { }
   }
 

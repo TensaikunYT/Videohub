@@ -1,4 +1,5 @@
-// Notes panel: the draft note being written, the list of notes, edits, statuses, "send to Claude".
+import { agentName } from '../agent.js';
+// Notes panel: the draft note being written, the list of notes, edits, statuses, `send to ${agentName()}`.
 import { h, api, toast, confirmBox, pill, TC, AGO } from '../app.js';
 
 // Element.append prints null/false as text; this skips them like h() does.
@@ -6,14 +7,14 @@ const put = (el, ...kids) => { for (const c of kids.flat(Infinity)) if (c != nul
 const KINDS = ['visual', 'timing', 'sound', 'text', 'general'];
 // a note's range in frames (inclusive), or null
 const framesOf = (n, fps) => n.t2 == null ? null : (n.frames || [Math.floor(n.t * (n.fps || fps) + 1e-6), Math.floor(n.t2 * (n.fps || fps) + 1e-6)]);
-const STATUS_LABEL = { 'open': 'open', claude: "with Claude", 'fixed': '✓ fixed', 'approved': 'approved', 'reopened': 'still there' };
+const STATUS_LABEL = { 'open': 'open', get claude() { return `with ${agentName()}`; }, 'fixed': '✓ fixed', 'approved': 'approved', 'reopened': 'still there' };
 
 export function createNotesPanel(ctx) {
   const filterSel = h('select', { onchange: () => render() }, h('option', { value: 'open' }, 'Open'), h('option', { value: 'fixed' }, 'Fixed'), h('option', { value: 'all' }, 'All'), h('option', { value: 'file' }, 'This version'));
   const composerBox = h('div', {}), list = h('div', { class: 'rv2-list' });
   const draftsBox = h('div', { class: 'rv2-drafts', hidden: true });
   const sendBtn = h('button', { class: 'primary', onclick: send });
-  const tourBtn = h('button', { class: 'tourbtn', hidden: true, title: 'Review Claude\'s fixes one by one: before/after, approve or mark as still there', onclick: () => ctx.startTour() });
+  const tourBtn = h('button', { class: 'tourbtn', hidden: true, title: `Review ${agentName()}\'s fixes one by one: before/after, approve or mark as still there`, onclick: () => ctx.startTour() });
   // notes written before the newest version, cleared in one go (approve all, or take them off the list into the archive)
   const oldBar = h('div', { class: 'rv2-oldbar', hidden: true });
   const el = h('div', { class: 'rv2-notes' },
@@ -163,7 +164,7 @@ export function createNotesPanel(ctx) {
       }, h('img', { src: `/api/project/${ctx.projectId}/noteimg/${n.id}/${n.images.crop ? 'crop' : 'annotated'}?v=${n.imgV || 0}`, loading: 'lazy' }), h('span', { class: 'nimg-lab' }, '🖼 frame image'))
         : n.pending && n.drawing?.length ? h('div', { class: 'dim', style: { fontSize: '11.5px' } }, 'preparing frame image…') : null,
       other ? h('div', { class: 'dim', style: { fontSize: '12px' } }, n.file === '~live' ? 'in live preview (no render)' : `on "${n.file}"`) : null,
-      n.reply ? h('div', { class: 'reply' }, h('b', {}, 'Claude: '), n.reply, n.fixedIn ? h('span', { class: 'dim' }, ` (${n.fixedIn})`) : null) : null,
+      n.reply ? h('div', { class: 'reply' }, h('b', {}, `${agentName()}: `), n.reply, n.fixedIn ? h('span', { class: 'dim' }, ` (${n.fixedIn})`) : null) : null,
       h('div', { class: 'acts', onclick: e => e.stopPropagation() },
         n.status === 'fixed' ? [h('button', { onclick: () => setStatus(n, 'approved') }, '✓ Approve'), h('button', { class: 'danger', onclick: () => setStatus(n, 'reopened') }, 'Still there')] : null,
         n.status === 'approved' ? h('button', { onclick: () => setStatus(n, 'reopened') }, 'Reopen') : null,
@@ -196,7 +197,7 @@ export function createNotesPanel(ctx) {
     else if (els.length !== list.children.length || els.some((e, i) => list.children[i] !== e)) list.replaceChildren(...els);
     if (topChanged) list.scrollTop = 0;
     const open = notes.filter(n => ['open', 'reopened'].includes(n.status)).length;
-    sendBtn.textContent = `Send to Claude (${open})`; sendBtn.disabled = !open; ctx.onCount?.(open);
+    sendBtn.textContent = `Send to ${agentName()} (${open})`; sendBtn.disabled = !open; ctx.onCount?.(open);
     const fixed = notes.filter(n => n.status === 'fixed').length;
     tourBtn.hidden = !fixed; tourBtn.textContent = `✓ Check fixes (${fixed})`;
     if (!oldAsked && notes.length) refreshOld(); else drawOld();

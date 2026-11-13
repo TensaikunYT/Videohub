@@ -17,7 +17,7 @@ export function createLibrary({ onAdd, onFile }) {
   el.append(h('div', { class: 'mx-head' }, h('b', { class: 'mx-title' }, '📚 Sound library'), tabs),
     h('div', { class: 'tl2-lrow' }, search, h('button', { class: 'ghost', title: 'Choose one or more sound files from your computer to add at the playhead', onclick: () => onFile?.() }, '📁 Add from file…')),
     list,
-    h('div', { class: 'dim lib-hint' }, 'Drag a sound onto the timeline or click + to add it at the playhead. You can also drag sound files from Explorer.'));
+    h('div', { class: 'dim lib-hint' }, 'Drag a sound onto the timeline or click + to add it at the playhead. You can also drag sound files from your file manager.'));
 
   function stop() { player.pause(); playing = null; }
   function listen(x) {

@@ -1,9 +1,11 @@
+import { trashName } from '../system.js';
+import { agentName } from '../agent.js';
 // Variants UI: the variants strip under the canvas and the big variant viewer (compare two, lay the layout over it,
-// pin notes, "Send fixes to Claude", choose, delete). Images are made by Claude (hub_thumb_variant), never by VideoHub.
+// pin notes, `Send fixes to ${agentName()}`, choose, delete). Images are made by Claude (hub_thumb_variant), never by VideoHub.
 import { h, api, toast, confirmBox, AGO } from '../app.js';
 
 const fileUrl = (pid, tid, f, v) => `/api/thumbstudio/${pid}/${tid}/file?f=${encodeURIComponent(f)}${v ? '&v=' + encodeURIComponent(v) : ''}`;
-const NOTE_TR = { 'open': 'open', claude: 'with Claude', 'fixed': 'fixed' };
+const NOTE_TR = { 'open': 'open', get claude() { return `with ${agentName()}`; }, 'fixed': 'fixed' };
 
 // ---------- variants strip (under the canvas)
 export function createVariantStrip({ pid, tid, getBrief, onOpen }) {
@@ -15,7 +17,7 @@ export function createVariantStrip({ pid, tid, getBrief, onOpen }) {
     el.append(h('div', { class: 'ts-variants-head' }, h('b', {}, 'VARIANTS'), h('span', { class: 'dim' }, vs.length ? ` ${vs.length}` : '')));
     const row = h('div', { class: 'ts-variants-row' });
     el.append(row);
-    if (!vs.length) row.append(h('div', { class: 'dim ts-vempty' }, 'No variants yet. Press "💬 Send to Claude" and paste the message into a Claude chat: Claude makes the images and they show up here.'));
+    if (!vs.length) row.append(h('div', { class: 'dim ts-vempty' }, `No variants yet. Press "💬 Send to ${agentName()}" and paste the message into a ${agentName()} chat: ${agentName()} makes the images and they show up here.`));
     let lastRound = null;
     for (const v of [...vs].reverse()) {
       if (v.round !== lastRound) { row.append(h('div', { class: 'ts-round' }, 'Round ' + v.round)); lastRound = v.round; }
@@ -25,7 +27,7 @@ export function createVariantStrip({ pid, tid, getBrief, onOpen }) {
         h('div', { class: 'ts-vmeta' }, h('b', {}, v.id), v.parent ? h('span', { class: 'dim' }, ' ← ' + v.parent) : null,
           brief.chosen === v.id ? h('span', { class: 'ts-badge' }, '✓ chosen') : null,
           open ? h('span', { class: 'ts-badge warn' }, open + ' notes') : null,
-          h('span', { class: 'dim', style: { marginLeft: 'auto' } }, v.by === 'claude' ? 'Claude' : v.by))));
+          h('span', { class: 'dim', style: { marginLeft: 'auto' } }, v.by === 'claude' ? `${agentName()}` : v.by))));
     }
   }
   return { el, draw, dispose: () => { } };
@@ -95,7 +97,7 @@ export function openVariantViewer({ pid, tid, getBrief, vid, onChanged, onFix, o
       h('div', { class: 'ts-viewer-head row' },
         h('b', { style: { fontSize: '16px' } }, v.id), v.parent ? h('span', { class: 'dim' }, `revision of ${v.parent}`) : null,
         brief.chosen === v.id ? h('span', { class: 'ts-badge' }, '✓ chosen') : null,
-        h('span', { class: 'dim' }, `${v.by === 'claude' ? 'Claude' : v.by} · ${AGO(v.at)} · ${v.w || '?'}×${v.h || '?'}`),
+        h('span', { class: 'dim' }, `${v.by === 'claude' ? `${agentName()}` : v.by} · ${AGO(v.at)} · ${v.w || '?'}×${v.h || '?'}`),
         h('span', { class: 'spacer' }),
         h('label', { class: 'row dim', title: 'Overlay the layout image: does the composition match?' }, 'Overlay layout',
           h('input', { type: 'range', min: 0, max: 80, value: Math.round(overlay * 100), oninput: e => { overlay = e.target.value / 100; box.querySelectorAll('.ts-voverlay').forEach(o => o.style.opacity = overlay); if (overlay && !box.querySelector('.ts-voverlay')) draw(); } })),
@@ -111,16 +113,16 @@ export function openVariantViewer({ pid, tid, getBrief, vid, onChanged, onFix, o
             h('span', { class: 'spacer' }),
             h('button', { class: 'ghost', title: n.status === 'fixed' ? 'Reopen' : 'Mark as fixed', onclick: async () => { await api(`/api/thumbstudio/${pid}/${tid}/variant/${v.id}/note/${n.id}`, { method: 'POST', body: { status: n.status === 'fixed' ? 'open' : 'fixed' } }); await onChanged(); draw(); } }, n.status === 'fixed' ? '↺' : '✓'),
             h('button', { class: 'ghost', title: 'Delete note', onclick: async () => { await api(`/api/thumbstudio/${pid}/${tid}/variant/${v.id}/note/${n.id}`, { method: 'POST', body: { remove: true } }); await onChanged(); draw(); } }, '🗑')))
-            : h('div', { class: 'dim' }, 'Click the image and describe what should change. Then "Send fixes to Claude" asks Claude to change only those areas. (← → other variants)')),
+            : h('div', { class: 'dim' }, `Click the image and describe what should change. Then "Send fixes to ${agentName()}" asks ${agentName()} to change only those areas. (← → other variants)`)),
         h('div', { class: 'row', style: { gap: '8px' } },
           h('button', { class: 'ghost danger', onclick: async () => {
-            if (!await confirmBox('Delete variant', h('div', {}, `${v.id} will be moved to the Recycle Bin.`), 'Delete')) return;
+            if (!await confirmBox('Delete variant', h('div', {}, `${v.id} will be moved to the ${trashName()}.`), 'Delete')) return;
             try { await api(`/api/thumbstudio/${pid}/${tid}/variant/${v.id}/delete`, { method: 'POST' }); await onChanged(); const rest = getBrief().variants || []; if (!rest.length) close(); else { cur = rest[rest.length - 1].id; draw(); } }
             catch (e) { toast('Could not delete: ' + e.message, true); }
           } }, '🗑 Delete'),
           h('button', { class: 'ghost', onclick: () => api(`/api/thumbstudio/${pid}/${tid}/open-folder`, { method: 'POST', body: { file: v.file } }).catch(e => toast(e.message, true)) }, '📂 Show in folder'),
           h('span', { class: 'spacer' }),
-          h('button', { disabled: !openNotes.length, title: openNotes.length ? 'Copies a message for Claude: this variant is the reference and only the areas in your notes change' : 'Add a note on the image first', onclick: async () => { const ok = await onFix(v, openNotes); if (ok) close(); } }, `🔧 Send fixes to Claude${openNotes.length ? ` (${openNotes.length})` : ''}`),
+          h('button', { disabled: !openNotes.length, title: openNotes.length ? `Copies a message for ${agentName()}: this variant is the reference and only the areas in your notes change` : 'Add a note on the image first', onclick: async () => { const ok = await onFix(v, openNotes); if (ok) close(); } }, `🔧 Send fixes to ${agentName()}${openNotes.length ? ` (${openNotes.length})` : ''}`),
           brief.chosen === v.id
             ? h('button', { class: 'primary', onclick: () => { close(); onFinal(); } }, 'Go to final →')
             : h('button', { class: 'primary', onclick: async () => { await onChoose(v.id); draw(); } }, '✓ Choose this'))));

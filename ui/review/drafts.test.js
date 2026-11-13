@@ -203,6 +203,7 @@ test('the real notes composer writes to the switched draft and its shelf exposes
   let active = old, restored = null;
   const entry = { draft: old, undo: [], redo: [], range: { a: null, b: null } };
   const context = {
+    agentName: () => 'OpenCode',
     h: node, TC: String, document: { body: {}, activeElement: null },
     api: () => { throw new Error('This test must not send a note'); },
   };

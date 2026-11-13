@@ -29,3 +29,20 @@ test('rapid clicks and a late job-list response cannot open duplicate render dia
   assert.equal(el.disabled, true); await el.onclick(); assert.equal(dialogs, 1);
   finishDialog(false); await first; assert.equal(el.disabled, false); assert.equal(queued, 0);
 });
+
+test('the render dialog offers a probed VideoToolbox encoder without starting a job on cancellation', async () => {
+  let body, queued = 0;
+  const h = (tag, attrs = {}, ...children) => ({ tag, ...attrs, children: children.flat(Infinity).filter(x => x != null), replaceChildren(...next) { this.children = next; } });
+  const ctx = { h, onHubEvent: () => () => {}, folderButton: () => h('button'), toast() {}, localStorage: { getItem: () => null },
+    api: async (url, opts) => {
+      if (url === '/api/jobs') { if (opts) queued++; return []; }
+      if (url.endsWith('/recipe')) return { script: 'render.js', env: {} };
+      return { script: 'render.js', workers: { default: 1, max: 1 }, codecs: ['auto', 'videotoolbox', 'x264'], codecEnv: 'VIDEOHUB_ENCODER', codecLabels: { videotoolbox: 'Mac graphics (VideoToolbox)' }, info: {} };
+    }, confirmBox: async (title, content) => { body = content; return false; } };
+  vm.createContext(ctx); vm.runInContext(code, ctx);
+  const { el } = ctx.createRenderButton({ id: 'mac-template' }, { notes: () => [] });
+  await el.onclick();
+  const walk = node => typeof node === 'object' && node ? [node, ...(node.children || []).flatMap(walk)] : [];
+  const option = walk(body).find(n => n.tag === 'option' && n.value === 'videotoolbox');
+  assert.ok(option); assert.deepEqual(option.children, ['Mac graphics (VideoToolbox)']); assert.equal(queued, 0);
+});

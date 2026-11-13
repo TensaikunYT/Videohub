@@ -54,5 +54,4 @@ All of these can also be set on the Settings page.
   `data\sfx-lib` stay usable; delete that folder to have them rebuilt with the new names.
 - Built-in thumbnail templates have English ids and file names (`before-after.json` …). Your own templates are not
   touched.
-- The render protection agent writes English event names (`STARTED`, `FINISHED` …) to its history; old lines are
-  read as before. Rebuild it (`guard\build.ps1`, or run `update.ps1`/`setup.ps1`) to get the English agent.
+- Render protection is built into the hub. Old history is still readable; no separate agent needs rebuilding.

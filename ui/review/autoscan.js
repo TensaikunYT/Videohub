@@ -1,3 +1,4 @@
+import { agentName } from '../agent.js';
 // Automatic check of a live film, frame by frame, in the preview page that is already open: no render, no extra
 // Chrome, no Claude, no tokens. Pages with window.qaFrame (3D studio engine/runtime.js) also report the camera inside
 // a mesh, characters sunk into things and 2D labels without depth; every other live page gets the picture checks
@@ -179,7 +180,7 @@ export function createAutoScan({ src, projectId, frame, panelHost, onOpen, onClo
         h('div', { class: 'ascan-txt' },
           h('div', {}, h('b', {}, KIND[r.kind][0]), h('span', { class: 'dim' }, ` · ${TC(r.t0)}${r.t1 > r.t0 ? '–' + TC(r.t1) : ''}${r.shot ? ' · ' + r.shot : ''}${r.n > 1 ? ' · ×' + r.n : ''}`)),
           h('div', { class: 'dim mono ascan-info', title: r.infos.join('\n') }, r.infos.join(' | '))),
-        added.has(i) ? h('span', { class: 'dim' }, '✓ note') : b('→ note', 'Create a VideoHub note (you can send it to Claude)', () => toNote(r, i), 'ghost'));
+        added.has(i) ? h('span', { class: 'dim' }, '✓ note') : b('→ note', `Create a VideoHub note (you can send it to ${agentName()})`, () => toNote(r, i), 'ghost'));
     })));
   }
 

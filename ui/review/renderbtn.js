@@ -1,3 +1,4 @@
+import { agentName } from '../agent.js';
 // "Render" in the live preview: the user decides to render (their rule: no render before they say so).
 // The render goes through VideoHub's queue (one at a time, RAM protection). Full film, or, when the project can
 // re-render parts and there are notes Claude fixed, only the parts those notes touch. Progress shows on the button.
@@ -32,7 +33,7 @@ export function createRenderButton(p, { notes }) {
     const rc = await api(`/api/project/${id}/recipe`).catch(() => ({}));
     const ro = await api(`/api/project/${id}/render-options`).catch(() => ({}));
     const canFull = !!(p.studio || ro.script || rc.script);
-    if (!canFull) { toast('This project has no render script (render.js) that VideoHub can run. Ask Claude to render it.', true); return; }
+    if (!canFull) { toast(`This project has no render script (render.js) that VideoHub can run. Ask ${agentName()} to render it.`, true); return; }
     const fixed = notes().filter(n => FIXED.includes(n.status)).map(n => n.id);
     const canPart = !!rc.chunkSec && fixed.length > 0 && (p.studio || p.family === 'A');
     // settings: only what this project's render understands, defaults from its recipe

@@ -51,7 +51,7 @@ export function normalizeMeta(m) {
 }
 
 // labels the UI shows
-export const NOTE_STATUS_LABEL = { open: 'open', claude: 'with Claude', fixed: 'fixed', approved: 'approved', reopened: 'still there' };
+export const NOTE_STATUS_LABEL = { open: 'open', claude: 'with agent', fixed: 'fixed', approved: 'approved', reopened: 'still there' };
 export const NOTE_KIND_LABEL = { visual: 'visual', timing: 'timing', sound: 'sound', text: 'text', general: 'general' };
 export const PROJECT_STATUS_LABEL = { 'in-progress': 'in progress', review: 'in review', revision: 'revision', approved: 'approved', published: 'published', archived: 'archived', done: 'done' };
 export const THUMB_STATUS_LABEL = { draft: 'Draft', generating: 'Generating', chosen: 'Chosen', final: 'Final' };
