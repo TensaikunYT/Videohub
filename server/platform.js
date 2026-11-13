@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const install = pathDefault.resolve(pathDefault.dirname(fileURLToPath(import.meta.url)), '..');
 function runDefault(file, args, opts = {}) { return new Promise(resolve => execFile(file,args,{ windowsHide:true,maxBuffer:64<<20,...opts },(e,stdout,stderr)=>resolve({code:e?.code??0,stdout:String(stdout||''),stderr:String(stderr||'')}))); }
 // Dependencies are injectable: all three OS contracts can be tested on any host.
-export function createPlatform({ osName = process.platform, env = process.env, home = osDefault.homedir(), temp = osDefault.tmpdir(), fs = fsDefault, os = osDefault, path = pathDefault, spawn = spawnDefault, run = runDefault, runSync = execFileSync, hubDir = install, kill = process.kill.bind(process), uid = () => process.getuid?.() ?? null, delay = ms => new Promise(r => setTimeout(r,ms)), now = Date.now } = {}) {
-if (osName !== 'win32') return createUnixPlatform({ osName, env, home, temp, fs, os, path, spawn, run, runSync, hubDir, kill, delay, uid, now });
+export function createPlatform({ osName = process.platform, env = process.env, home = osDefault.homedir(), temp = osDefault.tmpdir(), fs = fsDefault, os = osDefault, path = pathDefault, spawn = spawnDefault, run = runDefault, runSync = execFileSync, hubDir = install, kill = process.kill.bind(process), uid = () => process.getuid?.() ?? null, delay = ms => new Promise(r => setTimeout(r,ms)), now = Date.now, desktopDir = null, nodePath = process.execPath } = {}) {
+if (osName !== 'win32') return createUnixPlatform({ osName, env, home, temp, fs, os, path, spawn, run, runSync, hubDir, kill, delay, uid, now, nodePath });
 const OS = osName, IS_WIN = OS === 'win32', IS_MAC = OS === 'darwin', IS_LINUX = OS === 'linux';
 const HUB_DIR = hubDir, DATA_DIR = env.VIDEOHUB_DATA_DIR || path.join(HUB_DIR,'data');
 const writeJson = (f,j) => { fs.mkdirSync(path.dirname(f),{recursive:true}); fs.writeFileSync(f,JSON.stringify(j)); };
@@ -34,7 +34,7 @@ function which(name, extra = []) {
 const TOOLS = {
   ffmpeg: which('ffmpeg.exe', ['C:\\ffmpeg\\bin']) || 'ffmpeg',
   ffprobe: which('ffprobe.exe', ['C:\\ffmpeg\\bin']) || 'ffprobe',
-  node: process.execPath,
+  node: nodePath,
   edge: ['C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'].find(f => fs.existsSync(f)) || null,
   chrome: ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', path.join(HOME, 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe')].find(f => fs.existsSync(f)) || null,
 };
@@ -85,7 +85,7 @@ function recycleStream(items, onItem) {
   return new Promise(resolve => {
     if (!items.length) return resolve();
     const listFile = path.join(DATA_DIR, `recycle-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
-    writeJson(listFile, items.map(i => ({ path: i.path, size: i.size || 0 })));
+    writeJson(listFile, items.map(i => ({ path: i.path, size: i.size || 0, ...(i.shortcut ? { shortcut: i.shortcut } : {}) })));
     const ps = `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName Microsoft.VisualBasic
@@ -102,6 +102,12 @@ foreach ($i in @($items)) {
   $c = $caps[$i.path.Substring(0, 2).ToUpper()]
   if (-not $c -or $c.nuke -eq 1) { $r = -3 } elseif ([int64]$i.size -gt [int64]($c.max * 0.9)) { $r = -2 } else {
     try {
+      if ($i.shortcut) {
+        if ([IO.File]::GetAttributes([string]$i.path) -band [IO.FileAttributes]::ReparsePoint) { throw 'Shortcut changed; left untouched.' }
+        $current = (New-Object -ComObject WScript.Shell).CreateShortcut([string]$i.path)
+        $file = Get-Item -LiteralPath ([string]$i.path) -Force
+        if ($file.LastWriteTimeUtc.Ticks.ToString() -ne [string]$i.shortcut.stamp -or $file.Length -ne $i.shortcut.size -or $current.TargetPath -ine [string]$i.shortcut.target -or $current.Arguments -cne [string]$i.shortcut.arguments -or $current.WorkingDirectory -ine [string]$i.shortcut.workingDirectory) { throw 'Shortcut changed; left untouched.' }
+      }
       if ([IO.Directory]::Exists([string]$i.path)) {
         [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory([string]$i.path, [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs, [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin, [Microsoft.VisualBasic.FileIO.UICancelOption]::ThrowException)
       } else {
@@ -169,25 +175,127 @@ async function setTreePriority(rootPid,level,cores) {
  const result=await run('powershell.exe',['-NoProfile','-NonInteractive','-Command',script]);
  if(result.code!==0) throw new Error(result.stderr||'Could not apply render protection.');
 }
-const RUN_KEY='HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-const runValue = (r,name) => r.code===0 ? r.stdout.match(new RegExp('^\\s*'+name+'\\s+REG_\\w+\\s+(.+)$','im'))?.[1] || null : null;
 const commandHasPath = (command,file) => {
  const slashes = s => String(s||'').replace(/[\\/]+/g,'/').toLowerCase();
  return new RegExp('(?:^|[\\s"])'+slashes(file).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?=$|[\\s"])').test(slashes(command));
 };
-const ownsStartup = r => ['open.vbs',path.join('server','hub.js'),path.join('scripts','install.mjs')].some(file=>commandHasPath(runValue(r,'VideoHub'),path.join(HUB_DIR,file)));
-async function getAutostart() {return ownsStartup(await run('reg',['query',RUN_KEY,'/v','VideoHub']));}
+function windowsArgs(value) {
+ const args=[]; let text='',quoted=false,active=false; const source=String(value||'');
+ for(let i=0;i<source.length;i++) {
+  const c=source[i];
+  if(c==='\\') { let count=1; while(source[i+1]==='\\'){count++;i++;} if(source[i+1]==='"'){text+='\\'.repeat(Math.floor(count/2));i++;if(count%2)text+='"';else quoted=!quoted;}else text+='\\'.repeat(count);active=true; }
+  else if(c==='"'){quoted=!quoted;active=true;}
+  else if(/\s/.test(c)&&!quoted){if(active){args.push(text);text='';active=false;}}
+  else {text+=c;active=true;}
+ }
+ if(quoted) return null; if(active)args.push(text); return args;
+}
+function launcherInstall(target, args) {
+ if(!path.isAbsolute(target)||!args) return null;
+ const base=path.basename(target).toLowerCase(), same=(a,b)=>a?.toLowerCase()===b;
+ let script=null,kind=null;
+ if(base==='node.exe') {
+  if(args.length===1&&same(path.basename(args[0]),'hub.js')&&same(path.basename(path.dirname(args[0])),'server')) {script=args[0];kind='node';}
+  else if((args.length===2||(args.length===3&&same(args[2],'--server')))&&same(args[1],'open')&&same(path.basename(args[0]),'install.mjs')&&same(path.basename(path.dirname(args[0])),'scripts')) {script=args[0];kind='node';}
+  if(script&&path.isAbsolute(script))return {install:path.dirname(path.dirname(script)),kind};
+ } else if(['wscript.exe','cscript.exe'].includes(base)) {
+  if((args.length===1||(args.length===2&&same(args[1],'--server')))&&same(path.basename(args[0]),'open.vbs')) {script=args[0];kind='legacy';}
+ } else if(['powershell.exe','pwsh.exe'].includes(base)) {
+  let i=0; const options={noprofile:0,nologo:0,noninteractive:0,sta:0,windowstyle:1,executionpolicy:1};
+  while(i<args.length&&args[i].toLowerCase()!=='-file') {const key=args[i].replace(/^-+/,'').toLowerCase();if(!Object.hasOwn(options,key))return null;i+=1+options[key];}
+  if(i<args.length&&i+2===args.length&&same(path.basename(args[i+1]),'open.ps1')) {script=args[i+1];kind='legacy';}
+ } else if(['open.vbs','open.ps1','open.cmd'].includes(base)&&(args.length===0||(args.length===1&&same(args[0],'--server')))) {script=target;kind='legacy';}
+ return script&&path.isAbsolute(script)?{install:path.dirname(script),kind}:null;
+}
+function installOwnership(value) {
+ if(typeof value!=='string')return {owned:false,identityKnown:false,canonicalInstall:null};
+ const lexical=path.resolve(value).toLowerCase()===path.resolve(HUB_DIR).toLowerCase();
+ try {const real=fs.realpathSync?.native||fs.realpathSync;if(typeof real!=='function')throw new Error('unavailable');const canonical=real(value),hub=real(HUB_DIR);return {owned:canonical.toLowerCase()===hub.toLowerCase(),identityKnown:true,canonicalInstall:canonical};}
+ catch{return {owned:lexical,identityKnown:lexical,canonicalInstall:null};}
+}
+async function jsonCommand(script,label) {
+ const r=await run('powershell.exe',['-NoProfile','-NonInteractive','-Command',script]);
+ if(r.code!==0)throw new Error(label+': '+(r.stderr||'Windows command failed').trim().slice(-300));
+ try{return JSON.parse(r.stdout.trim());}catch{throw new Error(label+': Windows returned unreadable data.');}
+}
+async function readRunValue(name) {
+ const value=await jsonCommand("$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.Encoding]::UTF8; $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\\Microsoft\\Windows\\CurrentVersion\\Run'); $value = if ($key) { $key.GetValue("+q(name)+", $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) } else { $null }; [pscustomobject]@{ exists = ($null -ne $value); command = $value } | ConvertTo-Json -Compress",'Could not read login startup');
+ if(typeof value?.exists!=='boolean'||(value.exists&&typeof value.command!=='string'))throw new Error('Login startup has an unsupported value; left unchanged.');
+ return value;
+}
+async function mutateRunValue(name,expected,command) {
+ const file=path.join(DATA_DIR,`startup-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+ writeJson(file,{name,expected,command});
+ const ps=["$ErrorActionPreference = 'Stop'",'[Console]::OutputEncoding = [Text.Encoding]::UTF8',`$request = Get-Content -LiteralPath ${q(file)} -Raw -Encoding UTF8 | ConvertFrom-Json`,
+  "$key = if ($null -ne $request.command) { [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\\Microsoft\\Windows\\CurrentVersion\\Run') } else { [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\\Microsoft\\Windows\\CurrentVersion\\Run', $true) }",
+  '$value = if ($key) { $key.GetValue([string]$request.name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) } else { $null }',
+  "if (($null -ne $value) -ne [bool]$request.expected.exists -or ($null -ne $value -and ($value -isnot [string] -or $value -cne [string]$request.expected.command))) { throw 'Login startup changed; left unchanged.' }",
+  'if ($null -ne $request.command) { $key.SetValue([string]$request.name, [string]$request.command, [Microsoft.Win32.RegistryValueKind]::String) } elseif ($key -and $null -ne $value) { $key.DeleteValue([string]$request.name, $false) }',
+  'if ($key) { $key.Close() }; [pscustomobject]@{ saved = $true } | ConvertTo-Json -Compress'].join('\n');
+ try {const result=await jsonCommand(ps,'Could not change login startup');if(result?.saved!==true)throw new Error('Windows did not confirm login startup was changed.');return result;}finally{try{fs.unlinkSync(file);}catch{}}
+}
+async function getAutostartState() {
+ const empty={exists:false,owned:false,command:null,install:null};
+ try {
+  const value=await readRunValue('VideoHub');
+  const tokens=windowsArgs(value.command), recognized=tokens?.length?launcherInstall(tokens[0],tokens.slice(1)):null;
+  return {...empty,exists:value.exists,command:value.command,install:recognized?.install||null,...installOwnership(recognized?.install)};
+ }catch(e){return {...empty,exists:null,error:e.message};}
+}
+const shortcutFallback=path.join(desktopDir||DESKTOP,'VideoHub.lnk');
+async function shortcutCommand(data) {
+ const file=path.join(DATA_DIR,`shortcut-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+ writeJson(file,{...data,desktop:desktopDir});
+ const ps=["$ErrorActionPreference = 'Stop'",'[Console]::OutputEncoding = [Text.Encoding]::UTF8',`$request = Get-Content -LiteralPath ${q(file)} -Raw -Encoding UTF8 | ConvertFrom-Json`,
+  '$shell = New-Object -ComObject WScript.Shell',"$desktop = if ($request.desktop) { [string]$request.desktop } else { [string]$shell.SpecialFolders.Item('Desktop') }", "if (-not [IO.Path]::IsPathRooted($desktop)) { throw 'Desktop location is unavailable.' }", "$path = [IO.Path]::Combine($desktop, 'VideoHub.lnk')",'$exists = [IO.File]::Exists($path)',
+  "if ([IO.Directory]::Exists($path) -or ($exists -and ([IO.File]::GetAttributes($path) -band [IO.FileAttributes]::ReparsePoint))) { throw 'Desktop shortcut is not a regular file; left unchanged.' }",'$link = $shell.CreateShortcut($path)',
+  "if ($request.action -eq 'write') {",
+  " if ($path -ine [string]$request.expected.path -or $exists -ne [bool]$request.expected.exists) { throw 'Desktop shortcut changed; left unchanged.' }",
+  " if ($exists) { $old = Get-Item -LiteralPath $path -Force; if ($old.LastWriteTimeUtc.Ticks.ToString() -ne [string]$request.expected.stamp -or $old.Length -ne $request.expected.size -or $link.TargetPath -ine [string]$request.expected.target -or $link.Arguments -cne [string]$request.expected.arguments -or $link.WorkingDirectory -ine [string]$request.expected.workingDirectory) { throw 'Desktop shortcut changed; left unchanged.' } }",
+  ' $link.TargetPath = [string]$request.target; $link.Arguments = [string]$request.arguments; $link.WorkingDirectory = [string]$request.workingDirectory; $link.Description = [string]$request.description; $link.IconLocation = [string]$request.icon; $link.WindowStyle = 7; $link.Save()',
+  ' [pscustomobject]@{ saved = $true } | ConvertTo-Json -Compress',
+  '} else {',
+  ' $info = if ($exists) { Get-Item -LiteralPath $path -Force } else { $null }',
+  ' [pscustomobject]@{ path = $path; exists = $exists; target = [string]$link.TargetPath; arguments = [string]$link.Arguments; workingDirectory = [string]$link.WorkingDirectory; stamp = $(if ($info) { $info.LastWriteTimeUtc.Ticks.ToString() } else { $null }); size = $(if ($info) { $info.Length } else { 0 }) } | ConvertTo-Json -Compress',
+  '}'].join('\n');
+ try{return await jsonCommand(ps,'Could not '+(data.action==='write'?'save':'read')+' Desktop shortcut');}finally{try{fs.unlinkSync(file);}catch{}}
+}
+async function getShortcut() {
+ const empty={path:shortcutFallback,exists:false,owned:false,install:null,target:null,arguments:null};
+ try {
+  const value=await shortcutCommand({action:'read'});
+  if(!value||typeof value.exists!=='boolean'||!path.isAbsolute(value.path)||path.basename(value.path).toLowerCase()!=='videohub.lnk')throw new Error('Windows returned an invalid Desktop shortcut location.');
+  if(value.exists&&(typeof value.target!=='string'||typeof value.arguments!=='string'||typeof value.stamp!=='string'||!Number.isFinite(value.size)))throw new Error('Desktop shortcut metadata is unreadable; left unchanged.');
+  const recognized=value.exists?launcherInstall(value.target,windowsArgs(value.arguments)):null;
+  return {...empty,...value,install:recognized?.install||null,kind:recognized?.kind||null,...installOwnership(recognized?.install)};
+ }catch(e){return {...empty,exists:null,error:e.message};}
+}
+async function setShortcut(on) {
+ const current=await getShortcut(); if(current.error)throw new Error(current.error);
+ if(current.exists&&!current.owned)throw new Error('Desktop shortcut belongs to another install; left unchanged.');
+ if(on) {
+  const icon=path.join(HUB_DIR,'data','app.ico');
+  const saved=await shortcutCommand({action:'write',expected:current,target:TOOLS.node,arguments:'"'+path.join(HUB_DIR,'scripts','install.mjs')+'" open',workingDirectory:HUB_DIR,description:'VideoHub local review studio',icon:fs.existsSync(icon)?icon:TOOLS.node});
+  if(saved?.saved!==true)throw new Error('Windows did not confirm the Desktop shortcut was saved.');
+  return {path:current.path,changed:true,owned:true,exists:true};
+ }
+ if(!current.exists)return {path:current.path,changed:false,owned:false,exists:false};
+ const [removed]=await trash([{path:current.path,size:current.size,shortcut:current}]);
+ if(!removed?.ok)throw new Error(removed?.error||'Could not move the Desktop shortcut to the Recycle Bin.');
+ return {path:current.path,changed:true,owned:true,exists:false};
+}
+async function getAutostart() {const state=await getAutostartState();if(state.error)throw new Error(state.error);return state.exists&&state.owned;}
 async function setAutostart(on) {
- const current=await run('reg',['query',RUN_KEY,'/v','VideoHub']);
- if(current.code===0&&!ownsStartup(current)) throw new Error('Autostart belongs to another install; left unchanged.');
- if(!on&&current.code!==0) return;
- const r=await run('reg',on?['add',RUN_KEY,'/v','VideoHub','/t','REG_SZ','/d',`"${TOOLS.node}" "${path.join(HUB_DIR,'scripts','install.mjs')}" open --server`,'/f']:['delete',RUN_KEY,'/v','VideoHub','/f']);
- if(r.code!==0) throw new Error('Could not change login startup: '+(r.stderr||'registry operation failed'));
- return r;
+ const current=await getAutostartState();
+ if(current.error)throw new Error(current.error);
+ if(current.exists&&!current.owned) throw new Error('Autostart belongs to another install; left unchanged.');
+ if(!on&&!current.exists) return;
+ return mutateRunValue('VideoHub',current,on?`"${TOOLS.node}" "${path.join(HUB_DIR,'scripts','install.mjs')}" open --server`:null);
 }
 async function cleanupLegacyAutostart() {
- const value=runValue(await run('reg',['query',RUN_KEY,'/v','RenderGuard']),'RenderGuard');
- if(['VideoHubAgent.exe','RenderGuard.exe'].some(name=>commandHasPath(value,path.join(HUB_DIR,'guard',name)))) return run('reg',['delete',RUN_KEY,'/v','RenderGuard','/f']);
+ const state=await readRunValue('RenderGuard');
+ const executable=windowsArgs(state.command)?.[0];
+ if(executable&&['videohubagent.exe','renderguard.exe'].includes(path.basename(executable).toLowerCase())&&path.basename(path.dirname(executable)).toLowerCase()==='guard'&&installOwnership(path.dirname(path.dirname(executable))).owned) return mutateRunValue('RenderGuard',state,null);
 }
 const shellCommand=cmd=>({file:'cmd.exe',args:['/d','/s','/c','"'+cmd+'"'],opts:{windowsVerbatimArguments:true}});
 const renderSpawnOptions={windowsHide:true};
@@ -204,12 +312,12 @@ function gpuNames() {
 
 const capabilities = () => ({ platform: OS, cpuAffinity: true, cpuLimitReason: null, trashLabel: 'Recycle Bin', fileManager: 'Explorer' });
 const casePath = value => String(value).toLowerCase(), pathKey = value => casePath(path.resolve(value)), availableMemory = () => os.freemem();
-return {casePath,capabilities,pathKey,availableMemory,OS,IS_WIN,IS_MAC,IS_LINUX,dirs,TOOLS,findTool,findBrowser,openUrlWindow,fileOpenPlan,reveal,openPath,pickFolder,trash,recycleStream,volumes,notify,processList,killTree,setTreePriority,getAutostart,setAutostart,cleanupLegacyAutostart,shellCommand,renderSpawnOptions,gpuNames};
+return {getShortcut,setShortcut,getAutostartState,casePath,capabilities,pathKey,availableMemory,OS,IS_WIN,IS_MAC,IS_LINUX,dirs,TOOLS,findTool,findBrowser,openUrlWindow,fileOpenPlan,reveal,openPath,pickFolder,trash,recycleStream,volumes,notify,processList,killTree,setTreePriority,getAutostart,setAutostart,cleanupLegacyAutostart,shellCommand,renderSpawnOptions,gpuNames};
 }
-export const {casePath,desktopEntry,capabilities,pathKey,availableMemory,OS,IS_WIN,IS_MAC,IS_LINUX,dirs,TOOLS,findTool,findBrowser,openUrlWindow,fileOpenPlan,reveal,openPath,pickFolder,trash,recycleStream,volumes,notify,processList,killTree,setTreePriority,getAutostart,setAutostart,cleanupLegacyAutostart,shellCommand,renderSpawnOptions,gpuNames}=createPlatform();
+export const {getShortcut,setShortcut,getAutostartState,casePath,desktopEntry,capabilities,pathKey,availableMemory,OS,IS_WIN,IS_MAC,IS_LINUX,dirs,TOOLS,findTool,findBrowser,openUrlWindow,fileOpenPlan,reveal,openPath,pickFolder,trash,recycleStream,volumes,notify,processList,killTree,setTreePriority,getAutostart,setAutostart,cleanupLegacyAutostart,shellCommand,renderSpawnOptions,gpuNames}=createPlatform();
 
 // Unix integration shares the public Windows contract; only this module selects OS behavior.
-function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, run, runSync, hubDir, kill, delay, uid, now }) {
+function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, run, runSync, hubDir, kill, delay, uid, now, nodePath }) {
   const IS_WIN = false, IS_MAC = OS === 'darwin', IS_LINUX = OS === 'linux';
   const exists = f => { try { return fs.existsSync(f); } catch { return false; } };
   // Login services omit shell setup; include Homebrew's standard locations for the documented macOS install.
@@ -242,7 +350,7 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     return { edge, chrome, chromium, path: nativeExecutable(override) ? override : edge || chrome || chromium };
   }
   const browser = findBrowser();
-  const TOOLS = { ffmpeg: findTool('ffmpeg') || 'ffmpeg', ffprobe: findTool('ffprobe') || 'ffprobe', node: process.execPath, ...browser };
+  const TOOLS = { ffmpeg: findTool('ffmpeg') || 'ffmpeg', ffprobe: findTool('ffprobe') || 'ffprobe', node: nodePath, ...browser };
   function launch(file, args) {
     if (env.VIDEOHUB_NO_WINDOW) return Promise.resolve();
     return new Promise((resolve, reject) => { try { const c = spawn(file, args, { detached: true, stdio: 'ignore' }); c.once('error', reject); c.once('spawn', () => { c.unref(); resolve(); }); } catch (e) { reject(e); } });

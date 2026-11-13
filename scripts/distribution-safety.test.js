@@ -12,9 +12,9 @@ test('the source distribution contains no compiled executable helpers or applica
   const bad = [];
   function walk(dir, relative = '') {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if ((!relative && LOCAL.has(entry.name)) || entry.isDirectory() && ['node_modules', 'render'].includes(entry.name)) continue;
       const name = relative ? relative + '/' + entry.name : entry.name;
-      if (entry.isDirectory() && /\.app$/i.test(entry.name) || entry.isFile() && EXECUTABLE.test(entry.name)) bad.push(name);
+      if ((!relative && LOCAL.has(entry.name)) || entry.isDirectory() && /^examples\/[^/]+\/(?:node_modules|render)$/.test(name)) continue;
+      if (entry.isSymbolicLink() || entry.isDirectory() && /\.app$/i.test(entry.name) || entry.isFile() && EXECUTABLE.test(entry.name)) bad.push(name);
       else if (entry.isDirectory()) walk(path.join(dir, entry.name), name);
     }
   }
