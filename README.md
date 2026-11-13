@@ -59,9 +59,11 @@ A graphical desktop session is needed for windows, folder dialogs, desktop notif
 Download the ZIP and unpack it, or clone the repository into a folder you want to keep. Open that folder in Claude Code or OpenCode and ask it to install VideoHub, or run the installer yourself. Setup asks about the workspace, discovered video folders, graphics encoding, agents, review rule, shortcut, login startup and example film. Re-runs keep existing answers, folders and settings.
 
 ### Windows
-Double-click **SETUP.cmd**. For a preview of the steps, run `powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -DryRun`. `-Yes` accepts recommended answers; each question also has a parameter, such as `-Workspace "D:/Videos/VideoHub"` and `-Agents claude,opencode`.
+Double-click **SETUP.cmd**. It runs the shared Node installer directly. Preview the steps with `node scripts/install.mjs setup --dry-run`; `--yes` accepts recommended answers. Examples: `--workspace "D:/Videos/VideoHub"` and `--agents claude,opencode`. The same answer flags shown below work on every platform.
 
-Open VideoHub from its Desktop shortcut or **open.cmd**. The shortcut starts the installed Node.js executable directly (minimized), so a console button may show in the taskbar for a moment; `open.cmd` shows a short console window, and login startup may show one briefly at sign-in. VBScript and hidden PowerShell are no longer used: update re-points an older shortcut or start-up entry of the same install and moves the old `open.vbs` / `open.ps1` to the Recycle Bin. Start a new session in your selected agent to load `hub_*` tools.
+The `.ps1` setup/update/uninstall files are compatibility forwarders and respect PowerShell's existing policy. If that policy blocks one, use the Node command or `.cmd` entry point; no policy change is needed.
+
+Open VideoHub from its Desktop shortcut or **open.cmd**. The shortcut starts the installed Node.js executable directly; a console window may appear briefly. `open.cmd` and login startup may also show a short console window. The current launch path uses neither VBScript nor hidden PowerShell. Update migrates owned shortcut/startup entries and recycles the old `open.vbs` / `open.ps1` only when those references are safe; custom, unreadable or failed migrations retain the files and show a warning. Start a new session in your selected agent to load `hub_*` tools.
 
 ### Linux and macOS
 Run `chmod +x setup.sh update.sh uninstall.sh open.sh`, then `./setup.sh`. Preview first with `./setup.sh --dry-run --agents opencode`. Setup prints missing-system-tool instructions instead of silently installing system packages.
@@ -71,7 +73,7 @@ Flags: `--yes`, `--workspace PATH`, `--agents claude,opencode`, and `--watch-fou
 On macOS the optional Desktop launcher is **VideoHub.command**, which briefly opens Terminal. There is no unsigned `.app` bundle. If macOS blocks the downloaded launcher, attempt to open it, then go to **System Settings → Privacy & Security → Open Anyway**, confirm, and open it again. You can also launch with `./open.sh` from the installed folder.
 
 ### Claude Code and OpenCode
-Setup detects the installed agents. You can select one or both with `-Agents claude,opencode` on Windows or `--agents claude,opencode` on Linux/macOS. Each receives its own local MCP registration, the shared skill and the optional marked review rule. Restart the selected agent after setup.
+Setup detects the installed agents. Select one or both with `--agents claude,opencode` on every platform; legacy Windows `-Agents` spelling remains accepted. Each receives its own local MCP registration, the shared skill and the optional marked review rule. Restart the selected agent after setup.
 
 OpenCode's rules live in `~/.config/opencode/AGENTS.md` (under `$XDG_CONFIG_HOME` if set). When that file exists OpenCode reads it instead of Claude's global compatibility rules. Setup prints this consequence and never copies unrelated personal rules between agents. Settings → Agent name controls the review button label.
 
@@ -109,27 +111,29 @@ projects, so **never expose port 7788** (no port forwarding, no tunnels, no `0.0
 inside your watched folders, the archive and its own folders.
 
 ### Windows launch and security warnings
-The normal Windows launcher is `open.cmd` → the installed Node.js runtime → `scripts/install.mjs open`. New Desktop shortcuts and login startup also use Node directly. No VBScript launcher or hidden PowerShell is involved, and nothing VideoHub starts at run time overrides the execution policy. Only the visible SETUP.cmd / UPDATE.cmd consoles pass `-ExecutionPolicy Bypass` to their own PowerShell process, because Windows blocks every `.ps1` by default; this changes no setting. Windows system integrations use transparent PowerShell commands and installed Windows/.NET libraries; they do not compile inline C#, call custom P/Invoke helpers or generate executable helper files. The source distribution is checked for compiled executable helpers and `.app` bundles.
+Windows setup, update and uninstall use the shared Node lifecycle commands listed in the security guide. `SETUP.cmd` and `UPDATE.cmd` call Node directly. Normal launch uses `open.cmd` → Node → `scripts/install.mjs open`; new Desktop shortcuts and login startup also use the installed Node executable. None of these paths changes PowerShell's execution policy or adds a policy override. Windows integrations still use transparent commands and installed Windows/.NET libraries where needed: the picker loads WinForms, and Trash uses the installed Recycle Bin API. Nothing compiles inline C# or custom P/Invoke helpers.
 
-These changes simplify the launch and system-integration paths. They do not establish that a security alert is a false positive or guarantee that a vendor will accept every downloaded version. Record the security product, exact warning or detection ID, affected file and VideoHub version before deciding what needs review.
+See [Windows security guidance](docs/WINDOWS-SECURITY.md) for the current behavior, exact-alert evidence and upgrading an older distributed copy.
+
+These changes simplify the launch and system-integration paths. They do not establish that a security alert is a false positive or guarantee that a vendor will accept every downloaded version. Record the security product, exact warning or detection ID, affected file and VideoHub version before deciding what needs review. `node scripts/windows-security.mjs` prints local source fingerprints and retired-helper presence without reading antivirus history or uploading anything; it is not an antivirus scan.
 
 | Warning type | What to distinguish |
 |---|---|
 | Antivirus malware detection | A named threat/detection for a file needs investigation of that exact file and verdict. Keep the blocked item blocked during review. |
 | SmartScreen / unknown publisher / reputation warning | Publisher identity and download reputation are separate from a named malware detection. The exact message identifies which check was involved. |
 | Smart App Control block | This is an application-control trust decision. It is not interchangeable with an antivirus detection or a script-policy error. |
-| PowerShell scripts disabled / unsigned-script error | This is an execution-policy restriction. SETUP.cmd and UPDATE.cmd lift it for their own process only; if a computer policy still blocks them, use an approved signed deployment or the policy process for that computer rather than lowering its protections. |
+| PowerShell scripts disabled / unsigned-script error | This is a script-policy restriction. Use the direct Node lifecycle command instead of the optional `.ps1` compatibility entry; no policy setting needs to change. Other application-control restrictions still need the computer's approved deployment process. |
 
 If an examined distributable still receives a malware detection, use that product vendor's official file-review process for the exact affected file. Review what the submission contains first; VideoHub does not upload files to scanners or vendors automatically. Disabling security protection, adding broad exclusions or bypassing download/script policies is not part of setup.
 
 
 ## Update
-Download the new version and unpack it separately. Windows: double-click `UPDATE.cmd`, or run `update.ps1` with `-DryRun` first. Linux/macOS: from the new copy run `./update.sh --target /path/to/installed/VideoHub --dry-run`, then repeat without `--dry-run`.
+Download the new version and unpack it separately. Windows: double-click `UPDATE.cmd`, or run `node scripts/install.mjs update --target "C:/path/to/installed/VideoHub" --dry-run`, then repeat without `--dry-run`. Linux/macOS: from the new copy run `./update.sh --target /path/to/installed/VideoHub --dry-run`, then repeat without `--dry-run`.
 
-The update backs up replaced code and keeps the workspace, settings, queue, films and notes. Use the existing launcher afterwards and restart your agent session.
+The update backs up replaced code and keeps the workspace, settings, queue, films and notes. Use the existing launcher afterwards and restart your agent session. Downloaded or shared copies do not change automatically: distribute this version and explicitly update each installed copy that needs it.
 
 ## Uninstall
-Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File uninstall.ps1 -DryRun`, then repeat without `-DryRun`. Linux/macOS: `./uninstall.sh --dry-run`, then `./uninstall.sh` from the installed folder.
+Windows: from the installed folder run `node scripts/install.mjs uninstall --dry-run`, then repeat without `--dry-run` or use `UNINSTALL.cmd`. Linux/macOS: `./uninstall.sh --dry-run`, then `./uninstall.sh` from the installed folder.
 
 Only integrations owned by this install are removed: MCP entry, skill, managed rule block, shortcut and login startup. Reversible removals use Trash / Recycle Bin. Films, notes, outputs, settings and the program folder remain.
 
