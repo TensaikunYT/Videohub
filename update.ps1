@@ -1,6 +1,6 @@
 # VideoHub update: copies this folder's code over an existing VideoHub install on this PC.
 # Keeps the PC's own data (data\: settings, render queue, caches) and every project's notes; nothing is deleted.
-#   powershell -ExecutionPolicy Bypass -File update.ps1 [-Target <VideoHub folder>] [-NoAgent] [-NoSkill] [-DryRun]
+#   UPDATE.cmd [-Target <VideoHub folder>] [-NoAgent] [-NoSkill] [-DryRun]   (or: powershell -NoProfile -ExecutionPolicy Bypass -File update.ps1 ...)
 # (With git you can simply `git pull` inside the install instead, then run setup.ps1 again.)
 param([string]$Target, [switch]$NoAgent, [switch]$NoGuard, [switch]$NoSkill, [switch]$DryRun)
 if ($NoGuard) { $NoAgent = $true }
@@ -25,30 +25,30 @@ $Target = (Resolve-Path $Target).Path
 if ($Target.TrimEnd('\') -ieq $src.TrimEnd('\')) { Say 'This folder is the installed VideoHub; nothing to update.' Yellow; exit 0 }
 Say "Installed VideoHub: $Target"
 
-# 2. not while something renders or cleans (the hub would be stopped under it)
-$port = 7788
-try { $cfg = [IO.File]::ReadAllText((Join-Path $Target 'data\config.json')) | ConvertFrom-Json; if ($cfg.port) { $port = [int]$cfg.port } } catch { }
-$up = $false
-try {
-  $ping = Invoke-RestMethod "http://127.0.0.1:$port/api/ping" -TimeoutSec 3; $up = $true
-  $jobs = @(Invoke-RestMethod "http://127.0.0.1:$port/api/jobs" -TimeoutSec 5) | Where-Object { $_.state -in 'running', 'queued' }
-  if ($jobs.Count) { Say "$($jobs.Count) render(s) running or queued. Run this again when they are done; nothing was changed." Yellow; exit 2 }
-  $cl = Invoke-RestMethod "http://127.0.0.1:$port/api/disk/clean" -TimeoutSec 5 -ErrorAction SilentlyContinue
-  if ($cl.state -eq 'running') { Say 'A cleanup is running. Run this again when it is done; nothing was changed.' Yellow; exit 2 }
-} catch { }
+# Resolve junctions in Node before comparing paths: copying nested or aliased installs can recurse into backups.
+$old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+try { & node (Join-Path $src 'scripts\install.mjs') validate-update --source $src --target $Target; $pathsCode = $LASTEXITCODE } finally { $ErrorActionPreference = $old }
+if ($pathsCode -ne 0) { Say 'The update folders are not safely separate; no server was stopped and no code was changed.' Yellow; exit 2 }
 
-# 3. stop this install's hub (only node processes running <Target>\server\hub.js)
-$hubJs = (Join-Path $Target 'server\hub.js')
-$procs = @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Contains($hubJs.ToLower()) -or ($up -and $_.ProcessId -eq $ping.pid) })
-foreach ($p in $procs) { if ($DryRun) { Plan "stop the VideoHub server (pid $($p.ProcessId))" } else { try { Stop-Process -Id $p.ProcessId -Force -Confirm:$false; Say "VideoHub server stopped (pid $($p.ProcessId))" } catch { } } }
-if ($procs.Count -and -not $DryRun) { Start-Sleep -Milliseconds 800 }
+# 2-3. Check ownership and the queue, then stop only this install and verify it exited.
+# The shared helper refuses inaccessible queues, reused PIDs and a port occupied by another installation.
+$stopArgs = @('stop','--target',$Target)
+if ($DryRun) { $stopArgs += '--dry-run' }
+$old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+try { & node (Join-Path $src 'scripts\install.mjs') @stopArgs; $stopCode = $LASTEXITCODE } finally { $ErrorActionPreference = $old }
+if ($stopCode -ne 0) { Say 'The installed server could not be stopped safely; no code was changed.' Yellow; exit 2 }
 
 # 4. backup of the code being replaced (data\update-backup\<time>), then copy
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $bak = Join-Path $Target "data\update-backup\$stamp"
-$items = @('server', 'ui', 'templates', 'skill', 'claude', 'examples', 'engine-hooks', 'docs', 'scripts', 'CLAUDE.md', 'README.md', 'LICENSE', 'SETUP.cmd', 'UPDATE.cmd', 'update.ps1', 'setup.ps1', 'uninstall.ps1', 'open.ps1', 'open.vbs', 'package.json', 'package-lock.json')
+$items = @('server', 'ui', 'templates', 'skill', 'claude', 'examples', 'engine-hooks', 'docs', 'scripts', 'CLAUDE.md', 'AGENTS.md', 'README.md', 'LICENSE', 'SETUP.cmd', 'UPDATE.cmd', 'update.ps1', 'setup.ps1', 'uninstall.ps1', 'open.cmd', 'setup.sh', 'update.sh', 'uninstall.sh', 'open.sh', 'package.json', 'package-lock.json')
 $lockOld = Join-Path $Target 'package-lock.json'; $lockHashOld = if (Test-Path $lockOld) { (Get-FileHash $lockOld).Hash } else { '' }
-if ($DryRun) { Plan "back up the replaced code to $bak and copy: $($items -join ', ')"; Say 'Dry run finished: nothing was changed.' Yellow; exit 0 }
+if ($DryRun) {
+  Plan "back up the replaced code to $bak and copy: $($items -join ', ')"
+  Plan "re-point this install's Desktop shortcut and start-up entry to `"$((Get-Command node).Source)`" `"$Target\scripts\install.mjs`" open"
+  Plan 'move retired files (old guard helper, open.vbs, open.ps1) to the Recycle Bin without running them'
+  Say 'Dry run finished: nothing was changed.' Yellow; exit 0
+}
 New-Item -ItemType Directory -Force $bak | Out-Null
 $n = 0
 foreach ($it in $items) {
@@ -74,32 +74,50 @@ if ($lockHashNew -ne $lockHashOld -or -not (Test-Path (Join-Path $Target 'node_m
   Say 'Packages updated' Green
 } else { Say 'Packages unchanged' }
 
-# 6. render protection is now part of the VideoHub server: an old install's agent program (guard\VideoHubAgent.exe or
-#    guard\RenderGuard.exe, which Windows Smart App Control blocks) is asked to quit (it lifts its CPU limits) and removed
-$gd = Join-Path $Target 'guard'
-foreach ($name in 'VideoHubAgent.exe', 'RenderGuard.exe') {
-  $exe = Join-Path $gd $name; if (-not (Test-Path $exe)) { continue }
-  $running = @(Get-CimInstance Win32_Process -Filter "Name='$name'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $exe })
-  if ($DryRun) { Plan "quit and remove the old render protection program $exe"; continue }
-  if ($running.Count) { try { Start-Process $exe -ArgumentList '--quit' -WindowStyle Hidden -Wait -ErrorAction Stop } catch { $running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } }
-  Remove-Item $exe -Force -ErrorAction SilentlyContinue
-  Say "Old render protection program removed ($name); protection now runs inside VideoHub" Green
+# 6. Launchers: the Desktop shortcut and the "start with Windows" entry of this install used to run
+#    wscript open.vbs -> hidden PowerShell. Both now run the installed Node.js directly (scripts\install.mjs open).
+#    Only entries that belong to this install are changed; everything else is left alone.
+$node = (Get-Command node).Source
+$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'VideoHub.lnk'
+$lnkOld = $false
+if (Test-Path $lnk) {
+  try {
+    $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+    $mine = ([string]$sc.WorkingDirectory).TrimEnd([char]92) -ieq $Target.TrimEnd([char]92) -or $sc.Arguments.IndexOf("$Target\", [StringComparison]::OrdinalIgnoreCase) -ge 0
+    if ($mine) {
+      $sc.TargetPath = $node; $sc.Arguments = "`"$Target\scripts\install.mjs`" open"; $sc.WorkingDirectory = $Target; $sc.WindowStyle = 7
+      $sc.Save(); Say 'Desktop shortcut now starts VideoHub through Node.js (no VBScript, no PowerShell)' Green
+    } elseif ($sc.Arguments -match 'open\.vbs') { $lnkOld = $true }
+  } catch { Say "The Desktop shortcut could not be updated: $($_.Exception.Message)" Yellow; $lnkOld = $true }
 }
-if (-not $DryRun) {
-  Get-ChildItem $gd -Filter '*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue   # its build backups
-  foreach ($f in 'RenderGuard.cs', 'build.ps1') { Remove-Item (Join-Path $gd $f) -Force -ErrorAction SilentlyContinue }
-  Remove-Item (Join-Path $gd 'tests') -Recurse -Force -ErrorAction SilentlyContinue
-  reg delete 'HKCU\Software\Microsoft\Windows\CurrentVersion\Run' /v RenderGuard /f 2>$null | Out-Null
-}
+$old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$runOld = $false
+try {
+  $state = (& node (Join-Path $Target 'scripts\install.mjs') autostart) | ConvertFrom-Json
+  if ($state.enabled) {
+    & node (Join-Path $Target 'scripts\install.mjs') autostart --startup yes | Out-Null
+    if ($LASTEXITCODE -eq 0) { Say '"Start with Windows" entry now starts the server through Node.js' Green } else { $runOld = $true }
+  }
+} catch { $runOld = $true }
+$runValue = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).VideoHub
+if ($runValue -and $runValue.IndexOf("$Target\open.vbs", [StringComparison]::OrdinalIgnoreCase) -ge 0) { $runOld = $true }
 
-# 7. the skill Claude reads (with the install's path filled in)
+# 7a. Retired files go to the Recycle Bin, never run and never hard-deleted: the old render protection program
+#     (guard\VideoHubAgent.exe / RenderGuard.exe, which Windows Smart App Control blocks; a running copy is stopped)
+#     and, when nothing points at them any more, the old open.vbs / open.ps1 launchers.
+$retireArgs = @('retire-legacy', '--target', $Target)
+if (-not ($lnkOld -or $runOld)) { $retireArgs += '--launchers' } else { Say 'open.vbs is kept: a shortcut or start-up entry still uses it.' Yellow }
+& node (Join-Path $Target 'scripts\install.mjs') @retireArgs
+if ($LASTEXITCODE -ne 0) { Say 'Some retired files were left in place (see above); VideoHub works without removing them.' Yellow }
+$ErrorActionPreference = $old
+
+# 7b. Refresh only agent integrations already belonging to this install.
 if (-not $NoSkill) {
-  $sk = Join-Path $env:USERPROFILE '.claude\skills\videohub'
-  New-Item -ItemType Directory -Force $sk | Out-Null
-  foreach ($f in Get-ChildItem (Join-Path $Target 'skill\videohub') -File) { [IO.File]::WriteAllText((Join-Path $sk $f.Name), [IO.File]::ReadAllText($f.FullName).Replace('{{VIDEOHUB_DIR}}', $Target), (New-Object Text.UTF8Encoding $false)) }
-  Say "Skill updated: $sk" Green
+  $agentResult = (& node (Join-Path $Target 'scripts\agents.mjs') --action refresh --agents claude,opencode --hub $Target) | ConvertFrom-Json
+  foreach ($line in $agentResult.actions) { Say ('  ' + $line) DarkGray }
+  foreach ($err in $agentResult.errors) { Say $err Yellow }
 }
 
 Say ''
 Say '== Done. Open VideoHub with the Desktop shortcut (the server starts again with the new code).' Cyan
-Say 'Claude sessions that are already open see the new hub_* tools after they restart them.'
+Say 'Agent sessions that are already open see the new hub_* tools after they restart them.'

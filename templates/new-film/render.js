@@ -35,13 +35,19 @@ function loadPuppeteer() {
   console.error('puppeteer-core not found: run "npm install" in this folder (or render through VideoHub, which ships it).');
   process.exit(2);
 }
-// the browser: CHROME env, else Edge, else Chrome
+// the browser: CHROME env (the film's own choice), else the hub's browser (VIDEOHUB_BROWSER), else Edge/Chrome/Chromium
 function browserPath() {
-  const c = [process.env.CHROME,
+  const c = [process.env.CHROME, process.env.VIDEOHUB_BROWSER,
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
     'C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(os.homedir(), 'AppData/Local/Google/Chrome/Application/chrome.exe')].filter(Boolean);
-  const f = c.find(x => fs.existsSync(x));
-  if (!f) { console.error('No Edge or Chrome found (set CHROME to a Chromium browser).'); process.exit(2); }
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'microsoft-edge-stable']) { if (dir && !/snap|flatpak/i.test(dir)) c.push(path.join(dir, name)); }
+  for (const dir of ['/Applications', path.join(os.homedir(), 'Applications')]) for (const name of ['Google Chrome', 'Microsoft Edge', 'Chromium']) c.push(path.join(dir, name + '.app', 'Contents', 'MacOS', name));
+  const f = c.find(x => {
+    if (!fs.existsSync(x) || /[\\/](snap|flatpak)[\\/]/i.test(x)) return false;
+    try { const real = fs.realpathSync(x), st = fs.statSync(real); if (!st.isFile() || /[\\/](snap|flatpak)[\\/]/i.test(real)) return false; fs.accessSync(real, fs.constants.X_OK); if (st.size < 65536 && /snap run|\/snap\/|flatpak run/.test(String(fs.readFileSync(real, 'utf8')))) return false; } catch { return false; }
+    return true;
+  });
+  if (!f) { console.error('No native Edge, Chrome or Chromium found (set VIDEOHUB_BROWSER to its executable).'); process.exit(2); }
   return f;
 }
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
@@ -58,15 +64,17 @@ const ENCODER_ARGS = {
   amf: [['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18', '-bf', '3'],
     ['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18']],
   qsv: [['-c:v', 'h264_qsv', '-preset', 'veryslow', '-global_quality', '18', '-look_ahead', '1']],
+  vaapi: [['-vaapi_device', '/dev/dri/renderD128', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-qp', '18']],
+  videotoolbox: [['-c:v', 'h264_videotoolbox', '-q:v', '65'], ['-c:v', 'h264_videotoolbox', '-b:v', '10M']],
   x264: [['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16']],
   lossless: [['-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0']],   // for checks only (huge files)
 };
 const probe = args => spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=640x360:r=30', '-frames:v', '5', '-pix_fmt', 'yuv420p', ...args, '-f', 'null', '-'], { stdio: 'ignore', timeout: 20000, windowsHide: true }).status === 0;
 function pickEncoder() {
   const want = String(process.env.VIDEOHUB_ENCODER || 'auto').toLowerCase();
-  const works = n => (ENCODER_ARGS[n] || []).find(probe) || null;
+  const works = n => { const candidates = ENCODER_ARGS[n] || []; return (n === 'videotoolbox' && os.arch?.() !== 'arm64' ? [...candidates].reverse() : candidates).find(probe) || null; };
   if (want === 'x264' || want === 'lossless') return { name: want, args: ENCODER_ARGS[want][0] };
-  for (const n of want === 'auto' ? ['nvenc', 'amf', 'qsv'] : [want]) { const a = works(n); if (a) return { name: n, args: a }; }
+  for (const n of want === 'auto' ? (process.env.VIDEOHUB_ENCODER_ORDER?.split(',') || ({ Linux: ['nvenc', 'vaapi', 'qsv'], Darwin: ['videotoolbox'] })[os.type?.()] || ['nvenc', 'amf', 'qsv']) : [want]) { const a = works(n); if (a) return { name: n, args: a }; }
   if (want !== 'auto') console.log(`encoder ${want} does not work on this PC: using x264`);
   return { name: 'x264', args: ENCODER_ARGS.x264[0] };
 }
@@ -78,9 +86,10 @@ function encoder(input, out) {
   // RGB → YUV with the BT.601 matrix (what x264 got before; old and new chunks of a film match) and the file says so:
   // left to itself AMF marks its output BT.709, so players showed BT.601 colours as BT.709 (a visible shift)
   const size = input === 'raw' && scale !== 1 ? `${Math.round(VW * scale)}:${Math.round(VH * scale)}:flags=bicubic:` : '';
-  const pix = ENC.name === 'lossless' ? ['-pix_fmt', 'rgb24'] : ['-vf', `scale=${size}out_color_matrix=bt601:out_range=tv`, '-pix_fmt', 'yuv420p', '-colorspace', 'smpte170m', '-color_range', 'tv'];
+  const encodeArgs = [...ENC.args], filterAt = encodeArgs.indexOf('-vf'), extraFilter = filterAt >= 0 ? encodeArgs.splice(filterAt, 2)[1] : '';
+  const pix = ENC.name === 'lossless' ? ['-pix_fmt', 'rgb24'] : ['-vf', `scale=${size}out_color_matrix=bt601:out_range=tv${extraFilter ? ',' + extraFilter : ''}`, '-pix_fmt', 'yuv420p', '-colorspace', 'smpte170m', '-color_range', 'tv'];
   if (ENC.name === 'lossless' && size) pix.unshift('-vf', `scale=${size.slice(0, -1)}`);
-  return spawn(FFMPEG, ['-y', '-loglevel', 'error', ...inArgs, ...ENC.args, ...pix, '-r', String(fps), out], { stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
+  return spawn(FFMPEG, ['-y', '-loglevel', 'error', ...inArgs, ...encodeArgs, ...pix, '-r', String(fps), out], { stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
 }
 
 // ---------- page side of the raw path (runs in the page): is the canvas the whole picture? then read it every frame

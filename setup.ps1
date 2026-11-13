@@ -1,6 +1,6 @@
 # VideoHub setup: a short guided install. Safe to run again (it updates instead of duplicating, keeps every answer
 # already given and never moves or overwrites your folders or settings). Works from any folder.
-#   powershell -ExecutionPolicy Bypass -File setup.ps1 [-DryRun] [-Yes] [answers...]
+#   SETUP.cmd [-DryRun] [-Yes] [answers...]   (or: powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 ...)
 #   -DryRun            ask nothing, assume the recommended answers and print every step; change nothing outside this folder
 #   -Yes               accept every recommended answer, ask nothing
 # Answers (each question has one; "ask" = ask when needed, the default):
@@ -11,11 +11,12 @@
 #   -Shortcut ask|yes|no             Desktop shortcut (recommended: yes); -NoShortcut = no
 #   -Startup ask|yes|no              start VideoHub (server only, no window) when you log in (recommended: no); -StartWithWindows = yes
 #   -Example ask|yes|no              add the example film (recommended: yes)
+#   -Agents claude,opencode           agents to integrate (default: detected agents)
 #   -NoAgent                         (ignored: nothing is built any more; kept so old commands still run)
 param([switch]$DryRun, [switch]$Yes, [string]$Workspace = '', [ValidateSet('ask', 'yes', 'no')][string]$WatchFound = 'ask',
   [ValidateSet('ask', 'yes', 'no')][string]$GpuEncoder = 'ask', [ValidateSet('ask', 'yes', 'no')][string]$GlobalRule = 'ask',
   [ValidateSet('ask', 'yes', 'no')][string]$Shortcut = 'ask', [ValidateSet('ask', 'yes', 'no')][string]$Startup = 'ask',
-  [ValidateSet('ask', 'yes', 'no')][string]$Example = 'ask',
+  [ValidateSet('ask', 'yes', 'no')][string]$Example = 'ask', [string[]]$Agents = @(),
   [switch]$NoShortcut, [switch]$NoAgent, [switch]$NoGuard, [switch]$StartWithWindows, [switch]$Test)
 if ($Test) { $DryRun = $true }          # older name
 if ($NoGuard) { $NoAgent = $true }      # older name
@@ -41,7 +42,7 @@ function YesNo($question, $preset, [bool]$recommended) {
   }
 }
 $todo = @()
-$claudeHome = Join-Path $env:USERPROFILE '.claude'
+$agentHelper = Join-Path $hub 'scripts\agents.mjs'
 $init = Join-Path $hub 'scripts\init-config.mjs'
 # answers this PC already gave (so a second run does not ask them again); data\ is per machine, never in git
 $answersFile = Join-Path $hub 'data\setup-answers.json'
@@ -83,9 +84,28 @@ if ($browser) { Say "Browser for rendering: ok ($browser)" Green } else {
   Say "  Then $missing" Yellow
   $todo += 'Install Edge or Chrome (renders use it):  winget install -e --id Google.Chrome   - then double-click SETUP.cmd again'
 }
-$claude = (Get-Command claude.exe, claude.cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source   # not claude.ps1: it is called through cmd
-if (-not $claude) { $claude = Get-ChildItem "$env:LOCALAPPDATA\Claude-Data\*\claude-code\*\*\claude.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName }
-if ($claude) { Say "Claude Code: ok ($claude)" Green } else { Say 'Claude Code was not found. VideoHub works without it, but Claude Code is what writes the films: https://claude.com/claude-code (the Claude tools are registered anyway).' Yellow }
+# Detect only the agent installations requested by the user; both agents share one skill and rule source.
+$found = @(((& node $agentHelper --detect) | ConvertFrom-Json).agents)
+if (-not $Agents.Count -and $answers.agents) { $Agents = @($answers.agents) }
+if (-not $Agents.Count) {
+  if ($found.Count -eq 1) { $Agents = $found }
+  elseif ($quiet) { $Agents = if ($found.Count) { $found } else { @('claude') } }
+  else {
+    Q 'Which coding agents should VideoHub connect to?'
+    $recommended = if ($found.Count) { $found -join ',' } else { 'claude' }
+    while (-not $Agents.Count) {
+      $choice = (Read-Host "  claude, opencode, or claude,opencode [recommended: $recommended]").Trim().ToLower()
+      if (-not $choice) { $choice = $recommended }
+      $parts = @($choice.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+      if ($parts.Count -and -not @($parts | Where-Object { $_ -notin 'claude','opencode' }).Count) { $Agents = $parts }
+      else { Say '  Choose claude, opencode, or claude,opencode.' Yellow }
+    }
+  }
+}
+$Agents = @($Agents | ForEach-Object { $_.Split(',') } | ForEach-Object { $_.Trim().ToLower() } | Select-Object -Unique)
+if (@($Agents | Where-Object { $_ -notin 'claude','opencode' }).Count) { throw 'Agents must be claude, opencode, or claude,opencode.' }
+Keep 'agents' $Agents
+Say ('Coding agents: ' + ($Agents -join ', ')) Green
 
 # 2. packages (inside this folder)
 if ($DryRun) { Plan "npm install in $hub" }
@@ -158,84 +178,34 @@ if ($res.error) { Say $res.error Red; exit 1 }
 foreach ($line in $res.actions) { if ($line -match '^would ') { Plan ($line -replace '^would ', '') } else { Say "  $line" DarkGray } }
 $wsNow = $res.workspace
 
-# 5. MCP server "videohub" for every Claude Code session (user scope)
-$mcp = Join-Path $hub 'server\mcp.js'
-if ($DryRun) { Plan "register the MCP server: claude mcp add --scope user videohub -- node `"$mcp`"  (or write it into $env:USERPROFILE\.claude.json)" }
-else {
-  $registered = $false
-  if ($claude) {
-    # PowerShell 5.1 turns a native program's stderr into errors; these calls may legitimately print to stderr
-    $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    try {
-      cmd /c "`"$claude`" mcp remove videohub --scope user >nul 2>&1"
-      cmd /c "`"$claude`" mcp add --scope user videohub -- node `"$mcp`" >nul 2>&1"
-      $registered = ($LASTEXITCODE -eq 0)
-    } finally { $ErrorActionPreference = $old }
-  }
-  if (-not $registered) {
-    # no CLI: merge into ~/.claude.json ourselves (backup first). Missing: create it; there but not readable JSON: write
-    # nothing and exit 2 (the manual command is shown below), never replace the user's settings with {}
-    $cj = Join-Path $env:USERPROFILE '.claude.json'
-    if (Test-Path $cj) { Copy-Item $cj "$cj.videohub-backup" -Force }
-    $js = "const fs=require('fs'),f=process.argv[1];let j={};if(fs.existsSync(f)){try{j=JSON.parse(fs.readFileSync(f,'utf8').replace(/^\uFEFF/,''))}catch{process.exit(2)}if(!j||typeof j!=='object'||Array.isArray(j))process.exit(2)}j.mcpServers=j.mcpServers||{};j.mcpServers.videohub={type:'stdio',command:'node',args:[process.argv[2]],env:{}};fs.writeFileSync(f,JSON.stringify(j,null,2));"
-    & node -e $js $cj $mcp
-    $registered = ($LASTEXITCODE -eq 0)
-  }
-  if ($registered) { Say 'Claude tools (MCP server "videohub") registered; new Claude Code sessions will see the hub_* tools' Green } else { $todo += 'The MCP server could not be registered: claude mcp add --scope user videohub -- node "' + $mcp + '"' }
-}
-
-# 6. the skill Claude reads (~/.claude/skills/videohub), with this install's path filled in
-$sk = Join-Path $claudeHome 'skills\videohub'
-if ($DryRun) { Plan "copy skill\videohub to $sk (with {{VIDEOHUB_DIR}} = $hub)" }
-else {
-  New-Item -ItemType Directory -Force $sk | Out-Null
-  foreach ($f in Get-ChildItem "$hub\skill\videohub" -File) {
-    $txt = [IO.File]::ReadAllText($f.FullName).Replace('{{VIDEOHUB_DIR}}', $hub)
-    [IO.File]::WriteAllText((Join-Path $sk $f.Name), $txt, (New-Object Text.UTF8Encoding $false))
-  }
-  Say "Skill installed: $sk" Green
-}
-
-# 7. the global rule: every Claude Code session on this PC reviews films in VideoHub before rendering.
-#    Kept between marker lines in ~/.claude/CLAUDE.md, replaced on the next run, removed by uninstall.ps1.
-$cm = Join-Path $claudeHome 'CLAUDE.md'
-$begin = '<!-- videohub:begin (added by VideoHub setup; remove with uninstall.ps1) -->'; $end = '<!-- videohub:end -->'
-$rule = [IO.File]::ReadAllText((Join-Path $hub 'claude\global-rule.md')).Replace('{{VIDEOHUB_DIR}}', $hub).Trim()
-$cur = if (Test-Path $cm) { [IO.File]::ReadAllText($cm) } else { '' }
-$rx = [regex]::Escape($begin) + '[\s\S]*?' + [regex]::Escape($end)
+# 5-7. Agent tools, skill, and the optional review-before-rendering rule.
 $want = $GlobalRule
-if ($want -eq 'ask' -and $cur -match $rx) { $want = 'yes' }                 # added on an earlier run: refreshed, not asked again
-elseif ($want -eq 'ask' -and $answers.globalRule -eq 'no') { $want = 'no' }  # declined on an earlier run
+if ($want -eq 'ask' -and $answers.globalRule) { $want = $answers.globalRule }
 if ($want -eq 'ask') {
-  Q 'Should Claude show you every new film in VideoHub before it renders?'
-  Say '  This adds a short rule to your Claude instructions (~/.claude/CLAUDE.md): Claude opens each new film in' Gray
-  Say '  VideoHub''s live preview and waits for your notes before making the video. uninstall.ps1 removes it again.' Gray
+  Q 'Should your agent show every new film in VideoHub before rendering?'
+  Say '  This adds a short review rule to the selected agents only. Your other rules stay in place.'
   $want = if (YesNo '  Add the rule?' 'ask' $true) { 'yes' } else { 'no' }
 }
 Keep 'globalRule' $want
-if ($want -eq 'yes') {
-  $block = "$begin`r`n$rule`r`n$end"
-  $new = if ($cur -match $rx) { [regex]::Replace($cur, $rx, [System.Text.RegularExpressions.MatchEvaluator] { param($m) $block }) } elseif ($cur.Trim()) { $cur.TrimEnd() + "`r`n`r`n" + $block + "`r`n" } else { $block + "`r`n" }
-  if ($DryRun) { Plan "write this block into $cm (replacing an older VideoHub block if there is one):"; Write-Host $block -ForegroundColor DarkGray }
-  else {
-    New-Item -ItemType Directory -Force $claudeHome | Out-Null
-    if (Test-Path $cm) { Copy-Item $cm "$cm.videohub-backup" -Force }
-    [IO.File]::WriteAllText($cm, $new, (New-Object Text.UTF8Encoding $false))
-    Say "Global rule added to $cm (backup: CLAUDE.md.videohub-backup)" Green
-  }
-} else { Say 'Global rule skipped (run setup again with -GlobalRule yes to add it later).' }
-
-# 8. Desktop shortcut (VideoHub opens through open.vbs: no console window)
+$agentArgs = @('--action','setup','--agents',($Agents -join ','),'--global-rule',$want,'--hub',$hub)
+if ($DryRun) { $agentArgs += '--dry-run' }
+if (-not $st.installed) { $agentArgs += '--set-agent-name' }
+$agentResult = (& node $agentHelper @agentArgs) | ConvertFrom-Json
+foreach ($line in $agentResult.actions) { Say ('  ' + $line) DarkGray }
+foreach ($err in $agentResult.errors) { $todo += $err }
+# 8. Desktop shortcut: runs the installed Node.js directly (scripts\install.mjs open), minimized, so its short-lived
+#    console stays in the taskbar. No VBScript and no hidden PowerShell are involved.
 $desk = [Environment]::GetFolderPath('Desktop'); $lnkPath = Join-Path $desk 'VideoHub.lnk'
 $wantLnk = if ($Shortcut -ne 'ask') { $Shortcut -eq 'yes' } elseif (Test-Path $lnkPath) { $true } elseif ($answers.shortcut -eq 'no') { $false }
   else { Q 'A Desktop shortcut opens VideoHub with a double-click.'; YesNo '  Make the shortcut?' 'ask' $true }
 Keep 'shortcut' $(if ($wantLnk) { 'yes' } else { 'no' })
 if ($wantLnk) {
-  if ($DryRun) { Plan "create the Desktop shortcut $lnkPath -> wscript `"$hub\open.vbs`"" }
+  if ($DryRun) { Plan "create the Desktop shortcut $lnkPath -> `"$node`" `"$hub\scripts\install.mjs`" open" }
   else {
     $wsh = New-Object -ComObject WScript.Shell
     $lnk = $wsh.CreateShortcut($lnkPath)
-    $lnk.TargetPath = "$env:SystemRoot\System32\wscript.exe"; $lnk.Arguments = "`"$hub\open.vbs`""
+    $lnk.TargetPath = $node; $lnk.Arguments = "`"$hub\scripts\install.mjs`" open"
+    $lnk.WindowStyle = 7   # minimized
     $lnk.WorkingDirectory = $hub
     $ico = "$hub\data\app.ico"
     if (-not (Test-Path $ico)) { try { & "$hub\scripts\make-icon.ps1" -Out $ico } catch { } }
@@ -250,12 +220,20 @@ if ($wantLnk) {
 $rk = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $hasRun = $false; try { $hasRun = [bool](Get-ItemProperty $rk -Name VideoHub -ErrorAction Stop) } catch { }
 $wantRun = if ($Startup -ne 'ask') { $Startup -eq 'yes' } elseif ($hasRun) { $true } elseif ($answers.startup) { $answers.startup -eq 'yes' }
-  else { Q 'VideoHub can start quietly when you log in (no window), so Claude''s tools and the render queue are always ready.'; YesNo '  Start VideoHub with Windows?' 'ask' $false }
+  else { Q 'VideoHub can start quietly when you log in (no window), so your agent''s tools and the render queue are always ready.'; YesNo '  Start VideoHub with Windows?' 'ask' $false }
 Keep 'startup' $(if ($wantRun) { 'yes' } else { 'no' })
-if ($wantRun -and -not $hasRun) {
-  $val = "`"$env:SystemRoot\System32\wscript.exe`" `"$hub\open.vbs`" --server"
-  if ($DryRun) { Plan "add the start-up entry $rk\VideoHub = $val" } else { Set-ItemProperty $rk -Name VideoHub -Value $val; Say 'VideoHub starts with Windows (server only, no window)' Green }
-} elseif ($wantRun) { Say 'VideoHub starts with Windows (already set).' Green }
+# The entry runs the installed Node.js directly; an older open.vbs entry of this install is re-pointed (same code as
+# the Renders page switch: server\platform.js). An entry of another install is left alone.
+if ($wantRun) {
+  if ($DryRun) { Plan "set the start-up entry $rk\VideoHub = `"$node`" `"$hub\scripts\install.mjs`" open --server" }
+  else {
+    $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & node (Join-Path $hub 'scripts\install.mjs') autostart --startup yes | Out-Null; $runCode = $LASTEXITCODE
+    $ErrorActionPreference = $old
+    if ($runCode -eq 0) { Say $(if ($hasRun) { 'VideoHub starts with Windows (entry checked).' } else { 'VideoHub starts with Windows (server only, no window)' }) Green }
+    else { $todo += 'The "start with Windows" entry belongs to another VideoHub folder or could not be set; switch it on the Renders page.' }
+  }
+}
 
 # 10. the example film: a 10-second film that shows the whole loop (the same copy as the Welcome panel's button)
 $exDest = Join-Path $wsNow 'films\hello-film'
@@ -281,9 +259,9 @@ else { New-Item -ItemType Directory -Force (Split-Path $answersFile) | Out-Null;
 Say ''
 Say '== Done. What now:' Cyan
 Say "  Your video work lives in  $wsNow  (films, outputs, sounds, thumbnails, archive; README.txt says what each is)."
-if ($wantLnk) { Say '  Open VideoHub with the VideoHub shortcut on your Desktop.' } else { Say "  Open VideoHub: double-click open.vbs in $hub" }
-Say '  Start a NEW Claude Code session (sessions already open do not see VideoHub''s tools).'
+if ($wantLnk) { Say '  Open VideoHub with the VideoHub shortcut on your Desktop.' } else { Say "  Open VideoHub: double-click open.cmd in $hub" }
+Say '  Start a NEW agent session (Claude Code or OpenCode; existing sessions do not see new tools).'
 if ($wantEx -or $exHave) { Say '  First thing to try: click the "hello-film" card in VideoHub, press Space to play it, click a frame to leave a note.' }
-else { Say '  First thing to try: ask Claude Code "make me a 10-second animated title as a VideoHub film" and watch it appear in VideoHub.' }
+else { Say '  First thing to try: ask your agent "make me a 10-second animated title as a VideoHub film" and watch it appear in VideoHub.' }
 if ($DryRun) { Say ''; Say 'Dry run finished: nothing outside this folder was changed.' Yellow }
 if ($todo.Count) { Say ''; Say 'Left for you to do:' Yellow; $todo | ForEach-Object { Say " - $_" Yellow } }
