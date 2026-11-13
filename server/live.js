@@ -1,3 +1,4 @@
+import { norm } from './util.js';
 // Live preview: play a film straight from its code, no render. Our films draw any moment with
 // window.renderOut(t) on fixed-size canvases and set window.READY; render.js only screenshots that.
 // Here the hub serves the project's page at /live/<id>/..., says where its audio is, and tells open
@@ -153,7 +154,7 @@ export function serve(req, res, p, rel) {
 const watchers = new Map();
 // files VideoHub writes itself (the mix with the scene editor's sound levels): not a code change, for a few seconds
 const quiet = new Map();
-export function quietFile(file, ms = 4000) { quiet.set(path.resolve(file).toLowerCase(), Date.now() + ms); }
+export function quietFile(file, ms = 4000) { quiet.set(norm(file), Date.now() + ms); }
 export function watch(p, onChange) {
   if (watchers.has(p.id)) return;
   let timer = null, files = new Set();
@@ -168,7 +169,7 @@ export function watch(p, onChange) {
   try {
     const w = fs.watch(root, { recursive: true }, (ev, name) => {
       if (!name || SKIP.test(name) || /(^|[\\/])tweaks\.json$/i.test(name) || !/\.(m?js|html|css|json|glsl|frag|vert|png|jpe?g|webp|svg|wav|mp3|woff2?|ttf|otf|glb|gltf|bin)$/i.test(name)) return;
-      if (/\.(vhtmp|vhorig\.wav)$/i.test(name) || (quiet.get(path.resolve(root, name).toLowerCase()) || 0) > Date.now()) return;
+      if (/\.(vhtmp|vhorig\.wav)$/i.test(name) || (quiet.get(norm(path.resolve(root, name))) || 0) > Date.now()) return;
       if (!reallyChanged(name)) return;
       invalidateSource(p);
       files.add(name.replace(/\\/g, '/')); clearTimeout(timer);

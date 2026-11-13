@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { testTrash } from './test-trash.js';
 import {
   resolveThumbDir,
   createThumbnail,
@@ -16,7 +16,7 @@ import {
 import { config } from '../config.js';
 
 // Setup temp test directory for global thumbnails
-const testTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-thumb-test-'));
+const { root: testTempDir, recycle } = testTrash('vh-thumb-test-');
 const prevGlobal = config().thumbstudio.globalDir;
 config().thumbstudio.globalDir = testTempDir;
 
@@ -80,12 +80,21 @@ test('create, get, save, duplicate and delete global thumbnail', async () => {
   assert.equal(dup.brief.layers.length, 1);
 
   // 6. Delete (Recycle Bin)
-  const delRes = await deleteThumbnail('_', tid);
+  const delRes = await deleteThumbnail('_', tid, { recycle });
   assert.equal(delRes.ok, true);
   assert.throws(() => getThumbnail('_', tid), /Thumbnail not found/);
+  assert.ok(fs.existsSync(path.join(testTempDir, '.trash', tid, 'brief.json')), 'The thumbnail remains restorable');
 
   // Cleanup dup
-  await deleteThumbnail('_', dup.tid);
+  await deleteThumbnail('_', dup.tid, { recycle });
+});
+
+test('refused Trash operation preserves the thumbnail and reports the error', async () => {
+  const tid = '20261104-safe';
+  await createThumbnail({ tid, project: '_', title: 'Keep this thumbnail' });
+  await assert.rejects(deleteThumbnail('_', tid, { recycle: async items => items.map(i => ({ path: i.path, ok: false, error: 'Trash unavailable' })) }), /Trash unavailable/);
+  assert.equal(getThumbnail('_', tid).title, 'Keep this thumbnail');
+  assert.ok(fs.existsSync(path.join(testTempDir, tid, 'brief.json')));
 });
 
 test('serveThumbnailFile blocks path traversal and forbidden files', () => {
@@ -139,7 +148,7 @@ test('janitor and scan ignore thumbnail folders', async () => {
   const { findCandidates } = await import('../janitor.js');
   const candidates = await findCandidates();
   for (const c of candidates) {
-    assert.equal(c.path.includes('.videohub\\thumbnails'), false, 'Janitor must never offer .videohub/thumbnails');
+    assert.equal(c.path.includes(path.join('.videohub', 'thumbnails')), false, 'Janitor must never offer .videohub/thumbnails');
     assert.equal(c.path.toLowerCase().includes(testTempDir.toLowerCase()), false, 'Janitor must never offer globalDir');
   }
 });

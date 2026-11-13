@@ -2,14 +2,14 @@
 // deletions go to the Recycle Bin, old versions are moved to the archive folder. Nothing is hard-deleted.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { recycleStream } from './platform.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import { index } from './scan.js';
 import * as jobs from './jobs.js';
 import { guardState } from './guard.js';
-import { DATA_DIR, TEMP, powershell, fingerprint, processAlive, shortPath, writeJson, now, isInside } from './util.js';
+import { DATA_DIR, TEMP, fingerprint, processAlive, shortPath, now, isInside, norm } from './util.js';
 
 const DONE = new Set(['approved', 'published', 'archived', 'done']);
 // Presets for "Clean render leftovers in all projects" (each candidate carries one):
@@ -58,13 +58,13 @@ async function mediaIn(dir) {
   return r;
 }
 const exists = p => { try { fs.accessSync(p); return true; } catch { return false; } };
-const cid = s => crypto.createHash('sha1').update(s.toLowerCase()).digest('hex').slice(0, 10);
+const cid = s => crypto.createHash('sha1').update(s).digest('hex').slice(0, 10);
 
 // a project with a render running right now is left alone
 function busyWhy(p) {
   if (jobs.list().some(j => j.project === p.id && (j.state === 'running' || j.state === 'queued'))) return 'a render is in the VideoHub queue';
   try { const g = guardState(); if (g.running && (g.renders || []).some(r => [r.project, r.dir, r.cwd, r.path].some(x => typeof x === 'string' && x && (isInside(x, p.path) || isInside(p.path, x))))) return 'currently rendering'; } catch { }
-  for (const f of ['render\\log.txt', 'render.log', 'render_log.txt']) { try { if (Date.now() - fs.statSync(path.join(p.path, f)).mtimeMs < 10 * 60e3) return 'render log updated in the last 10 minutes'; } catch { } }
+  for (const f of [path.join('render', 'log.txt'), 'render.log', 'render_log.txt']) { try { if (Date.now() - fs.statSync(path.join(p.path, f)).mtimeMs < 10 * 60e3) return 'render log updated in the last 10 minutes'; } catch { } }
   try { if (fs.readdirSync(path.join(p.outDir || p.path, 'render', 'chunks')).some(f => f.endsWith('.tmp.mp4') && Date.now() - fs.statSync(path.join(p.outDir || p.path, 'render', 'chunks', f)).mtimeMs < 10 * 60e3)) return 'unfinished render chunk found (a render may still be running)'; } catch { }
   return null;
 }
@@ -91,9 +91,9 @@ export async function findCandidates(force = false) {
 }
 async function computeCandidates() {
   const cfg = config(), out = [];
-  const globalThumb = path.resolve(cfg.thumbstudio?.globalDir || '').toLowerCase();
+  const globalThumb = norm(cfg.thumbstudio?.globalDir || '');
   const isThumbnailItem = targetPath => {
-    const res = path.resolve(targetPath).toLowerCase();
+    const res = norm(targetPath);
     if (globalThumb && (res === globalThumb || res.startsWith(globalThumb + path.sep))) return true;
     if (res.includes(path.sep + '.videohub' + path.sep + 'thumbnails') || res.includes('/.videohub/thumbnails')) return true;
     return false;
@@ -103,10 +103,10 @@ async function computeCandidates() {
     if (isThumbnailItem(c.path)) return;
     const p = c.project && index().projects.find(p => p.id === c.project);
     const keep = p ? (p.outputs || []).filter(o => o.rel === p.latest || o.role === 'final' || o.role === 'web').map(o => o.path) : [];
-    if (p && c.action === 'archive' && p.outputs.some(o => o.rel === p.latest && path.resolve(o.path).toLowerCase() === path.resolve(c.path).toLowerCase())) return;
-    if (c.action !== 'archive' && keep.some(f => c.dir ? isInside(f, c.path) : path.resolve(f).toLowerCase() === path.resolve(c.path).toLowerCase())) return;
-    const k = c.path.toLowerCase(); if (paths.has(k) || !exists(c.path)) return;   // a silent render is also a byte duplicate: list it once
-    paths.add(k); out.push({ id: cid(c.action + c.path), checked: true, ...c });
+    if (p && c.action === 'archive' && p.outputs.some(o => o.rel === p.latest && norm(o.path) === norm(c.path))) return;
+    if (c.action !== 'archive' && keep.some(f => c.dir ? isInside(f, c.path) : norm(f) === norm(c.path))) return;
+    const k = norm(c.path); if (paths.has(k) || !exists(c.path)) return;   // a silent render is also a byte duplicate: list it once
+    paths.add(k); out.push({ id: cid(c.action + norm(c.path)), checked: true, ...c });
   };
   for (const p of index().projects) {
     await breather();
@@ -190,7 +190,7 @@ async function computeCandidates() {
     }
     // 5. chunks / parts of a finished film (needed only for partial re-renders while still being reviewed)
     if (DONE.has(p.status) && !p.statusAuto && !(p.notesOpen > 0) && newestFinal) {
-      for (const d of ['render\\chunks', 'render\\preview']) {
+      for (const d of [path.join('render', 'chunks'), path.join('render', 'preview')]) {
         const full = path.join(p.outDir || p.path, d); if (!exists(full)) continue;
         const s = await dirSize(full); if (s.size < 20 << 20) continue;
         add({ rule: 'chunks', preset: 'deep', project: p.id, projectName: p.name, path: full, size: s.size, dir: true, action: 'recycle', checked: !p.statusAuto,
@@ -228,7 +228,7 @@ async function computeCandidates() {
   // a file inside a folder that goes anyway is not counted twice
   const dirs = out.filter(c => c.dir && c.preset);
   skippedBusy = skipped;
-  return out.filter(c => !dirs.some(d => d !== c && isInside(c.path, d.path) && c.path.toLowerCase() !== d.path.toLowerCase()));
+  return out.filter(c => !dirs.some(d => d !== c && isInside(c.path, d.path) && norm(c.path) !== norm(d.path)));
 }
 
 // per project: what the films take vs what the presets would free
@@ -277,71 +277,12 @@ function why(code) {
   return `Windows error code ${code}.`;
 }
 
-// to the Recycle Bin through SHFileOperation with no UI at all (FOF_NOERRORUI: a hidden error dialog used to be able
-// to hang the run), one PowerShell for the whole list, one result line per item as it goes. Items bigger than the
-// Bin of their drive are refused: Windows would delete those permanently without asking.
-function recycleStream(items, onItem) {
-  return new Promise(resolve => {
-    if (!items.length) return resolve();
-    const listFile = path.join(DATA_DIR, `recycle-${Date.now()}.json`);
-    writeJson(listFile, items.map(i => ({ path: i.path, size: i.size || 0 })));
-    const ps = `
-$ErrorActionPreference = 'Stop'
-Add-Type -TypeDefinition @"
-using System; using System.Runtime.InteropServices;
-public static class VhBin {
-  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-  struct OP { public IntPtr hwnd; public uint wFunc; public string pFrom; public string pTo; public ushort fFlags; public bool aborted; public IntPtr maps; public string title; }
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SHFileOperation(ref OP op);
-  public static int Recycle(string p) {
-    var op = new OP(); op.wFunc = 3; op.pFrom = p + "\\0\\0"; op.fFlags = (ushort)(0x40 | 0x10 | 0x400 | 0x4 | 0x200);
-    int r = SHFileOperation(ref op); if (r == 0 && op.aborted) r = -1; return r;
-  }
-}
-"@
-$caps = @{}
-foreach ($v in Get-CimInstance Win32_Volume) {
-  if (-not $v.DriveLetter) { continue }
-  $g = [regex]::Match($v.DeviceID, '\\{[^}]+\\}').Value
-  $k = Get-ItemProperty -LiteralPath "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\BitBucket\\Volume\\$g" -ErrorAction SilentlyContinue
-  if ($k) { $caps[$v.DriveLetter.ToUpper()] = @{ max = [int64]$k.MaxCapacity * 1MB; nuke = [int]$k.NukeOnDelete } }
-}
-$items = Get-Content -LiteralPath '${listFile.replace(/'/g, "''")}' -Raw -Encoding UTF8 | ConvertFrom-Json
-$n = 0
-foreach ($i in @($items)) {
-  $c = $caps[$i.path.Substring(0, 2).ToUpper()]
-  if (-not $c -or $c.nuke -eq 1) { $r = -3 } elseif ([int64]$i.size -gt [int64]($c.max * 0.9)) { $r = -2 } else { try { $r = [VhBin]::Recycle($i.path) } catch { $r = -1 } }
-  [Console]::Out.WriteLine(([pscustomobject]@{ n = $n; code = $r } | ConvertTo-Json -Compress)); [Console]::Out.Flush()
-  $n++
-}`;
-    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], { windowsHide: true });
-    let buf = '', err = '', seen = 0, timer = null;
-    // a stuck shell operation must not hold the run forever: 5 min without a result line ends it
-    const arm = () => { clearTimeout(timer); timer = setTimeout(() => { try { p.kill(); } catch { } }, 5 * 60e3); };
-    arm();
-    p.stdout.on('data', d => {
-      buf += d; let k;
-      while ((k = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, k).trim(); buf = buf.slice(k + 1);
-        if (!line.startsWith('{')) continue;
-        try { const j = JSON.parse(line); seen = Math.max(seen, j.n + 1); onItem(items[j.n], j.code); arm(); } catch { }
-      }
-    });
-    p.stderr.on('data', d => { err += d; });
-    p.on('close', () => {
-      clearTimeout(timer); try { fs.unlinkSync(listFile); } catch { }
-      for (let i = seen; i < items.length; i++) onItem(items[i], null, (err.trim().split('\n').pop() || 'PowerShell stopped (timeout or error).').slice(0, 300));
-      resolve();
-    });
-  });
-}
-
 // old versions: copy (async, so the hub keeps answering), check, then remove the original
 async function archiveOne(i) {
   const root = config().archiveDir;
-  const rel = shortPath(i.path).replace(/^~\\/, '').replace(/^[A-Za-z]:\\/, '');
+  const rel = shortPath(i.path).replace(/^~[\\/]+/, '').replace(/^[A-Za-z]:[\\/]+/, '').replace(/^[\\/]+/, '');
   let dest = path.join(root, rel);
-  for (let k = 2; fs.existsSync(dest); k++) dest = path.join(root, rel.replace(/(\.[^.\\]+)?$/, m => `_${k}${m}`));   // keep the older archived copy
+  for (let k = 2; fs.existsSync(dest); k++) dest = path.join(root, rel.replace(/(\.[^.\\/]+)?$/, m => `_${k}${m}`));   // keep the older archived copy
   await fsp.mkdir(path.dirname(dest), { recursive: true });
   await fsp.copyFile(i.path, dest, fs.constants.COPYFILE_EXCL);
   const a = fs.statSync(i.path), b = fs.statSync(dest);
@@ -357,7 +298,7 @@ export async function recyclePaths(items) {
   await recycleStream(items, (it, code, err) => { res.set(it.path, code === 0 ? null : (err || why(code))); });
   const out = items.map(it => ({ path: it.path, ok: !exists(it.path), error: exists(it.path) ? (res.get(it.path) || 'Still on disk.') : null }));
   for (const r of out) logLine({ action: 'recycle-project', path: r.path, ok: r.ok, error: r.error || undefined });
-  if (cache) cache.list = cache.list.filter(c => !items.some(it => isInside(c.path, it.path) || c.path.toLowerCase() === it.path.toLowerCase()));
+  if (cache) cache.list = cache.list.filter(c => !items.some(it => isInside(c.path, it.path) || norm(c.path) === norm(it.path)));
   return out;
 }
 
@@ -377,7 +318,7 @@ async function runJob(ids) {
   // the list the user looked at (cached); only when it is gone is it counted again
   const all = cache?.list || await findCandidates();
   const want = new Set(ids), seen = new Set();
-  let pick = all.filter(c => want.has(c.id) && !seen.has(c.path.toLowerCase()) && seen.add(c.path.toLowerCase()));
+  let pick = all.filter(c => want.has(c.id) && !seen.has(norm(c.path)) && seen.add(norm(c.path)));
   // something inside a folder that is going anyway goes with it
   const dirs = pick.filter(c => c.dir).map(c => c.path);
   pick = pick.filter(c => !dirs.some(d => d !== c.path && isInside(c.path, d)));

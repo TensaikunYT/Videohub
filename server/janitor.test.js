@@ -4,6 +4,16 @@ import os from 'node:os';
 import test from 'node:test';
 import path from 'node:path';
 
+test('cleanup detects a recently updated render log with native path separators', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'videohub-cleanup-log-'));
+  try {
+    fs.mkdirSync(path.join(root, 'render'));
+    fs.writeFileSync(path.join(root, 'render', 'log.txt'), 'render in progress');
+    const { busyWhy } = await import('./janitor.js');
+    assert.equal(busyWhy({ id: 'native-log-fixture', path: root }), 'render log updated in the last 10 minutes');
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
 test('cleanup preserves finals and review material and only releases approved chunks', async () => {
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'videohub-cleanup-test-'));
 fs.mkdirSync(root,{recursive:true});

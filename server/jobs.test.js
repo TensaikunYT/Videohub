@@ -6,13 +6,13 @@ import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { refersToHub, isInside } from './util.js';
-import { ENCODERS, LABELS, encoderEnv } from './encoders.js';
+import { ENCODERS, LABELS, PROBE_ORDER, encoderEnv } from './encoders.js';
 
 // Run the actual queue with in-memory files and fake child processes: never renders a film.
 const code = fs.readFileSync(new URL('./jobs.js', import.meta.url), 'utf8')
   .replace(/^import .+;\r?$/gm, '').replace(/\bexport /g, '');
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
-function harness() {
+function harness(platform = {}) {
   const base = path.resolve('.test-tmp', 'queue-fixture');
   const files = new Set(), children = [], timers = [], events = [], log = [];
   let pid = 100, workers = 1, maxParallel = 1, guard = { running: false }, encoder = 'auto';
@@ -23,24 +23,29 @@ function harness() {
     children.push(child); return child;
   };
   const ctx = {
-    fs: { existsSync: file => files.has(file), mkdirSync: dir => files.add(dir),
+    fs: { existsSync: file => files.has(file), mkdirSync: dir => files.add(dir), statSync: () => ({ mtimeMs: 100 }),
       readdirSync: dir => [...files].filter(file => path.dirname(file) === dir).map(file => path.basename(file)),
       renameSync: (a, b) => { if (files.has(b)) throw Object.assign(new Error('EPERM'), { code: 'EPERM' }); for (const x of [...files]) if (x === a || x.startsWith(a + path.sep)) { files.delete(x); files.add(b + x.slice(a.length)); } },   // like Windows: never onto an existing name
       writeFileSync: file => files.add(file), appendFileSync() {}, copyFileSync: (a, b) => files.add(b),
       createWriteStream: () => ({ write: value => log.push(String(value)), end() {} }),
       promises: { copyFile: async (a, b) => files.add(b) } },
     path, spawn, randomUUID, DATA_DIR: path.join(base, 'data'), TOOLS: { node: 'node', ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' },
+    renderSpawnOptions: { windowsHide: true },
+    findBrowser: () => ({ path: '/tools/browser' }),
+    shellCommand: cmd => ({ file: 'cmd.exe', args: ['/d', '/s', '/c', '"' + cmd + '"'], opts: { windowsVerbatimArguments: true } }),
+    killTree: async pid => { spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }); },
     process: { env: {} }, setTimeout: fn => { timers.push(fn); return timers.length; },
     readJson: (file, fallback) => file.endsWith('project.json') ? { render: { workers } }
       : file.endsWith('manifest.json') ? { dur: 2, fps: 60, chunkFrames: 120, chunkSec: 2 } : fallback,
-    writeJson() {}, config: () => ({ maxParallelRenders: maxParallel, render: { encoder } }), ENCODERS, LABELS, encoderEnv, project: id => projects.get(id),
-    guardState: () => guard, guardTrack: () => { }, ramHogsNow: async () => [], ramNote: () => null,
+    writeJson() {}, config: () => ({ maxParallelRenders: maxParallel, render: { encoder } }), ENCODERS, LABELS, PROBE_ORDER, encoderEnv, project: id => projects.get(id),
+    guardState: () => guard, guardTrack: () => { }, guardUntrack: () => { }, ramHogsNow: async () => [], ramNote: () => null,
     vhDir: p => path.join(p.path, '.videohub'), listNotes: () => [], updateNote() {},
     linkOutput: () => null, rescanProject: async () => {}, now: () => new Date().toISOString(),
     pLimit: async (items, n, fn) => Promise.all(items.map(fn)), pickFolderWin() {},
     HUB_DIR: base, audioOf: p => { const f = path.join(p.path, 'audio', 'mix.wav'); return files.has(f) ? f : null; }, refersToHub: s => refersToHub(s, base), isInside,   // the film's own mix, when the test put one there
+    ...platform,
   };
-  vm.createContext(ctx); vm.runInContext(code + '\nglobalThis.queue = {create,cancel,approve,get,pump,spawnLogged,runJob,recipe,procs,executing,onJob};', ctx);
+  vm.createContext(ctx); vm.runInContext(code + '\nglobalThis.queue = {create,cancel,approve,get,pump,spawnLogged,runJob,recipe,procs,executing,onJob,routes};', ctx);
   ctx.queue.onJob(event => events.push(event));
   return { ...ctx.queue, children, events, files, log, projects, timers,
     setWorkers: value => { workers = value; }, setGuard: value => { guard = value; }, setParallel: value => { maxParallel = value; }, setEncoder: value => { encoder = value; },
@@ -100,6 +105,23 @@ test('an English render takes audio/mix_en.wav and never the other mix', async (
   await h.close(mux); assert.equal(h.get(job.id).state, 'done');
 });
 
+test('an English render cannot take a recently edited default-language mix', async () => {
+  const h = harness({ readJson: (file, fallback) => file.endsWith('project.json') ? { render: { workers: 1 } }
+    : file.endsWith('manifest.json') ? { dur: 2, fps: 60, chunkFrames: 120, chunkSec: 2 }
+      : file.endsWith('sound.json') ? { written: 100, entries: 1 } : fallback });
+  const base = h.projects.get('p1').path;
+  h.files.add(path.join(base, 'audio', 'mix.wav')); h.files.add(path.join(base, 'audio', 'mix_en.wav'));
+  await renderUpToSound(h, { env: { FILMLANG: 'en' } });
+  const args = h.children.at(-1).args;
+  assert.ok(args.includes(path.join(base, 'audio', 'mix_en.wav'))); assert.ok(!args.includes(path.join(base, 'audio', 'mix.wav')));
+});
+
+test('studio audio muxing receives the same language options as its rendered picture', async () => {
+  const h = harness(); await h.create({ project: 'p1', mode: 'full', env: { FILMLANG: 'en' } }); await flush();
+  await h.close(h.children[0]); await h.close(h.children.at(-1));
+  const mux = h.children.at(-1); assert.ok(mux.args.includes('--mux')); assert.equal(mux.opts.env.FILMLANG, 'en');
+});
+
 test('no mix and no earlier video with sound: the render fails instead of making a silent film', async () => {
   const h = harness(); const { job } = await renderUpToSound(h);
   assert.equal(h.children.at(-1).cmd, 'ffprobe'); await h.close(h.children.at(-1), '2.0\n');
@@ -125,6 +147,19 @@ test('cancelled render retains the queue slot until child exit and stays cancell
   assert.equal(h.events.some(e => e.type === 'failed'), false); assert.equal(h.cancel(job.id), false);
 });
 
+test('a cancelled root exiting cannot release the queue before its process tree finishes stopping', async () => {
+  let stopped;
+  const h = harness({ killTree: () => new Promise(resolve => { stopped = resolve; }) });
+  const first = await h.create({ project: 'p1', mode: 'full' }); await flush();
+  const root = h.children[0]; h.cancel(first.id);
+  const second = await h.create({ project: 'p2', mode: 'full' }); await flush();
+  await h.close(root, '', 1); await h.pump(); await flush();
+  assert.equal(h.executing.size, 1); assert.equal(h.get(second.id).state, 'queued');
+  await assert.rejects(h.create({ project: 'p1', mode: 'full' }), e => e.code === 409);
+  stopped(); await flush(); await h.pump(); await flush();
+  assert.equal(h.get(second.id).state, 'running'); assert.equal(h.get(first.id).state, 'cancelled');
+});
+
 test('cancellation during mux kills that process and does not register an output', async () => {
   const h = harness(), job = await h.create({ project: 'p1', mode: 'full' }); await flush();
   await h.close(h.children[0]); await h.close(h.children.at(-1));
@@ -142,6 +177,17 @@ test('split stdout records retain progress and concurrent validation children st
   assert.equal(h.procs.get(job.id).size, 2); await h.close(probe, '120,\n'); assert.equal((await second).stdout, '120,\n');
   assert.ok(h.procs.get(job.id).has(child)); await h.close(child, 'chunk 1 ok, 2 done of 2');
   assert.equal((await result).code, 0); assert.equal(job.progress, 0.99); assert.equal(h.procs.has(job.id), false);
+});
+
+test('closed and failed children immediately remove only their own render-protection tracking token', async () => {
+  const tracked = [], removed = [];
+  const h = harness({ guardTrack: pid => { const token = { pid }; tracked.push(token); return token; }, guardUntrack: (pid, token) => removed.push([pid, token]) });
+  const first = h.spawnLogged({ id: 'closed', state: 'running', log: 'memory.log' }, 'node', []), a = h.children.at(-1);
+  await h.close(a, '', 1); await first;
+  const second = h.spawnLogged({ id: 'error', state: 'running', log: 'memory.log' }, 'missing', []), b = h.children.at(-1);
+  b.emit('error', new Error('not found')); b.emit('close', 1); await second;
+  assert.equal(removed.length, 2); assert.equal(removed[0][0], a.pid); assert.equal(removed[0][1], tracked[0]);
+  assert.equal(removed[1][0], b.pid); assert.equal(removed[1][1], tracked[1]);
 });
 
 test('spawn errors settle once and invalid worker counts are rejected before starting processes', async () => {
@@ -189,11 +235,11 @@ test('a failed or cancelled partial render puts the backed-up chunks back and ne
 });
 
 test('renders by path: a film in Documents\\VideoHub\\films is not ours; one waiting timer however often pump runs', async () => {
-  const film = String.raw`C:\Users\x\Documents\VideoHub\films\x`, hub = path.resolve('.test-tmp', 'Some Install');
-  assert.equal(refersToHub('node render.js 2 ' + film), false); assert.equal(refersToHub('"' + film + String.raw`\render.js"`), false);
-  assert.equal(refersToHub(film, String.raw`C:\Users\x\Documents\VideoHub`), true);   // only when the install really is that folder
+  const workspace = path.resolve('.test-tmp', 'Documents', 'VideoHub'), film = path.join(workspace, 'films', 'x'), hub = path.resolve('.test-tmp', 'Some Install');
+  assert.equal(refersToHub('node render.js 2 ' + film, hub), false); assert.equal(refersToHub('"' + film + String.raw`\render.js"`, hub), false);
+  assert.equal(refersToHub(film, workspace), true);   // only when the install really is that folder
   assert.equal(refersToHub('node "' + hub + String.raw`\server\cli.js" hub_live`, hub), true);
-  assert.equal(refersToHub('ffmpeg -i x ' + hub.split(path.sep).join('/').toUpperCase() + '/data/proxy/a.mp4', hub), true);
+  assert.equal(refersToHub('ffmpeg -i x ' + hub.split(path.sep).join('/') + '/data/proxy/a.mp4', hub), true);
   assert.equal(refersToHub('node ' + hub + String.raw`2\server\cli.js`, hub), false);
   const h = harness();
   h.setGuard({ running: true, renders: [{ rootPid: 1, cmd: 'node render.js 2', cwd: film, paused: false }] });
@@ -212,4 +258,32 @@ test('render scripts get the encoder from Settings as VIDEOHUB_ENCODER, unless t
   const h2 = harness(); h2.projects.get('p1').studio = null; h2.setEncoder('amf');
   await h2.create({ project: 'p1', mode: 'full', env: { VIDEOHUB_ENCODER: 'x264' } }); await flush();
   assert.equal(h2.children[0].opts.env.VIDEOHUB_ENCODER, 'x264');
+});
+
+test('Unix command jobs retain approval, use the platform shell and start an isolated process group', async () => {
+  const h = harness({ renderSpawnOptions: { detached: true }, shellCommand: cmd => ({ file: '/bin/sh', args: ['-c', cmd], opts: {} }) });
+  const cmd = 'node render.js "a b"', held = await h.create({ project: 'p1', mode: 'command', cmd }); await flush();
+  assert.equal(held.needsApproval, true); assert.equal(h.children.length, 0);
+  h.approve(held.id); await flush(); const child = h.children[0];
+  assert.equal(child.cmd, '/bin/sh'); assert.deepEqual([...child.args], ['-c', cmd]);
+  assert.equal(child.opts.detached, true); assert.equal(child.opts.windowsVerbatimArguments, undefined);
+});
+
+test('render scripts receive the discovered browser and preserve a per-job override', async () => {
+  const h = harness(); await h.create({ project: 'p1', mode: 'full' }); await flush();
+  assert.equal(h.children[0].opts.env.VIDEOHUB_BROWSER, '/tools/browser');
+  assert.equal(h.children[0].opts.env.FFMPEG, 'ffmpeg'); assert.equal(h.children[0].opts.env.FFPROBE, 'ffprobe');
+  assert.equal(h.children[0].opts.env.VIDEOHUB_ENCODER_ORDER, PROBE_ORDER.join(','));
+  const custom = harness(); await custom.create({ project: 'p1', mode: 'full', env: { VIDEOHUB_BROWSER: '/custom/browser', FFMPEG: '/custom/ffmpeg' } }); await flush();
+  assert.equal(custom.children[0].opts.env.VIDEOHUB_BROWSER, '/custom/browser');
+  assert.equal(custom.children[0].opts.env.FFMPEG, '/custom/ffmpeg');
+  const rejected = harness({ process: { env: { VIDEOHUB_BROWSER: '/snap/bin/chromium' } }, findBrowser: () => ({ path: null }) });
+  await rejected.create({ project: 'p1', mode: 'full' }); await flush(); assert.equal(rejected.children[0].opts.env.VIDEOHUB_BROWSER, undefined);
+});
+
+test('folder picker reports an unsupported dialog at the top level for the UI text fallback', async () => {
+  const h = harness({ pickFolderWin: async () => ({ unsupported: true }) }), handlers = new Map();
+  h.routes((method, url, fn) => handlers.set(method + ' ' + url, fn), async req => req);
+  const result = await handlers.get('POST /api/pick-folder')({ start: '/home/me' });
+  assert.equal(result.unsupported, true); assert.equal(result.path, undefined);
 });

@@ -14,14 +14,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULTS, DEFAULT_BASE, WORKSPACE_FOLDERS, discoverRoots } from '../server/config.js';
 import { ENCODERS, detectEncoders } from '../server/encoders.js';
+import { IS_WIN } from '../server/platform.js';
 
 export const HUB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const low = p => path.resolve(p).toLowerCase();
-const inside = (c, p) => low(c) === low(p) || low(c).startsWith(low(p).replace(/\\$/, '') + '\\');
+const low = p => IS_WIN ? path.resolve(p).toLowerCase() : path.resolve(p);
+const inside = (c, p) => { const r = path.relative(low(p), low(c)); return !r || (!r.startsWith('..' + path.sep) && r !== '..' && !path.isAbsolute(r)); };
 
 export const README = `This is your VideoHub workspace: everything VideoHub makes lives here.
 
-films        your film projects, one folder per film (Claude Code builds new films here)
+films        your film projects, one folder per film (your coding agent builds new films here)
 outputs      every finished render, one folder per day (hard links: no extra disk space)
 sounds       your own music beds and sound effects, for "Add sound" in the review timeline
 thumbnails   thumbnails that do not belong to one film (Thumbnail Studio)
@@ -32,11 +33,12 @@ VideoHub never deletes anything here by itself. Settings > Folders shows and cha
 
 // null when the folder can be the workspace, else why not (plain words for setup)
 export function checkWorkspace(p, hubDir = HUB) {
-  if (typeof p !== 'string' || !p.trim()) return 'Type a folder, for example D:\\Videos\\VideoHub.';
+  const example = IS_WIN ? 'D:\\Videos\\VideoHub' : '/home/me/Videos/VideoHub';
+  if (typeof p !== 'string' || !p.trim()) return 'Type a folder, for example ' + example + '.';
   p = p.trim().replace(/^"(.*)"$/, '$1');
-  if (!/^([a-zA-Z]:[\\/]|\\\\[^\\]+\\[^\\]+)/.test(p)) return 'Type a full path that starts with a drive letter, for example D:\\Videos\\VideoHub.';
+  if (!path.isAbsolute(p)) return 'Type a full path, for example ' + example + '.';
   const r = path.resolve(p);
-  if (path.parse(r).root.toLowerCase() === (r.endsWith('\\') ? r : r + '\\').toLowerCase()) return 'Pick a folder, not a whole drive (for example ' + r.replace(/\\?$/, '\\') + 'VideoHub).';
+  if (low(path.parse(r).root) === low(r)) return 'Pick a folder, not a whole drive or filesystem root (for example ' + path.join(r, 'VideoHub') + ').';
   if (inside(r, hubDir)) return 'Pick a folder outside the VideoHub program folder (updates replace that folder).';
   let a = r; while (!fs.existsSync(a)) { const up = path.dirname(a); if (up === a) return 'The drive ' + path.parse(r).root + ' does not exist on this PC.'; a = up; }
   try { if (!fs.statSync(a).isDirectory()) return a === r ? 'That is a file, not a folder.' : a + ' is a file, not a folder.'; } catch { return 'That folder cannot be read.'; }
@@ -45,7 +47,13 @@ export function checkWorkspace(p, hubDir = HUB) {
 
 function readSaved(file) {
   if (!fs.existsSync(file)) return { saved: null };
-  try { const j = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('not an object'); return { saved: j }; }
+  try {
+    const j = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('not an object');
+    if (j.baseDir != null && (typeof j.baseDir !== 'string' || !path.isAbsolute(j.baseDir))) throw new Error('baseDir must be an absolute folder path');
+    if (j.roots != null && !Array.isArray(j.roots)) throw new Error('roots must be a list');
+    if (j.render != null && (typeof j.render !== 'object' || Array.isArray(j.render))) throw new Error('render must be an object');
+    return { saved: j };
+  }
   catch (e) { return { saved: null, error: `${file} is not readable JSON (${e.message}); it was left as it is. Fix or rename it, then run setup again.` }; }
 }
 
@@ -76,8 +84,9 @@ export function initConfig({ dataDir = path.join(HUB, 'data'), hubDir = HUB, wor
     const add = watch.filter(w => w && !roots.some(r => r && typeof r.path === 'string' && low(r.path) === low(w)));
     if (add.length) { cfg.roots = [...roots, ...add.map(w => ({ path: path.resolve(w), type: 'container', enabled: true }))]; changed = true; for (const w of add) W(`watch ${w}`); }
   } else {
-    ws = path.resolve(workspace || DEFAULT_BASE());
-    const why = checkWorkspace(ws, hubDir); if (why) throw new Error(why);
+    const requested = typeof workspace === 'string' ? workspace.trim().replace(/^"(.*)"$/, '$1') : workspace ?? DEFAULT_BASE();
+    const why = checkWorkspace(requested, hubDir); if (why) throw new Error(why);
+    ws = path.resolve(requested);
     let found = []; try { found = discover(); } catch { }
     found = found.filter(r => !inside(r.path, ws));
     const on = new Set(watch.map(low)), films = path.join(ws, WORKSPACE_FOLDERS.films);
@@ -103,15 +112,40 @@ export function initConfig({ dataDir = path.join(HUB, 'data'), hubDir = HUB, wor
   return { file, existed: !!saved, workspace: ws, encoder: cfg.render.encoder, roots: cfg.roots, wrote: changed && !dryRun, dryRun, actions };
 }
 
+// Setup's example uses the explicit config directory rather than the server's already-imported singleton.
+export function installExample({ dataDir = path.join(HUB, 'data'), hubDir = HUB, dryRun = false } = {}) {
+  const file = path.join(dataDir, 'config.json'), { saved, error } = readSaved(file);
+  if (error) throw new Error(error); if (!saved) throw new Error('Configure the workspace before adding the example film');
+  const roots = saved.roots || [], dir = roots.find(r => r?.enabled !== false && r?.type === 'container' && typeof r.path === 'string' && fs.existsSync(r.path))?.path || path.join(saved.baseDir || DEFAULT_BASE(), WORKSPACE_FOLDERS.films);
+  const source = path.join(hubDir, 'examples', 'hello-film'), first = path.join(dir, 'hello-film');
+  if (!fs.existsSync(path.join(source, 'index.html'))) throw new Error('The example film is missing from this install');
+  if (fs.existsSync(path.join(first, 'index.html'))) return { installed: true, kept: true, target: first, path: first, dryRun };
+  let target = first; for (let n = 2; fs.existsSync(target); n++) target = path.join(dir, 'hello-film-' + n);
+  if (!dryRun) {
+    const copy = (from, to) => {
+      fs.mkdirSync(to, { recursive: true });
+      for (const e of fs.readdirSync(from, { withFileTypes: true })) { if (/^(node_modules|render|\.videohub|out|videohub-project\.json)$/i.test(e.name) || e.isSymbolicLink()) continue; const a = path.join(from, e.name), b = path.join(to, e.name); if (e.isDirectory()) copy(a, b); else if (e.isFile()) fs.copyFileSync(a, b, fs.constants.COPYFILE_EXCL); }
+    };
+    copy(source, target);
+    const meta = path.join(source, 'videohub-project.json'); if (fs.existsSync(meta)) { fs.mkdirSync(path.join(target, '.videohub')); fs.copyFileSync(meta, path.join(target, '.videohub', 'project.json'), fs.constants.COPYFILE_EXCL); }
+    if (!roots.some(r => r?.enabled !== false && typeof r.path === 'string' && inside(target, r.path))) {
+      const cfg = { ...saved, roots: [{ path: dir, type: 'container', enabled: true }, ...roots.filter(r => typeof r?.path !== 'string' || low(r.path) !== low(dir))] }, tmp = file + '.' + process.pid + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(cfg, null, 1)); fs.renameSync(tmp, file);
+    }
+  }
+  return { installed: false, kept: false, path: target, target, source, dryRun };
+}
+
 // ---------- command line (setup.ps1)
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const a = process.argv.slice(2), val = k => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : null; };
   const all = k => a.flatMap((x, i) => x === k && a[i + 1] != null ? [a[i + 1]] : []);
-  const dataDir = path.resolve(val('--data') || path.join(HUB, 'data'));
+  const dataDir = path.resolve(val('--data') || process.env.VIDEOHUB_DATA_DIR || path.join(HUB, 'data'));
   const out = o => process.stdout.write(JSON.stringify(o) + '\n');
   // --help, or an option this script does not know: say how it is used and write nothing (a typo must never create folders)
   const KNOWN = new Set(['--state', '--check', '--detect', '--refresh', '--ffmpeg', '--workspace', '--watch', '--encoder', '--dry-run', '--example', '--data']);
   const bad = a.filter(x => x.startsWith('-') && !KNOWN.has(x));
+  const valued = new Set(['--check', '--ffmpeg', '--workspace', '--watch', '--encoder', '--data']);
+  for (let i = 0; i < a.length; i++) if (valued.has(a[i])) { if (!a[i + 1] || a[i + 1].startsWith('--')) { process.stderr.write('Missing value for ' + a[i] + '\n'); process.exit(2); } i++; }
   if (bad.length) {
     const head = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter(l => /^\/\/ {3}(node |--| {20,})/.test(l)).map(l => l.slice(3));
     process.stderr.write((bad.some(x => x !== '--help' && x !== '-h') ? 'Unknown option: ' + bad.join(' ') + '\n' : '') + 'Usage:\n' + head.join('\n') + '\n');
@@ -122,7 +156,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     else if (a.includes('--check')) { const why = checkWorkspace(val('--check') || ''); out({ ok: !why, why }); }
     else if (a.includes('--detect')) out(await detectEncoders({ cacheFile: a.includes('--dry-run') ? null : path.join(dataDir, 'encoders.json'), refresh: a.includes('--refresh'), ffmpeg: val('--ffmpeg') || 'ffmpeg' }));
     // the example film, the same copy as the Welcome panel's button (server/example.js); never twice
-    else if (a.includes('--example')) { const ex = await import('../server/example.js'), i = ex.info(); out(i.installed ? { ...i, kept: true } : ex.install()); }
+    else if (a.includes('--example')) out(installExample({ dataDir, dryRun: a.includes('--dry-run') }));
     else out(initConfig({ dataDir, workspace: val('--workspace'), watch: all('--watch'), encoder: val('--encoder'), dryRun: a.includes('--dry-run') }));
   } catch (e) { out({ error: e.message }); process.exit(1); }
 }

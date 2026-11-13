@@ -1,9 +1,10 @@
+import { norm } from './util.js';
 // VideoHub server: http://127.0.0.1:7788  (UI + JSON API + server-sent events). Local only.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { reveal, openUrlWindow, capabilities, findBrowser } from './platform.js';
 import { config, saveConfig, discoverRoots, baseDir } from './config.js';
 import { detectEncoders, LABELS as ENC_LABELS } from './encoders.js';
 import { scan, index, project, rescanProject, thumbnail, onScan, dropProject, hideKey } from './scan.js';
@@ -100,12 +101,12 @@ function integrations() {
   const studio = config().studioDir && fs.existsSync(path.join(config().studioDir, 'engine', 'audio', 'synth.js'));
   return {
     ffmpeg: fs.existsSync(TOOLS.ffmpeg) || TOOLS.ffmpeg !== 'ffmpeg',
-    browser: TOOLS.edge || TOOLS.chrome || null,
+    browser: findBrowser().path,
     agent: { ok: true, builtIn: true, exe: null, why: null },   // render protection is part of the hub (no helper program since Nov 2026)
     sfx: { ok: !!studio, why: studio ? null : 'Ready-made sound effects need the optional 3D studio engine (studioDir). Your own sound folder works without it.' },
   };
 }
-function projectMetaPath(p) { return p.group ? path.join(HUB_DIR, 'data', 'meta', p.id + '.json') : path.join(p.path, '.videohub', 'project.json'); }
+function projectMetaPath(p) { return p.group ? path.join(DATA_DIR, 'meta', p.id + '.json') : path.join(p.path, '.videohub', 'project.json'); }
 // ---------- routes
 const routes = [];
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), fn });
@@ -134,7 +135,7 @@ route('GET', '/api/find', async (req, url) => {
 route('GET', '/api/project/:id', async (req, url, { id }) => {
   const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 });
   const name = p.name.toLowerCase();
-  const history = guardHistory(1000).filter(h => h.project && (h.project.toLowerCase().endsWith('\\' + name) || h.project.toLowerCase() === name)).slice(0, 60);
+  const history = guardHistory(1000).filter(h => h.project && (h.project.toLowerCase().replaceAll('\\', '/').endsWith('/' + name) || h.project.toLowerCase() === name)).slice(0, 60);
   // the review page does not need the cleanup list (lite=1); the project page waits at most 1.5 s for it
   const cand = url.searchParams.get('lite') ? null : await Promise.race([findCandidates().catch(() => []), new Promise(r => setTimeout(() => r(null), 1500))]);
   return { ...p, label: shortPath(p.path), cleanup: (cand || []).filter(c => c.project === id), cleanupPending: !cand && !url.searchParams.get('lite'), busy: busyProjects().find(b => b.project === id)?.reason || null, notes: notesApi.list(p), versionsLog: notesApi.versions(p), history };
@@ -148,7 +149,7 @@ route('POST', '/api/project/:id/meta', async (req, url, { id }) => {
 });
 route('POST', '/api/project/:id/rescan', async (req, url, { id }) => lite(await rescanProject(id)));
 // a film with no video yet: the picture its live page drew (the card draws it and sends it here; X-Stale = code is newer)
-const LIVE_THUMBS = path.join(HUB_DIR, 'data', 'thumbs');
+const LIVE_THUMBS = path.join(DATA_DIR, 'thumbs');
 // the last automatic scan of a live film (ui/review/autoscan.js): ranges of problems, kept with the project
 route('GET', '/api/project/:id/autoscan', (req, url, { id }) => {
   const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 });
@@ -241,8 +242,7 @@ route('POST', '/api/project/:id/open-folder', async (req, url, { id }) => {
   if (b.file && !o) throw Object.assign(new Error('This project has no such video'), { code: 404 });
   const target = o ? o.path : (p.groupFiles ? path.dirname(p.outputs[0]?.path || p.path) : p.path);
   if (!allowedFile(target) || !fs.existsSync(target)) throw Object.assign(new Error('This folder cannot be opened (outside VideoHub\'s folders, or missing)'), { code: 403 });
-  const args = o ? `/select,"${target}"` : `"${target}"`;
-  if (!process.env.VIDEOHUB_NO_WINDOW) spawn('explorer.exe', [args], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
+  if (!process.env.VIDEOHUB_NO_WINDOW) await reveal(target, { select: !!o });
   return { ok: true, path: target, select: !!o };
 });
 // ---------- removing a project from the Projects page
@@ -267,7 +267,7 @@ route('POST', '/api/project/:id/delete-folder', async (req, url, { id }) => {
   const roots = config().roots.map(r => r.path);
   const targets = p.group ? p.groupFiles.map(f => path.join(p.path, f)) : [p.path, ...(p.studio && p.outDir && fs.existsSync(p.outDir) ? [p.outDir] : [])];
   for (const t of targets) {
-    if (!roots.some(r => isInside(t, r)) || roots.some(r => path.resolve(r).toLowerCase() === path.resolve(t).toLowerCase())) throw Object.assign(new Error('This folder cannot be deleted: it is one of VideoHub\'s folders itself, or outside them.'), { code: 403 });
+    if (!roots.some(r => isInside(t, r)) || roots.some(r => norm(r) === norm(t))) throw Object.assign(new Error('This folder cannot be deleted: it is one of VideoHub\'s folders itself, or outside them.'), { code: 403 });
   }
   if (jobs.list().some(j => j.project === id && ['queued', 'running'].includes(j.state))) throw Object.assign(new Error('This project is rendering or queued; try again when it is done.'), { code: 409 });
   const why = busyWhy(p); if (why) throw Object.assign(new Error('Cannot delete right now: ' + why + '.'), { code: 409 });
@@ -284,8 +284,8 @@ route('POST', '/api/renders/cmd', async (req) => {
   return guardCommand(action, rootPid);
 });
 // settings + the running temporary override; a manual change ends the override (the user decided)
-route('GET', '/api/guard/settings', async () => ({ ...(await guardSettings()), ramTotalMB: Math.round(os.totalmem() / 1048576), cores: os.cpus().length, temp: readJson(path.join(HUB_DIR, 'data', 'guard-temp.json')) }));
-route('POST', '/api/guard/settings', async (req) => { const b = await readBody(req); try { fs.unlinkSync(path.join(HUB_DIR, 'data', 'guard-temp.json')); } catch { } return saveGuardSettings(b); });
+route('GET', '/api/guard/settings', async () => ({ ...(await guardSettings()), ramTotalMB: Math.round(os.totalmem() / 1048576), cores: os.cpus().length, temp: readJson(path.join(DATA_DIR, 'guard-temp.json')) }));
+route('POST', '/api/guard/settings', async (req) => { const b = await readBody(req); try { fs.unlinkSync(path.join(DATA_DIR, 'guard-temp.json')); } catch { } return saveGuardSettings(b); });
 route('GET', '/api/disk', async () => {
   const c = await findCandidates(), s = index();
   const totals = s.projects.reduce((t, p) => { for (const [k, v] of Object.entries(p.sizes || {})) t[k] = (t[k] || 0) + v; return t; }, {});
@@ -295,7 +295,7 @@ route('GET', '/api/disk', async () => {
 route('POST', '/api/disk/clean', async (req) => { const { ids } = await readBody(req); return startClean(ids); });
 // slow-save reports from the review player (data\perf.jsonl, last ~500 lines kept) with free RAM and renders at that moment
 route('POST', '/api/perf', async (req) => {
-  const b = await readBody(req), f = path.join(HUB_DIR, 'data', 'perf.jsonl'), g = guardState();
+  const b = await readBody(req), f = path.join(DATA_DIR, 'perf.jsonl'), g = guardState();
   const line = JSON.stringify({ at: new Date().toISOString(), ...b, freeRamMB: Math.round(os.freemem() / 1048576), renders: (g.renders || []).length, jobs: jobs.busy() }) + '\n';
   try { const old = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).slice(-499).join('\n') + '\n' : ''; fs.writeFileSync(f, old + line); } catch { }
   return { ok: true };
@@ -304,7 +304,7 @@ route('GET', '/api/disk/clean', () => cleanStatus() || { state: 'none' });
 onClean(st => { broadcast('clean', st); if (st.state === 'done') { ciktilar.afterClean(st.results).catch(() => { }); scan().catch(() => { }); } });
 // after every scan: each project's newest final in the outputs folder (the first scan fills it)
 onScan(ev => { if (ev.phase === 'done') try { ciktilar.sync(); } catch (e) { console.error('ciktilar sync:', e.message); } });
-route('GET', '/api/config', () => ({ ...config(), workspace: baseDir(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations() }));
+route('GET', '/api/config', () => ({ ...config(), workspace: baseDir(), capabilities: capabilities(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations() }));
 example.routes(route, readBody, () => scan());
 route('POST', '/api/config', async (req) => { const body = await readBody(req); const c = saveConfig(body); scan().catch(() => { }); return c; });
 // render encoders this PC can use (one tiny test encode each, cached in data/encoders.json; ?refresh=1 probes again)
@@ -338,9 +338,7 @@ route('POST', '/api/show', async (req) => {
   if (process.env.VIDEOHUB_GUARD !== 'off') ensureGuard().catch(() => { });
   if (clients.size) { broadcast('navigate', { hash }); return { ok: true, how: 'window' }; }
   if (process.env.VIDEOHUB_NO_WINDOW) return { ok: true, how: 'none' };
-  const url = `http://127.0.0.1:${port}/${hash}`, exe = TOOLS.edge || TOOLS.chrome;
-  if (exe) spawn(exe, ['--app=' + url], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-  else spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  await openUrlWindow(`http://127.0.0.1:${port}/${hash}`);
   return { ok: true, how: 'opened' };
 });
 
@@ -370,7 +368,7 @@ function softScan(maxAgeMs) {
 setInterval(() => { if (clients.size) softScan(9 * 60e3); }, 60e3);
 
 // ---------- a temporary RenderGuard override ("just this time", data/guard-temp.json): put the saved settings back once it expired
-const TEMP_FILE = path.join(HUB_DIR, 'data', 'guard-temp.json');
+const TEMP_FILE = path.join(DATA_DIR, 'guard-temp.json');
 async function checkGuardTemp(force = false) {
   const t = readJson(TEMP_FILE);
   if (!t?.until || (!force && Date.now() < Date.parse(t.until))) return false;
@@ -408,7 +406,7 @@ setInterval(async () => {
   if (!GUARD_OFF) await quitGuard().catch(() => { });
   process.exit(0);
 }, 20e3).unref();
-// "Start with Windows" (open.vbs --server at log-in): the hub stays on, so the render protection runs from the start
+// "Start with Windows" (node scripts/install.mjs open --server at log-in): the hub stays on, so the render protection runs from the start
 if (!GUARD_OFF) alwaysOn().then(on => { if (on) ensureGuard().catch(() => { }); }).catch(() => { });
 
 // only this PC's own pages and tools: a page on another website (or a DNS name pointed at 127.0.0.1) must not drive

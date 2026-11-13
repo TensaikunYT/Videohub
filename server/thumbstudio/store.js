@@ -178,13 +178,13 @@ export async function duplicateThumbnail(pid, tid) {
 }
 
 // Delete a thumbnail folder to Recycle Bin (never hard delete)
-export async function deleteThumbnail(pid, tid) {
+export async function deleteThumbnail(pid, tid, { recycle = recyclePaths } = {}) {
   const { dir } = resolveThumbDir(pid, tid);
   if (!fs.existsSync(dir)) {
     throw Object.assign(new Error('Thumbnail not found: ' + tid), { code: 404 });
   }
 
-  const results = await recyclePaths([{ path: dir }]);
+  const results = await recycle([{ path: dir }]);
   const ok = results.every(r => r.ok);
   if (!ok) {
     const err = results.find(r => !r.ok)?.error || 'Could not move to the Recycle Bin';

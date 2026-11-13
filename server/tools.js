@@ -1,16 +1,16 @@
-// The tools Claude uses (through mcp.js, or `node server/cli.js <tool> '<json>'` without MCP).
+// The tools agents use (through mcp.js, or `node server/cli.js <tool> '<json>'` without MCP).
 // They talk to the hub over http://127.0.0.1:7788 and start it when it is not running.
 // Status inputs accept the English values and, as aliases, the Turkish words older versions used.
 import { z } from 'zod';
 import path from 'node:path';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
-import { HUB_DIR, readJson } from './util.js';
+import { HUB_DIR, DATA_DIR, readJson } from './util.js';
 import { NOTE_STATUSES, NOTE_STATUS_ALIASES, PROJECT_STATUSES, PROJECT_STATUS_ALIASES, noteStatus, projectStatus, isOpenNote, normalizeNote } from '../ui/values.js';
 
 // renders and versions made through these tools are labelled "Claude"; the tools never look at which chat called them
-const BY_CLAUDE = { title: 'Claude' };
-const PORT = +process.env.VIDEOHUB_PORT || (readJson(path.join(HUB_DIR, 'data', 'config.json'), {}) || {}).port || 7788;   // env: talk to a test hub
+const BY_AGENT = { title: (readJson(path.join(DATA_DIR, 'config.json'), {}) || {}).agentName || 'Claude' };
+const PORT = +process.env.VIDEOHUB_PORT || (readJson(path.join(DATA_DIR, 'config.json'), {}) || {}).port || 7788;   // env: talk to a test hub
 const BASE = `http://127.0.0.1:${PORT}`;
 
 async function ping() { try { const r = await fetch(BASE + '/api/ping', { signal: AbortSignal.timeout(1500) }); return r.ok; } catch { return false; } }
@@ -70,7 +70,7 @@ export const TOOLS = {
       return [
         `Live preview ready: "${p.title}" · ${li.page} · ${li.fps} fps · ${TC(li.dur)} (length from: ${li.durFrom}) · sound: ${li.audioName || 'none'}`,
         how === 'window' ? 'The open VideoHub window switched to this film.' : how === 'opened' ? 'A VideoHub window opened.' : '',
-        'Now STOP, do not render. Tell the user (in their language): watch it in VideoHub, leave notes on the frames, then press "Send to Claude" and paste the message here. Get the notes with hub_notes, fix the code (the preview reloads itself), mark each with hub_note_update. Render with hub_render only when the user asks for a render.',
+        'Now STOP, do not render. Tell the user (in their language): watch it in VideoHub, leave notes on the frames, then press "Send to agent" and paste the message here. Get the notes with hub_notes, fix the code (the preview reloads itself), mark each with hub_note_update. Render with hub_render only when the user asks for a render.',
         li.durFrom === 'default' ? 'The film length is unknown (60 s assumed): save it with hub_project({set:{render:{env:{DUR:"…"}}}}).' : '',
       ].filter(Boolean).join('\n');
     },
@@ -171,7 +171,7 @@ export const TOOLS = {
     },
     run: async a => {
       const p = await resolve(a.project);
-      const j = await call('POST', '/api/jobs', { project: p.id, mode: a.mode || 'partial', notes: a.notes, seconds: a.seconds, chunks: a.chunks, env: a.env, workers: a.workers, cmd: a.cmd, output: a.output, note: a.note, copyTo: a.copyTo, session: BY_CLAUDE });
+      const j = await call('POST', '/api/jobs', { project: p.id, mode: a.mode || 'partial', notes: a.notes, seconds: a.seconds, chunks: a.chunks, env: a.env, workers: a.workers, cmd: a.cmd, output: a.output, note: a.note, copyTo: a.copyTo, session: BY_AGENT });
       const head = `Job ${j.id} queued (position ${j.position}) · ${j.mode}${j.chunks ? ` · ${j.chunks.length} chunk${j.chunks.length === 1 ? '' : 's'} (${j.chunks.join(',')}) = ${j.changedRanges.map(([x, y]) => TC(x) + '–' + TC(y)).join(', ')}` : ''}` +
         (j.ramNote ? `\n${j.ramNote} → Tell the user this in one sentence; never close the program yourself.` : '');
       if (j.needsApproval) return head + '\nThis is a custom command, so it does NOT run until the user approves it in VideoHub (Renders page: it shows the command with Approve / Cancel). Tell the user that now, in one sentence, then check with hub_job({id:"' + j.id + '", wait:true}).';
@@ -199,7 +199,7 @@ export const TOOLS = {
   hub_register_version: {
     description: 'Register a video made outside VideoHub\'s queue as this project\'s new version (with the seconds that changed).',
     schema: { project: z.string().optional(), file: z.string(), note: z.string().optional(), changedRanges: z.array(z.tuple([z.number(), z.number()])).optional(), notes: z.array(z.number()).optional(), kind: z.enum(['final', 'preview']).optional() },
-    run: async a => { const p = await resolve(a.project); const r = await call('POST', `/api/project/${p.id}/version`, { ...a, session: BY_CLAUDE }); return `Registered: v${r.v} ${r.file}`; },
+    run: async a => { const p = await resolve(a.project); const r = await call('POST', `/api/project/${p.id}/version`, { ...a, session: BY_AGENT }); return `Registered: v${r.v} ${r.file}`; },
   },
 
   hub_cleanup: {
@@ -236,7 +236,7 @@ export const TOOLS = {
   },
 
   hub_thumb_brief: {
-    description: 'The thumbnail brief for Claude in one text: goal, camera, light, style, the layers in words, an English prompt draft, references (role and full paths), the paths of layout.png / sketch.png / depth.png and open variant notes. Includes what to do.',
+    description: 'The thumbnail brief for the agent in one text: goal, camera, light, style, the layers in words, an English prompt draft, references (role and full paths), the paths of layout.png / sketch.png / depth.png and open variant notes. Includes what to do.',
     schema: {
       project: z.string().optional().describe('Project folder, name or id. For a shared thumbnail "_" or leave empty.'),
       id: z.string().describe('Thumbnail id (e.g. 20261104-k3f9)'),
@@ -299,7 +299,7 @@ export const TOOLS = {
 
       parts.push('\n--- What to do ---');
       if (!hasLayout) {
-        parts.push('NOTE: layout.png has not been exported yet. Ask the user to press "💬 Send to Claude" (or Ctrl+S) in VideoHub\'s editor; do not generate anything until then.');
+        parts.push('NOTE: layout.png has not been exported yet. Ask the user to press "💬 Send to agent" (or Ctrl+S) in VideoHub\'s editor; do not generate anything until then.');
       } else {
         parts.push('1. Open `sketch.png` and `layout.png` with Read and study the composition.' + (hasSketch ? '' : ' (sketch.png is missing: use layout.png.)'));
         if (openNotes.length > 0) {
@@ -316,7 +316,7 @@ export const TOOLS = {
   },
 
   hub_thumb_variant: {
-    description: 'Register an image made by Claude or another tool as a VideoHub thumbnail variant. The file is copied into variants/ and shows up in the open editor at once.',
+    description: 'Register an image made by the agent or another tool as a VideoHub thumbnail variant. The file is copied into variants/ and shows up in the open editor at once.',
     schema: {
       project: z.string().optional().describe('Project folder or id. Shared: "_" or leave empty.'),
       id: z.string().describe('Thumbnail id'),

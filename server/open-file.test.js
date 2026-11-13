@@ -10,14 +10,18 @@ const file = path.join(dir, 'İstanbul (son & %100).mp4');
 fs.writeFileSync(file, 'test fixture');
 test.after(() => { fs.unlinkSync(file); fs.rmdirSync(dir); });
 
-test('filenames are passed to Explorer without a command shell', () => {
+test('media opening plans preserve the absolute Unicode path without a command shell', () => {
   const p = openPlan(file);
-  assert.equal(p.command, 'explorer.exe');
-  assert.deepEqual(p.args, ['"' + path.resolve(file) + '"']);
+  assert.equal(p.target, path.resolve(file));
+  assert.equal(p.how, 'file');
+  assert.ok(typeof p.command === 'string' && Array.isArray(p.args));
+  assert.ok(!/^(?:cmd(?:\.exe)?|(?:\/bin\/)?sh|powershell(?:\.exe)?)$/i.test(p.command));
+  assert.deepEqual(Object.keys(p).sort(), ['args', 'command', 'how', 'select', 'target']);
   assert.equal(p.select, false);
 });
-test('folder action selects the exact video, not just its parent', () => {
-  assert.deepEqual(openPlan(file, 'folder').args, ['/select,"' + path.resolve(file) + '"']);
+test('folder action preserves the exact file selection intent for the native file manager', () => {
+  assert.equal(openPlan(file, 'folder').target, path.resolve(file));
+  assert.equal(openPlan(file, 'folder').how, 'folder');
   assert.equal(openPlan(file, 'folder').select, true);
   assert.equal(openPlan(dir, 'folder').select, false);
 });
@@ -37,7 +41,7 @@ test('"file" opens only media; programs and shortcuts can only be shown in their
   const pic = path.join(dir, 'Frame.JPG'); fs.writeFileSync(pic, 'x');
   try { assert.equal(openPlan(pic).how, 'file'); } finally { fs.unlinkSync(pic); }
 });
-test('test hubs validate paths without opening Windows applications', async () => {
+test('test hubs validate paths without opening system applications', async () => {
   const previous = process.env.VIDEOHUB_NO_WINDOW;
   process.env.VIDEOHUB_NO_WINDOW = '1';
   try { assert.deepEqual(await openFile(file, 'folder'), { ok: true, path: path.resolve(file), how: 'folder', select: true }); }

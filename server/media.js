@@ -1,3 +1,4 @@
+import { norm } from './util.js';
 // Things the review player needs from a video: a film strip, a waveform, exact frames, and a
 // "review copy" with a keyframe every 6 frames so stepping back one frame is instant.
 import fs from 'node:fs';
@@ -13,7 +14,7 @@ export const PROXY = path.join(DATA_DIR, 'proxy');
 fs.mkdirSync(CACHE, { recursive: true }); fs.mkdirSync(PROXY, { recursive: true });
 const PROXY_MAX = 15 * 1073741824;
 
-const keyOf = (file, st) => crypto.createHash('sha1').update(path.resolve(file).toLowerCase() + '|' + st.size + '|' + Math.round(st.mtimeMs)).digest('hex').slice(0, 16);
+const keyOf = (file, st) => crypto.createHash('sha1').update(norm(file) + '|' + st.size + '|' + Math.round(st.mtimeMs)).digest('hex').slice(0, 16);
 
 // one heavy media job at a time; light ones (strip, wave, frame) share a separate lane
 function lane(n) { let free = n; const q = []; return fn => new Promise((res, rej) => { const go = () => { free--; fn().then(res, rej).finally(() => { free++; const x = q.shift(); if (x) x(); }); }; free > 0 ? go() : q.push(go); }); }

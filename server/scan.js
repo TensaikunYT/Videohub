@@ -1,3 +1,5 @@
+import { casePath } from './platform.js';
+import { norm } from './util.js';
 // Finds every video project under the configured roots and works out what each file is.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +16,7 @@ const INDEX = path.join(DATA_DIR, 'index.json');
 
 // ---------- what a single file is
 function category(rel, name) {
-  const r = '\\' + rel.toLowerCase();
+  const r = '\\' + rel.toLowerCase().replaceAll('/', '\\');
   if (/\\render\\profiles\\|\\profiles\\w\d|\\chrome-profile/.test(r)) return 'profile';
   if (/\\chunks_(prev|v\d)[^\\]*\\/.test(r)) return 'oldChunk';
   if (/\\chunks\\/.test(r) || /^c_\d{3,}\.mp4$/i.test(name)) return 'chunk';
@@ -31,15 +33,15 @@ function category(rel, name) {
 export const breather = () => new Promise(r => setImmediate(r));
 async function walk(dir) {
   const files = []; const stack = [dir]; let n = 0;
-  const outs = path.resolve(outputsDir()).toLowerCase();   // the global outputs folder (hard links of renders): never a project or a duplicate
-  const globalThumb = path.resolve(config().thumbstudio?.globalDir || '').toLowerCase();
+  const outs = norm(outputsDir());   // the global outputs folder (hard links of renders): never a project or a duplicate
+  const globalThumb = norm(config().thumbstudio?.globalDir || '');
   while (stack.length) {
     const d = stack.pop(); let ents = [];
     try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
     for (const e of ents) {
       if (++n >= 300) { n = 0; await breather(); }
       const p = path.join(d, e.name);
-      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && path.resolve(p).toLowerCase() !== outs && (!globalThumb || path.resolve(p).toLowerCase() !== globalThumb)) stack.push(p); continue; }
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && norm(p) !== outs && (!globalThumb || norm(p) !== globalThumb)) stack.push(p); continue; }
       if (!e.isFile()) continue;
       let st; try { st = fs.statSync(p); } catch { continue; }
       const rel = path.relative(dir, p);
@@ -83,7 +85,7 @@ async function tinyFrame(file, t) {
   return r.length === 144 ? r : null;
 }
 async function samePicture(a, b) {
-  const key = [a.path, a.size, Math.round(a.mtime), b.path, b.size, Math.round(b.mtime)].join('|').toLowerCase();
+  const key = JSON.stringify([casePath(a.path), a.size, Math.round(a.mtime), casePath(b.path), b.size, Math.round(b.mtime)]);
   if (key in simCache) return simCache[key];
   let same = true;
   for (const f of [0.25, 0.5, 0.75]) {
@@ -115,9 +117,9 @@ const CLIP_DIRS = /\\(qa|lookdev|tests?|tmp|temp|debug|bench|clips?|scratch|prev
 const CLIP_NAME = /(^|[_\-. ])(test|clip|qa|probe|bench|debug)([_\-. \d]|$)/i;
 function markClips(outs, filmDur, registered) {
   for (const o of outs) {
-    if (!['final', 'web', 'preview'].includes(o.role) || registered.has(o.rel.toLowerCase())) continue;
+    if (!['final', 'web', 'preview'].includes(o.role) || registered.has(casePath(o.rel))) continue;
     const short = filmDur >= 20 && (o.info.dur || 0) < filmDur * 0.5;
-    if (short || CLIP_DIRS.test('\\' + o.rel) || CLIP_NAME.test(o.name.replace(/\.[^.]+$/, ''))) o.role = 'clip';
+    if (short || CLIP_DIRS.test('\\' + o.rel.replaceAll('/', '\\')) || CLIP_NAME.test(o.name.replace(/\.[^.]+$/, ''))) o.role = 'clip';
   }
 }
 // the newest film; files written within 2 min of each other (a copy, a touched file) go by version number
@@ -155,12 +157,12 @@ async function describe(project) {
   const notes = readNotes(path.join(project.path, '.videohub', 'notes.json'));
   const versions = readJson(path.join(project.path, '.videohub', 'versions.json'), []);
   // the film's length: render manifest, the saved DUR, or the longest voiced video
-  const vByRel = new Map(versions.filter(v => v.file).map(v => [String(v.file).toLowerCase(), v.v || 0]));
+  const vByRel = new Map(versions.filter(v => v.file).map(v => [casePath(v.file), v.v || 0]));
   const filmDur = Math.max(0, +readJson(path.join(project.outDir || project.path, 'render', 'manifest.json'))?.dur || 0, +meta.render?.env?.DUR || 0,
     ...outs.filter(o => o.info?.ok && o.info.audio).map(o => o.info.dur || 0));
   markClips(outs, filmDur, new Set(vByRel.keys()));
   outs.sort((a, b) => b.mtime - a.mtime);
-  const vOf = o => vByRel.get(o.rel.toLowerCase()) || 0;
+  const vOf = o => vByRel.get(casePath(o.rel)) || 0;
   const finals = outs.filter(o => o.role === 'final');
   const latest = newestFilm(finals, vOf) || newestFilm(outs.filter(o => o.role === 'web'), vOf)
     || newestFilm(outs.filter(o => o.role === 'preview'), vOf) || null;   // never a clip, part or silent file (a 3 s test clip once became a film's "last video")
@@ -221,14 +223,14 @@ function filmKind(dir) {
   return null;
 }
 // projects the user removed from the list (Settings → Hidden projects brings them back)
-export const hideKey = p => (p.path + (p.group ? '#' + p.group : '')).toLowerCase();
+export const hideKey = p => casePath(p.path + (p.group ? '#' + p.group : ''));
 const hiddenKeys = () => new Set((config().hiddenProjects || []).map(h => h.key));
 // what an empty card says
 const EMPTY = { studio: 'no render yet · live preview available', code: 'no video · has code (not rendered yet, or its video was deleted)', snipp: 'Snipp project · no video yet', started: 'new film · no code or video yet', notes: 'no video yet' };
 
 function projectsIn(root) {
   const out = []; const rp = root.path;
-  const globalThumb = path.resolve(config().thumbstudio?.globalDir || '').toLowerCase();
+  const globalThumb = norm(config().thumbstudio?.globalDir || '');
   // helper folders next to films (config.skipFolders): never projects unless they have their own render script
   const skip = new Set((Array.isArray(config().skipFolders) ? config().skipFolders : DEFAULT_SKIP_FOLDERS).map(s => String(s).toLowerCase()));
   const mk =(p, name, extra = {}) => ({ id: idOf(p + (extra.group ? '#' + extra.group : '')), name, path: p, root: rp, rootType: root.type, ...extra });
@@ -238,7 +240,7 @@ function projectsIn(root) {
   for (const e of ents) {
     if (!e.isDirectory() || SKIP_DIRS.has(e.name) || e.name.startsWith('.') || (root.type === 'container' && e.name.startsWith('_'))) continue;   // _engine, _backup: helpers
     const p = path.join(rp, e.name);
-    if (globalThumb && path.resolve(p).toLowerCase() === globalThumb) continue;
+    if (globalThumb && norm(p) === globalThumb) continue;
     let inner = []; try { inner = fs.readdirSync(p); } catch { continue; }
     if (inner.length === 0) continue;
     if (root.type === 'container' && skip.has(e.name.toLowerCase()) && !inner.some(f => /^render\.(m?js|py)$/.test(f))) continue;
@@ -280,10 +282,10 @@ export function project(id) { return state.projects.find(p => p.id === id) || nu
 const watchers = new Map();    // lower-case root path -> { w, root, whole, full, all, dirty: Set of keys, at: key -> when it was last described }
 const described = new Map();   // project id -> { d, base }: every described project (also the ones the list leaves out)
 const VH_KEEP = /^(notes|versions|project)\.json$/i;   // .videohub files a card shows (counts, title, status)
-const lc = p => path.resolve(p).toLowerCase();
+const lc = p => norm(p);
 const wholeRoot = r => r.type === 'project' || (r.type !== 'media' && isStudio(r.path));
 // which part of a root a project lives in: its first folder below the root ('' = the root itself: loose media, whole roots)
-const keyIn = (rec, p) => rec.whole ? '' : (path.relative(rec.root.path, p.path).split(/[\\/]/)[0] || '').toLowerCase();
+const keyIn = (rec, p) => rec.whole ? '' : casePath(path.relative(rec.root.path, p.path).split(/[\\/]/)[0] || '');
 const baseOf = p => JSON.stringify([p.path, p.group, p.groupFiles, p.studio, p.outDir, p.rootType, p.family]);
 function watchRoot(root) {
   const rec = { w: null, root, whole: wholeRoot(root), full: true, all: false, dirty: new Set(), at: new Map() };
@@ -291,7 +293,7 @@ function watchRoot(root) {
   const onEvent = (ev, name) => {
     if (!name) { rec.all = true; return; }   // the change buffer overflowed: walk the whole root next time
     if (rec.all) return;
-    const segs = String(name).toLowerCase().split(/[\\/]/).filter(Boolean);
+    const segs = casePath(name).split(/[\\/]/).filter(Boolean);
     if (segs.some(s => SKIP_DIRS.has(s))) return;
     const vh = segs.indexOf('.videohub'); if (vh >= 0 && (vh !== segs.length - 2 || !VH_KEEP.test(segs[vh + 1]))) return;
     const keys = rec.whole ? [''] : segs.length > 1 ? [segs[0]] : ['', segs[0]];

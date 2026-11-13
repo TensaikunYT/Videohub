@@ -11,18 +11,18 @@
 // videos left in the top folder by older versions are moved into their day's folder once (tidy, on the first sync).
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { reveal } from './platform.js';
 import { index } from './scan.js';
 import { recyclePaths } from './janitor.js';
 import { vhDir } from './notes.js';
 import { outputsDir } from './ciktilar-dir.js';
-import { DATA_DIR, readJson, writeJson, isInside } from './util.js';
+import { DATA_DIR, readJson, writeJson, isInside, norm } from './util.js';
 
 const IDX = path.join(DATA_DIR, 'ciktilar.json');
 let idx = null;
 const load = () => idx || (idx = readJson(IDX, {}));
 const save = () => writeJson(IDX, idx);
-const key = (f) => path.resolve(f).toLowerCase();
+const key = norm;
 const clean = (s) => String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 110);
 const fid = (f) => { try { const s = fs.statSync(f, { bigint: true }); return s.dev + ':' + s.ino; } catch { return null; } };
 const day = (t) => { const d = new Date(t); const z = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; };
@@ -125,9 +125,9 @@ export function stats() {
 
 export function routes(route) {
   route('GET', '/api/ciktilar', () => stats());
-  route('POST', '/api/ciktilar/open', () => {
+  route('POST', '/api/ciktilar/open', async () => {
     const dir = outputsDir(); fs.mkdirSync(dir, { recursive: true });
-    if (!process.env.VIDEOHUB_NO_WINDOW) spawn('explorer.exe', [dir], { detached: true, stdio: 'ignore' }).unref();
+    if (!process.env.VIDEOHUB_NO_WINDOW) await reveal(dir);
     return { ok: true, dir };
   });
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
-import { ENCODERS, ENCODER_ARGS, PROBE_ORDER, pickEncoder, detectEncoders, encoderEnv } from './encoders.js';
+import { ENCODERS, ENCODER_ARGS, PROBE_ORDER, pickEncoder, detectEncoders, encoderEnv, encoderCandidates } from './encoders.js';
 
 // the film render script carries its own copy of the table (films copy the script): both must say the same
 test('the render script template and its example copy use the same encoder arguments as the hub', () => {
@@ -19,25 +19,25 @@ test('the render script template and its example copy use the same encoder argum
 
 test('pickEncoder: auto takes the first GPU encoder whose probe works, else x264; a named one that fails falls back', async () => {
   const probe = ok => async n => ok.includes(n) ? ENCODER_ARGS[n].at(-1) : null;
-  assert.equal((await pickEncoder('auto', probe(['amf', 'qsv']))).name, 'amf');
-  assert.equal((await pickEncoder('auto', probe(['nvenc', 'amf']))).name, 'nvenc');
+  assert.equal((await pickEncoder('auto', probe(['amf', 'qsv']))).name, PROBE_ORDER.find(n => ['amf', 'qsv'].includes(n)) || 'x264');
+  assert.equal((await pickEncoder('auto', probe(['nvenc', 'amf']))).name, PROBE_ORDER.find(n => ['nvenc', 'amf'].includes(n)) || 'x264');
   const none = await pickEncoder('auto', probe([])); assert.equal(none.name, 'x264'); assert.equal(none.why, null); assert.deepEqual(none.args, ENCODER_ARGS.x264[0]);
   const want = await pickEncoder('nvenc', probe(['amf'])); assert.equal(want.name, 'x264'); assert.match(want.why, /nvenc is not available/);
   assert.equal((await pickEncoder('amf', probe(['amf']))).args.at(1), 'h264_amf');
   assert.equal((await pickEncoder('auto', async () => { throw new Error('ffmpeg missing'); })).name, 'x264');   // a probe that throws counts as "no"
-  assert.equal((await pickEncoder('warp9', probe(['qsv']))).name, 'qsv');   // unknown → auto
+  assert.equal((await pickEncoder('warp9', probe(['qsv']))).name, PROBE_ORDER.includes('qsv') ? 'qsv' : 'x264');   // unknown → auto
   let probed = 0; assert.equal((await pickEncoder('x264', async () => { probed++; return []; })).name, 'x264'); assert.equal(probed, 0);
-  assert.deepEqual(PROBE_ORDER, ['nvenc', 'amf', 'qsv']); assert.deepEqual(ENCODERS, ['auto', 'nvenc', 'amf', 'qsv', 'x264']);
+  assert.ok(PROBE_ORDER.every(n => ENCODERS.includes(n))); assert.ok(ENCODERS.includes('vaapi')); assert.ok(ENCODERS.includes('x264'));
 });
 
 test('detectEncoders probes once and caches (memory and file, keyed by the ffmpeg binary)', async () => {
   const dir = new URL('../.test-tmp/encoders-cache/', import.meta.url); fs.mkdirSync(dir, { recursive: true });
   const cacheFile = new URL('cache.json', dir).pathname.replace(/^\/(\w:)/, '$1'); try { fs.renameSync(cacheFile, cacheFile + '.' + Date.now()); } catch { }
-  let calls = 0; const probe = async n => { calls++; return n === 'amf' ? ['x'] : null; }, gpus = async () => ['Some GPU'];
+  let calls = 0; const probe = async n => { calls++; return n === PROBE_ORDER[0] ? ['x'] : null; }, gpus = async () => ['Some GPU'];
   const a = await detectEncoders({ ffmpeg: 'fake-ffmpeg-1', cacheFile, probe, gpus });
-  assert.deepEqual(a.available, ['amf', 'x264']); assert.equal(a.best, 'amf'); assert.deepEqual(a.gpus, ['Some GPU']); assert.equal(calls, 3);
-  await detectEncoders({ ffmpeg: 'fake-ffmpeg-1', cacheFile, probe, gpus }); assert.equal(calls, 3);
-  assert.equal(JSON.parse(fs.readFileSync(cacheFile, 'utf8')).v.best, 'amf');
+  assert.deepEqual(a.available, [PROBE_ORDER[0], 'x264']); assert.equal(a.best, PROBE_ORDER[0]); assert.deepEqual(a.gpus, ['Some GPU']); assert.equal(calls, PROBE_ORDER.length);
+  await detectEncoders({ ffmpeg: 'fake-ffmpeg-1', cacheFile, probe, gpus }); assert.equal(calls, PROBE_ORDER.length);
+  assert.equal(JSON.parse(fs.readFileSync(cacheFile, 'utf8')).v.best, PROBE_ORDER[0]);
   const b = await detectEncoders({ ffmpeg: 'fake-ffmpeg-1', cacheFile, probe: async () => null, gpus, refresh: true }); assert.deepEqual(b.available, ['x264']);
 });
 
@@ -67,4 +67,28 @@ test('render.js: auto probes nvenc, amf, qsv in that order and falls back to x26
   assert.match(at('-vf'), /out_color_matrix=bt601/); assert.equal(a.at(-1), 'c_000.mp4.tmp.mp4');
   r = renderScript({ PREVIEW: '1' }, []); r.setEnc(r.pickEncoder()); r.encoder('png', 'x.mp4'); const b = [...r.spawned[0]];
   assert.equal(b[b.indexOf('-c:v') + 1], 'png'); assert.equal(b[b.indexOf('-framerate') + 1], '30');
+});
+
+test('VideoToolbox chooses constant quality on Apple Silicon and bitrate on Intel, with fallback candidates', () => {
+  assert.deepEqual(encoderCandidates('videotoolbox', 'arm64')[0], ['-c:v','h264_videotoolbox','-q:v','65']);
+  assert.deepEqual(encoderCandidates('videotoolbox', 'x64')[0], ['-c:v','h264_videotoolbox','-b:v','10M']);
+});
+
+test('VAAPI render filtering keeps conversion and hardware upload in one filter chain', () => {
+  const r = renderScript({VIDEOHUB_ENCODER:'vaapi'}, ['vaapi']); r.setEnc(r.pickEncoder()); r.encoder('raw','vaapi.mp4'); const args = r.spawned[0];
+  assert.equal(args.filter(a => a === '-vf').length, 1); assert.match(args[args.indexOf('-vf')+1], /out_color_matrix=bt601.*format=nv12,hwupload/);
+});
+
+test('copied render scripts honor native browser overrides and discover macOS applications', () => {
+  const source = fs.readFileSync(new URL('../templates/new-film/render.js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('function browserPath()'), source.indexOf('const FFMPEG'));
+  function pick(env, present) {
+    const files = new Set(present), ctx = { fs: { existsSync: p => files.has(p), realpathSync: p => p, statSync: () => ({size:100000,isFile:()=>true}), accessSync(){}, constants:{X_OK:1} }, path: path.posix, os: {homedir:()=>'/home/me'}, process:{env,exit:()=>{throw Error('no browser')}},console:{error(){}} };
+    vm.createContext(ctx); vm.runInContext(body,ctx); return ctx.browserPath();
+  }
+  const mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  assert.equal(pick({VIDEOHUB_BROWSER:'/native/browser'}, ['/native/browser',mac]),'/native/browser');
+  assert.equal(pick({},[mac]),mac);
+  assert.equal(pick({PATH:'/usr/bin'},['/usr/bin/chromium']),'/usr/bin/chromium');
+  assert.throws(()=>pick({PATH:'/snap/bin'},['/snap/bin/chromium']),/no browser/);
 });

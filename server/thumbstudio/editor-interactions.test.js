@@ -98,6 +98,7 @@ async function harness(overrides = {}) {
   const timers = new Map(), observers = [], requests = [];
   let timerSeq = 0, brief = initial, picker, inspectorCallbacks, depthDestroyed = false;
   const sandbox = {
+    agentName: () => 'OpenCode',
     ...layers, ...light, History, document, console,
     h, api: async (url, options = {}) => {
       requests.push([url, options]);

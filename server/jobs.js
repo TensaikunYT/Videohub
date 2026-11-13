@@ -9,17 +9,19 @@ import { linkOutput } from './ciktilar.js';
 import { pickFolder as pickFolderWin } from './pickfolder.js';
 import { config } from './config.js';
 import { project, rescanProject } from './scan.js';
-import { guardState, guardTrack } from './guard.js';
+import { guardState, guardTrack, guardUntrack } from './guard.js';
 import { ramHogsNow, ramNote } from './ramhogs.js';
 import { vhDir, list as listNotes, update as updateNote } from './notes.js';
 import { DATA_DIR, HUB_DIR, readJson, writeJson, run, TOOLS, now, pLimit, refersToHub, isInside } from './util.js';
 import { audioOf } from './live.js';
-import { ENCODERS, LABELS, encoderEnv } from './encoders.js';
+import { ENCODERS, LABELS, PROBE_ORDER, encoderEnv } from './encoders.js';
+import { killTree, shellCommand, renderSpawnOptions, findBrowser } from './platform.js';
 
 const FILE = path.join(DATA_DIR, 'jobs.json');
 let jobs = readJson(FILE, []);
 const listeners = new Set();
 const procs = new Map();
+const stopping = new Map(); // Unix tree termination can outlive the root process during its grace period.
 const executing = new Set(); // Includes preparation, validation and muxing, even after cancellation was requested.
 export const onJob = fn => { listeners.add(fn); return () => listeners.delete(fn); };
 const emit = (type, job) => { if (type === 'progress' || type === 'running') job.progressAt = Date.now(); save(); for (const fn of listeners) try { fn({ type, job: pub(job) }); } catch { } };
@@ -35,7 +37,7 @@ export const busy = () => jobs.some(j => j.state === 'running' || j.state === 'q
 const rdir = p => p.studio ? p.outDir : p.path;
 function chunkDir(p) { return path.join(rdir(p), 'render', 'chunks'); }
 // a file's name in the project's outputs/versions (studio outputs are listed as out\<file>)
-const relOf = (p, file) => p.studio && path.resolve(file).toLowerCase().startsWith(path.resolve(p.outDir).toLowerCase() + path.sep) ? path.join('out', path.relative(p.outDir, file)) : path.relative(p.path, file);
+const relOf = (p, file) => p.studio && isInside(file, p.outDir) ? path.join('out', path.relative(p.outDir, file)) : path.relative(p.path, file);
 function chunkFiles(p) { try { return fs.readdirSync(chunkDir(p)).filter(f => /^c_\d{3,}\.mp4$/.test(f)).sort(); } catch { return []; } }
 async function framesOf(file, job) {
   const args = ['-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=nb_read_packets', '-of', 'csv=p=0', file];
@@ -138,7 +140,7 @@ async function pump() {
       if (other) { if (next.waiting !== other) { next.waiting = other; emit('waiting', next); } if (!waitTimer) waitTimer = setTimeout(() => { waitTimer = null; pump(); }, 5000); break; }
       next.waiting = null;
       executing.add(next.id);
-      runJob(next).catch(e => { restoreChunks(next); if (next.state === 'cancelled') return; next.state = 'failed'; next.error = String(e.message || e); next.finishedAt = now(); emit('failed', next); }).finally(() => { executing.delete(next.id); setTimeout(pump, 500); });
+      runJob(next).catch(async e => { await stopping.get(next.id); restoreChunks(next); if (next.state === 'cancelled') return; next.state = 'failed'; next.error = String(e.message || e); next.finishedAt = now(); emit('failed', next); }).finally(async () => { await stopping.get(next.id); stopping.delete(next.id); executing.delete(next.id); setTimeout(pump, 500); });
     }
   } finally { pumping = false; }
 }
@@ -174,9 +176,9 @@ function spawnLogged(job, cmd, args, opts = {}) {
   return new Promise((resolve) => {
     const log = fs.createWriteStream(job.log, { flags: 'a' });
     log.write(`\n# ${now()}  ${cmd} ${args.join(' ')}\n`);
-    const child = spawn(cmd, args, { ...opts, windowsHide: true, shell: opts.shell || false });
+    const child = spawn(cmd, args, { ...renderSpawnOptions, ...opts, windowsHide: true, shell: opts.shell || false });
     const children = procs.get(job.id) || new Set(); children.add(child); procs.set(job.id, children);
-    job.pid = child.pid; guardTrack(child.pid, { cwd: opts.cwd || '', project: job.projectName || '', what: job.mode || '' }); emit('running', job);
+    job.pid = child.pid; const guardToken = guardTrack(child.pid, { cwd: opts.cwd || '', project: job.projectName || '', what: job.mode || '' }); emit('running', job);
     let q0 = null, done = 0, t0 = Date.now(), stdout = '', stderr = '', settled = false;
     const lines = { stdout: '', stderr: '' };
     const onLine = line => {
@@ -195,6 +197,7 @@ function spawnLogged(job, cmd, args, opts = {}) {
     child.stdout.on('data', d => onData(d, 'stdout')); child.stderr.on('data', d => onData(d, 'stderr'));
     const settle = code => {
       if (settled) return; settled = true;
+      guardUntrack(child.pid, guardToken);
       if (job.state !== 'cancelled') for (const line of Object.values(lines)) if (line) onLine(line);
       children.delete(child); if (!children.size && procs.get(job.id) === children) procs.delete(job.id);
       log.end(); resolve({ code, stdout, stderr });
@@ -216,14 +219,16 @@ async function runJob(job) {
   assertActive(job);
   // VIDEOHUB_DIR: render scripts may load puppeteer-core from VideoHub's node_modules; VIDEOHUB_ENCODER: the encoder chosen in
   // setup/Settings (render.encoder) unless the job sets its own (scripts that do not read it are not affected)
-  const env = { ...process.env, ...(job.workers ? { WK: String(job.workers) } : {}), ...encoderEnv(job.env, config().render?.encoder), ...job.env, VIDEOHUB_JOB: job.id, VIDEOHUB_DIR: HUB_DIR };
+  const browser = findBrowser().path;
+  const env = { FFMPEG: TOOLS.ffmpeg, FFPROBE: TOOLS.ffprobe, VIDEOHUB_ENCODER_ORDER: PROBE_ORDER.join(','), ...process.env, ...(browser ? { VIDEOHUB_BROWSER: browser } : {}), ...(job.workers ? { WK: String(job.workers) } : {}), ...encoderEnv(job.env, config().render?.encoder), ...job.env, VIDEOHUB_JOB: job.id, VIDEOHUB_DIR: HUB_DIR };
+  if (!browser && !Object.hasOwn(job.env, 'VIDEOHUB_BROWSER')) delete env.VIDEOHUB_BROWSER;
   const versions = readJson(path.join(vhDir(p), 'versions.json'), []);
   const vN = Math.max(versions.reduce((m, v) => Math.max(m, v.v || 0), 0), maxNameVersion(p)) + 1;
 
   if (job.mode === 'command') {
     setPhase(job, 'render');
-    // quoted whole and passed verbatim: Node would escape inner quotes as \" which cmd.exe does not understand
-    const { code } = await spawnLogged(job, 'cmd.exe', ['/d', '/s', '/c', '"' + job.cmd + '"'], { cwd: p.path, env, windowsVerbatimArguments: true });
+    const command = shellCommand(job.cmd);
+    const { code } = await spawnLogged(job, command.file, command.args, { cwd: p.path, env, ...command.opts });
     assertActive(job);
     if (code !== 0) throw new Error(`The command ended with code ${code} (log: ${job.log})`);
     if (job.output) await register(p, job, path.resolve(p.path, job.output), vN, job.changedRanges || null);
@@ -295,7 +300,7 @@ function baseOf(p) {
 // audio: the project's own mux recipe if it has one, otherwise the previous final's audio track as is
 async function withAudio(p, video, out, rc = {}, job) {
   if (p.studio) {   // the studio's own sound (audio.wav, loudness normalisation) exactly as a full make.mjs render adds it
-    const r = await spawnLogged(job, TOOLS.node, ['make.mjs', p.name, '--mux', video, out], { cwd: p.studio });
+    const r = await spawnLogged(job, TOOLS.node, ['make.mjs', p.name, '--mux', video, out], { cwd: p.studio, env: { ...process.env, ...job?.env } });
     assertActive(job);
     if (r.code !== 0 || !fs.existsSync(out)) throw new Error('Adding the sound (make.mjs --mux) failed: ' + (r.stderr || r.stdout).slice(-300));
     return out;
@@ -309,7 +314,8 @@ async function withAudio(p, video, out, rc = {}, job) {
   // VideoHub rebuilt the film's mix (sound levels / added clips from the timeline, server/sound.js): that mix is the
   // film's sound now. Copying the last film's track (below) would silently drop those edits (a real bug: "Apply to film"
   // never reached a render without a mux recipe).
-  const edited = editedMix(p);
+  const en = [job?.env?.FILMLANG, job?.env?.LANG].some(v => String(v || '').toLowerCase() === 'en');
+  const edited = en ? null : editedMix(p); // Timeline edits may belong to the default-language mix.
   if (edited) {
     const r = await spawnLogged(job, TOOLS.ffmpeg, ['-v', 'error', '-y', '-i', video, '-i', edited, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '320k', '-shortest', '-movflags', '+faststart', out]);
     assertActive(job);
@@ -319,7 +325,6 @@ async function withAudio(p, video, out, rc = {}, job) {
   // The film's own current mix (audio/mix.wav …, the file the live preview plays) comes before any older video's sound:
   // copying the last film's track gave English renders the Turkish voice and a retimed voice-over the old, shifted one.
   // An English render (FILMLANG / LANG = en) takes audio/mix_en.* only; it never falls back to the other language.
-  const en = [job?.env?.FILMLANG, job?.env?.LANG].some(v => String(v || '').toLowerCase() === 'en');
   const own = en ? ['audio/mix_en.wav', 'audio/mix_en.mp3', 'mix_en.wav'].map(f => path.join(p.path, f)).find(f => fs.existsSync(f)) : audioOf(p, meta);
   if (en && !own) throw new Error('No audio/mix_en.wav for this English render; the film\'s other-language sound was not used.');
   if (own && /\.(wav|mp3|m4a|aac|flac|ogg)$/i.test(own) && fs.existsSync(own)) {
@@ -403,9 +408,8 @@ export function cancel(id) {
   const j = get(id); if (!j) return false;
   if (!['queued', 'running'].includes(j.state)) return false;
   if (j.state === 'queued') { j.state = 'cancelled'; j.finishedAt = now(); emit('cancelled', j); return true; }
-  const children = procs.get(id); if (children) for (const c of children) if (c.pid) {
-    spawn('taskkill', ['/PID', String(c.pid), '/T', '/F'], { windowsHide: true }).on('error', () => { try { c.kill(); } catch { } });
-  }
+  const children = [...(procs.get(id) || [])].filter(c => c.pid);
+  if (children.length) stopping.set(id, Promise.allSettled(children.map(c => killTree(c.pid).catch(() => { try { c.kill(); } catch { } }))));
   j.state = 'cancelled'; j.finishedAt = now(); emit('cancelled', j); return true;
 }
 
@@ -452,11 +456,11 @@ async function renderOptions0(p) {
   return { studio: false, script: fs.existsSync(path.join(p.path, rc.script)) ? rc.script : null, partial: p.family === 'A' && !!rc.chunkSec,
     preview: env.has('PREVIEW'), fps: env.has('FPS') ? { default: rc.fps || 30 } : null, workers: { default: rc.workers || 2, max: 8, env: env.has('WK') ? 'WK' : null }, dur: +rc.env.DUR || null,
     // a script that reads VIDEOHUB_ENCODER (the template's render.js) gets the encoder choice; default = Settings' choice
-    ...(env.has('VIDEOHUB_ENCODER') ? { codecs: ENCODERS, codecEnv: 'VIDEOHUB_ENCODER', codecDefault: rc.env.VIDEOHUB_ENCODER || config().render?.encoder || 'auto', codecLabels: LABELS } : { codecs: null }) };
+    ...(env.has('VIDEOHUB_ENCODER') ? { codecs: ENCODERS.filter(n => n === 'auto' || n === 'x264' || PROBE_ORDER.includes(n)), codecEnv: 'VIDEOHUB_ENCODER', codecDefault: rc.env.VIDEOHUB_ENCODER || config().render?.encoder || 'auto', codecLabels: LABELS } : { codecs: null }) };
 }
 
 export function routes(route, readBody) {
-  route('POST', '/api/pick-folder', async req => { const b = await readBody(req); return { path: await pickFolderWin(b.start, b.title || 'Choose a folder') }; });
+  route('POST', '/api/pick-folder', async req => { const b = await readBody(req), picked = await pickFolderWin(b.start, b.title || 'Choose a folder'); return picked?.unsupported ? picked : { path: picked }; });
   route('GET', '/api/project/:id/render-options', async (req, url, { id }) => { const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 }); return renderOptions(p); });
   route('POST', '/api/jobs', async req => create(await readBody(req)));
   route('GET', '/api/jobs', () => list());

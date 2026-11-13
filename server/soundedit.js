@@ -1,3 +1,4 @@
+import { norm } from './util.js';
 // Sound editing from the review timeline (ui/review/soundedit.js): clips the user adds to a film (sound effects,
 // another music bed), kept in tweaks.json "audio" { clips: [...] } and mixed by server/sound.js (VideoHub-built
 // mixes) or by the 3D studio's make.mjs (its own mixdown). Every clip's file is copied into the film's vhaudio/
@@ -95,7 +96,7 @@ function findSame(p, name, size) {
   return null;
 }
 export async function addFromLibrary(p, file) {
-  const lib = library(), known = [...lib.sfx, ...lib.user].some((x) => path.resolve(x.file).toLowerCase() === path.resolve(String(file || '')).toLowerCase());
+  const lib = library(), known = [...lib.sfx, ...lib.user].some((x) => norm(x.file) === norm(String(file || '')));
   if (!known || !(isInside(file, SFX_DIR) || isInside(file, libDir()))) throw Object.assign(new Error('This sound is not in the library'), { code: 403 });
   // the same file was added before: reuse the copy
   const same = findSame(p, path.basename(file), fs.statSync(file).size);

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { droppedByBrowser, ALLOWED_DOT_FILES } from './upload-rules.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LOCAL = new Set(['.git', '.test-tmp', 'node_modules', 'data']);   // this PC's own, never uploaded
+const LOCAL = new Set(['.git', '.github', '.test-tmp', 'node_modules', 'data']);   // .github is optional CI; browser uploads must add it separately.
 
 test('the browser-upload rule', () => {
   assert.equal(droppedByBrowser('examples/hello-film/.videohub/project.json'), true);

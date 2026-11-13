@@ -2,14 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { testTrash } from './test-trash.js';
 import { POSES, EXPRESSIONS } from './schema.js';
 import { FIGURE_POSES, CROP_CONFIG } from '../../ui/thumbstudio/figures.js';
 import { saveReference, createThumbnail, getThumbnail, deleteThumbnail } from './store.js';
 import { config } from '../config.js';
 
 // Setup temp test directory for global thumbnails
-const testTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-thumb-f-test-'));
+const { root: testTempDir, recycle } = testTrash('vh-thumb-f-test-');
 const prevGlobal = config().thumbstudio.globalDir;
 config().thumbstudio.globalDir = testTempDir;
 
@@ -73,5 +73,6 @@ test('Reference upload and role binding in store', async () => {
   const filePath = path.join(testTempDir, tid, brief.refs[0].file);
   assert.ok(fs.existsSync(filePath), 'Ref image file must exist on disk');
 
-  await deleteThumbnail('_', tid);
+  await deleteThumbnail('_', tid, { recycle });
+  assert.ok(fs.existsSync(path.join(testTempDir, '.trash', tid, brief.refs[0].file)), 'Reference remains restorable');
 });

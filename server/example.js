@@ -1,3 +1,4 @@
+import { norm } from './util.js';
 // The example film (examples/hello-film): a first-run helper copies it into the default films folder so a new user
 // (and their Claude) can see the whole loop — live preview, notes, render — before writing a film of their own.
 import fs from 'node:fs';
@@ -37,7 +38,7 @@ export function install() {
   if (pj) { fs.mkdirSync(path.join(dest, '.videohub'), { recursive: true }); fs.copyFileSync(pj, path.join(dest, '.videohub', 'project.json')); }
   // make sure the folder it went to is a root VideoHub scans
   const roots = config().roots || [];
-  if (!roots.some(r => r.enabled !== false && isInside(dest, r.path))) saveConfig({ roots: [{ path: dir, type: 'container', enabled: true }, ...roots.filter(r => r.path.toLowerCase() !== dir.toLowerCase())] });
+  if (!roots.some(r => r.enabled !== false && isInside(dest, r.path))) saveConfig({ roots: [{ path: dir, type: 'container', enabled: true }, ...roots.filter(r => norm(r.path) !== norm(dir))] });
   return { ok: true, path: dest };
 }
 export function routes(route, readBody, rescan) {

@@ -4,7 +4,7 @@
 // or in data/config.json. See docs/MIGRATING.md for older installs.
 import fs from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR, DESKTOP, DOCUMENTS, readJson, writeJson } from './util.js';
+import { DATA_DIR, DESKTOP, DOCUMENTS, norm, readJson, writeJson } from './util.js';
 import { ENCODERS } from './encoders.js';
 
 const FILE = path.join(DATA_DIR, 'config.json');
@@ -35,8 +35,8 @@ function countMp4(dir) { try { return fs.readdirSync(dir).filter(f => /\.mp4$/i.
 // them on. The default films folder (Documents\VideoHub\films) is a root from the start and is on.
 export function discoverRoots() {
   const roots = [];
-  const add = (p, type, enabled) => { if (fs.existsSync(p) && !roots.some(r => r.path.toLowerCase() === p.toLowerCase())) roots.push({ path: p, type, enabled }); };
-  const lower = p => p.toLowerCase();
+  const add = (p, type, enabled) => { if (fs.existsSync(p) && !roots.some(r => norm(r.path) === norm(p))) roots.push({ path: p, type, enabled }); };
+  const lower = norm;
   for (const top of [DESKTOP, DOCUMENTS]) {
     let entries = []; try { entries = fs.readdirSync(top, { withFileTypes: true }); } catch { }
     for (const e of entries) {
@@ -44,7 +44,7 @@ export function discoverRoots() {
       const p = path.join(top, e.name), lp = lower(p);
       if (lp === lower(baseDir())) continue;
       // skip folders that are a root, sit inside one, or contain one
-      if (roots.some(r => lower(r.path) === lp || lp.startsWith(lower(r.path) + '\\') || lower(r.path).startsWith(lp + '\\'))) continue;
+      if (roots.some(r => lower(r.path) === lp || lp.startsWith(lower(r.path) + path.sep) || lower(r.path).startsWith(lp + path.sep))) continue;
       if (fs.existsSync(path.join(p, 'server', 'hub.js'))) continue;   // a VideoHub install
       if (hasRenderCode(p)) { add(p, 'project', false); continue; }
       let subs = []; try { subs = fs.readdirSync(p, { withFileTypes: true }).filter(s => s.isDirectory() && !SKIP.has(s.name)); } catch { }
@@ -68,6 +68,7 @@ export const WORKSPACE_FOLDERS = { films: 'films', outputs: 'outputs', sounds: '
 // every key but the roots (roots are found once, on the very first run)
 export const DEFAULTS = (base = baseDir()) => ({
   port: 7788,
+  agentName: 'Claude',
   outputsDir: path.join(base, 'outputs'),
   soundLibDir: path.join(base, 'sounds'),
   archiveDir: path.join(base, 'archive'),
@@ -105,6 +106,7 @@ export function config() {
 }
 // the shapes every route relies on (a "roots" that is not a list used to break every request until config.json was fixed by hand)
 function normalise(c, port) {
+  c.agentName = typeof c.agentName === 'string' && c.agentName.trim() ? c.agentName.trim().slice(0, 40) : 'Claude';
   c.roots = (Array.isArray(c.roots) ? c.roots : []).filter(r => r && typeof r.path === 'string' && r.path)
     .map(r => ({ ...r, type: ['container', 'project', 'media'].includes(r.type) ? r.type : 'container', enabled: r.enabled !== false }));
   c.thumbstudio = { ...defaultThumbstudioDirs(), ...(c.thumbstudio && typeof c.thumbstudio === 'object' && !Array.isArray(c.thumbstudio) ? c.thumbstudio : {}) };
