@@ -395,7 +395,8 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     if (target === path.parse(target).root || target === home) throw new Error('Refusing to trash a filesystem root or home folder.');
     if (IS_MAC) {
       // Passing data as argv avoids AppleScript quoting and command-injection hazards for unusual filenames.
-      const script = 'on run argv\ntell application "Finder" to delete (POSIX file (item 1 of argv))\nend run';
+      // Coerce outside the Finder block: inside it, Finder resolves "POSIX file" itself and fails with "Can't get POSIX file".
+      const script = 'on run argv\nset f to POSIX file (item 1 of argv)\ntell application "Finder" to delete f\nend run';
       const r = await run('osascript', ['-e', script, '--', target]);
       if (r.code !== 0) throw new Error('Could not move to Trash. Allow Finder Automation permission and try again. ' + (r.stderr || '').trim().slice(0, 200));
       return;

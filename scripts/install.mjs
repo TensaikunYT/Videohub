@@ -136,6 +136,13 @@ export async function retireLegacyAgent({ install, platform, stopPid, delay, dry
   if (present.length) { onAction('move retired legacy files to the Recycle Bin: ' + present.map(f => path.relative(install, f)).join(', ')); const result = await platform.trash(present); if (result.some(r => !r.ok) || result.length !== present.length) throw new Error('Some legacy helper files could not be moved to the Recycle Bin; no deletion fallback was used'); }
   await platform.cleanupLegacyAutostart?.();
 }
+// Homebrew deletes versioned Cellar folders on upgrade; its opt/<formula> link always points at the current version.
+export function stableNodePath(exec = process.execPath, realpath = fs.realpathSync) {
+  const m = exec.match(/^(\/opt\/homebrew|\/usr\/local)\/Cellar\/(node(?:@\d+)?)\/[^/]+\/bin\/node$/);
+  if (!m) return exec;
+  const stable = m[1] + '/opt/' + m[2] + '/bin/node';
+  try { return realpath(stable) === realpath(exec) ? stable : exec; } catch { return exec; }
+}
 export async function runInstaller(options, { hub = ROOT, platform = platformDefault, env = process.env, log = console.log, ask, run = (f, a, opts) => spawnSync(f, a, { stdio: 'inherit', ...opts }), request = async url => { try { const r = await fetch(url, { signal: AbortSignal.timeout(1500) }); return r.ok ? await r.json() : null; } catch { return null; } }, spawnServer = (f, a, opts) => spawn(f, a, opts), stopPid = pid => process.kill(pid, 'SIGTERM'), delay = ms => new Promise(r => setTimeout(r, ms)), agents = integrateAgents, discover, encoderDetect = detectEncoders, launch = true, platformForInstall = install => platformDefault.createPlatform({ hubDir: install, env, home: platform.dirs.home }), resolveInstall = fs.realpathSync } = {}) {
   const dry = !!options['dry-run'], quiet = dry || options.yes, home = platform.dirs.home, data = env.VIDEOHUB_DATA_DIR || path.join(hub, 'data');
   const actions = [], warnings = [], say = s => { actions.push((dry ? 'would ' : '') + s); log((dry ? '[dry run] ' : '') + s); };
@@ -238,7 +245,7 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
       if (platform.IS_WIN) {
         if (makeShortcut) { say('create or refresh the owned Desktop shortcut through the installed Node runtime'); if (!dry) try { await platform.setShortcut(true); } catch (e) { legacyLaunchersSafe = false; warn(e.message); } }
       } else {
-        const entry = platform.IS_MAC ? '#!/bin/bash\n# VideoHub install: ' + hub + '\nset -euo pipefail\nexport PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\nexec ' + shellQuote(process.execPath) + ' ' + shellQuote(path.join(hub, 'scripts', 'install.mjs')) + ' open "$@"\n' : '# VideoHub install: ' + hub + '\n' + platform.desktopEntry(false);
+        const entry = platform.IS_MAC ? '#!/bin/bash\n# VideoHub install: ' + hub + '\nset -euo pipefail\nexport PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\nexec ' + shellQuote(stableNodePath()) + ' ' + shellQuote(path.join(hub, 'scripts', 'install.mjs')) + ' open "$@"\n' : '# VideoHub install: ' + hub + '\n' + platform.desktopEntry(false);
         for (const f of [...(platform.IS_MAC ? [] : [entryFile]), ...(makeShortcut ? [desktopFile] : [])]) {
           if (fs.existsSync(f) && !owned(f, hub)) { warn('Shortcut belongs to another install; left unchanged: ' + f); continue; }
           say('write launcher ' + f); if (!dry) write(f, entry, 0o755);
