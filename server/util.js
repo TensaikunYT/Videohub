@@ -46,10 +46,18 @@ function realNorm(p, cache) {
     cache.set(original, resolved); return resolved;
   }
 }
+const insideKeys = (c, p) => c !== null && p !== null && (c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep));
 export const isInside = (child, parent) => {
-  const cache = new Map(), c = realNorm(child, cache), p = realNorm(parent, cache);
-  return c !== null && p !== null && (c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep));
+  const cache = new Map();
+  return insideKeys(realNorm(child, cache), realNorm(parent, cache));
 };
+// isInside for many pairs in one synchronous pass: each path is resolved once for this checker only
+// (never kept between calls, so a retargeted junction is seen by the next checker)
+export function insideChecker() {
+  const cache = new Map(), keys = new Map();
+  const key = p => { if (!keys.has(p)) keys.set(p, realNorm(p, cache)); return keys.get(p); };
+  return (child, parent) => insideKeys(key(child), key(parent));
+}
 // does a command line or path refer to a path inside this install? Never by folder name: films live in Documents\VideoHub\films
 // and the install folder can have any name (a GitHub ZIP unpacks as VideoHub-main). Case-insensitive, both slash styles.
 const slashes = s => casePath(s || '').replace(/[\\/]+/g, '/');

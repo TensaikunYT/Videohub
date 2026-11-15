@@ -9,7 +9,7 @@ import { config } from './config.js';
 import { index } from './scan.js';
 import * as jobs from './jobs.js';
 import { guardState } from './guard.js';
-import { DATA_DIR, TEMP, fingerprint, processAlive, shortPath, now, isInside, norm } from './util.js';
+import { DATA_DIR, TEMP, fingerprint, processAlive, shortPath, now, isInside, insideChecker, norm } from './util.js';
 
 const DONE = new Set(['approved', 'published', 'archived', 'done']);
 // Presets for "Clean render leftovers in all projects" (each candidate carries one):
@@ -226,9 +226,10 @@ async function computeCandidates() {
       add({ rule: 'duplicate', preset: null, project: f.project, projectName: f.projectName, path: f.path, size: d.size, action: 'recycle', checked: false, reason: `Identical byte for byte to "${shortPath(d.files[0].path)}".` });
   }
   // a file inside a folder that goes anyway is not counted twice
-  const dirs = out.filter(c => c.dir && c.preset);
+  // (hundreds of candidates make this n² pairs: each path is resolved once, or the hub stops answering for minutes)
+  const dirs = out.filter(c => c.dir && c.preset), inside = insideChecker();
   skippedBusy = skipped;
-  return out.filter(c => !dirs.some(d => d !== c && isInside(c.path, d.path) && norm(c.path) !== norm(d.path)));
+  return out.filter(c => !dirs.some(d => d !== c && inside(c.path, d.path) && norm(c.path) !== norm(d.path)));
 }
 
 // per project: what the films take vs what the presets would free

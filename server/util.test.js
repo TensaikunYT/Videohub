@@ -5,13 +5,13 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('./util.js', import.meta.url), 'utf8');
-const code = source.slice(source.indexOf('function realNorm'), source.indexOf('// does a command line')).replace(/\bexport /g, '') + '\nglobalThis.check = isInside;';
+const code = source.slice(source.indexOf('function realNorm'), source.indexOf('// does a command line')).replace(/\bexport /g, '') + '\nglobalThis.check = isInside; globalThis.checker = insideChecker;';
 function harness(flavor, lookup, lstat = () => missing()) {
   const p = path[flavor], calls = [];
   const key = value => flavor === 'win32' ? p.resolve(value).toLowerCase() : p.resolve(value);
   const ctx = { path: p, norm: key, pathKey: key, fs: { lstatSync: lstat, realpathSync: { native: file => { calls.push(file); return lookup(file); } } } };
   vm.createContext(ctx); vm.runInContext(code, ctx);
-  return { check: ctx.check, calls };
+  return { check: ctx.check, checker: ctx.checker, calls };
 }
 const missing = () => { throw Object.assign(new Error('missing fixture path'), { code: 'ENOENT' }); };
 
@@ -72,5 +72,30 @@ for (const flavor of ['posix', 'win32']) {
     });
     assert.equal(h.check(p.join(root, 'new', 'file'), root), true);
     assert.equal(h.check(p.join(base, 'allowed-other', 'file'), root), false);
+  });
+
+  test(`${flavor}: insideChecker answers like isInside but resolves each path once for all pairs`, () => {
+    const dirs = Array.from({ length: 40 }, (_, i) => p.join(root, 'profile-' + i));
+    const files = dirs.map(d => p.join(d, 'Default', 'Preferences'));
+    const all = [...dirs, ...files, p.join(base, 'allowed-other', 'x')];
+    const h = harness(flavor, file => all.includes(file) ? file : missing());
+    const inside = h.checker(), got = [];
+    for (const c of all) for (const d of dirs) got.push(inside(c, d));
+    assert.equal(h.calls.length, all.length);               // one lookup per distinct path
+    h.calls.length = 0;
+    for (const c of all) for (const d of dirs) inside(c, d);
+    assert.equal(h.calls.length, 0);                        // repeated pairs: no file system calls at all
+    const want = [];
+    for (const c of all) for (const d of dirs) want.push(h.check(c, d));
+    assert.deepEqual(got, want);
+    assert.ok(h.calls.length > all.length * dirs.length);   // isInside alone resolves both paths of every pair again
+  });
+
+  test(`${flavor}: a new insideChecker sees a directory link that moved outside`, () => {
+    let moved = false;
+    const child = p.join(root, 'project', 'film.mp4');
+    const h = harness(flavor, file => file === child ? (moved ? p.join(outside, 'project', 'film.mp4') : child) : file === root ? root : missing());
+    assert.equal(h.checker()(child, root), true); moved = true;
+    assert.equal(h.checker()(child, root), false);
   });
 }
