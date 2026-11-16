@@ -1,9 +1,9 @@
 # VideoHub
 
-**A local review studio and render queue for videos that Claude Code or OpenCode writes as code.**
+**A local review studio and render queue for videos that Antigravity CLI (agy), OpenCode, or Claude Code writes as code.**
 Ask your agent for a video. It builds a film as a web page that draws every frame in code. VideoHub plays the film straight from its code, so you can watch it, step through frames, draw and leave notes before rendering. Send the notes back to your agent, review the fixes in the reloading preview, then render when you are ready. The queue keeps the computer usable and can re-render only the seconds that changed.
 
-> **Windows 10/11, Linux and macOS; Claude Code or OpenCode. Linux and macOS are new, not yet tested on real machines.** See [platform support](docs/PLATFORMS.md) for feature limits and the remaining hardware checks.
+> **Windows 10/11, Linux and macOS; Antigravity CLI (agy), OpenCode, or Claude Code. Linux and macOS are new, not yet tested on real machines.** See [platform support](docs/PLATFORMS.md) for feature limits and the remaining hardware checks.
 
 ![Live preview with a note on a frame](docs/screenshots/review-live-preview.png)
 
@@ -12,7 +12,7 @@ Ask your agent for a video. It builds a film as a web page that draws every fram
   films that have no video yet.
 - **Live preview, no render** — plays a film from its page (`window.renderOut(t)`), frame-accurate, with its sound,
   scenes and narration on a timeline. Changing the code reloads the open preview in place.
-- **Review notes** — click or draw on any frame (or pick a frame range), type what is wrong. **Send to Claude / OpenCode** (Settings → Agent name) copies
+- **Review notes** — click or draw on any frame (or pick a frame range), type what is wrong. **Send to Antigravity / OpenCode / Claude** (Settings → Agent name) copies
   a short message; your agent reads the notes (time, frame, chunk, a close-up picture of your drawing) with `hub_notes`.
 - **Check fixes** — a tour through the notes your agent marked fixed, with before/after; "Still there" sends one back.
 - **Render queue** — one render at a time on the PC, waits for renders started elsewhere, progress and ETA, a
@@ -45,7 +45,7 @@ Built into the Node server, with no compiled helper:
 ![Renders](docs/screenshots/renders.png)
 
 ## Requirements
-All platforms need Node.js 22+, ffmpeg on PATH, a native Chrome/Chromium/Edge browser for headless rendering, and Claude Code or OpenCode for making and fixing films. No native modules or compiled render-protection helper are required.
+All platforms need Node.js 22+, ffmpeg on PATH, a native Chrome/Chromium/Edge browser for headless rendering, and Antigravity CLI (agy), OpenCode, or Claude Code for making and fixing films. No native modules or compiled render-protection helper are required.
 
 | Platform | Install missing tools | Notes |
 |---|---|---|
@@ -56,24 +56,36 @@ All platforms need Node.js 22+, ffmpeg on PATH, a native Chrome/Chromium/Edge br
 A graphical desktop session is needed for windows, folder dialogs, desktop notifications and file-manager actions. A compatible graphics encoder is optional.
 
 ## Install
-Download the ZIP and unpack it, or clone the repository into a folder you want to keep. Open that folder in Claude Code or OpenCode and ask it to install VideoHub, or run the installer yourself. Setup asks about the workspace, discovered video folders, graphics encoding, agents, review rule, shortcut, login startup and example film. Re-runs keep existing answers, folders and settings.
+Download the ZIP and unpack it, or clone the repository into a folder you want to keep. Open that folder in Antigravity CLI (agy), OpenCode, or Claude Code and ask it to install VideoHub, or run the installer yourself. Setup asks about the workspace, discovered video folders, graphics encoding, agents, review rule, shortcut, login startup and example film. Re-runs keep existing answers, folders and settings.
 
 ### Windows
-Double-click **SETUP.cmd**. It runs the shared Node installer directly. Preview the steps with `node scripts/install.mjs setup --dry-run`; `--yes` accepts recommended answers. Examples: `--workspace "D:/Videos/VideoHub"` and `--agents claude,opencode`. The same answer flags shown below work on every platform.
+Double-click **SETUP.cmd**. It runs the shared Node installer directly. Preview the steps with `node scripts/install.mjs setup --dry-run`; `--yes` accepts recommended answers. Examples: `--workspace "D:/Videos/VideoHub"` and `--agents agy,opencode`. The same answer flags shown below work on every platform.
 
 The `.ps1` setup/update/uninstall files are compatibility forwarders and respect PowerShell's existing policy. If that policy blocks one, use the Node command or `.cmd` entry point; no policy change is needed.
+
+To use PowerShell, open a terminal in the VideoHub folder and run `./setup.ps1` (on Windows: `.\setup.ps1`). On a first interactive setup, choose `claude`, `agy`, `opencode`, or a comma-separated combination such as `agy,opencode` when asked. Detected agents are suggested, but you can choose any of them. A re-run keeps your saved choice; to select agents explicitly instead, run:
+
+```powershell
+.\setup.ps1 -Agents 'agy','opencode'
+```
+
+Use `-DryRun -Agents 'agy','opencode'` to preview, or `-Yes` to accept defaults without questions. Explicit choices configure the named agents; they do not remove other existing integrations.
 
 Open VideoHub from its Desktop shortcut or **open.cmd**. The shortcut starts the installed Node.js executable directly; a console window may appear briefly. `open.cmd` and login startup may also show a short console window. The current launch path uses neither VBScript nor hidden PowerShell. Update migrates owned shortcut/startup entries and recycles the old `open.vbs` / `open.ps1` only when those references are safe; custom, unreadable or failed migrations retain the files and show a warning. Start a new session in your selected agent to load `hub_*` tools.
 
 ### Linux and macOS
 Run `chmod +x setup.sh update.sh uninstall.sh open.sh`, then `./setup.sh`. Preview first with `./setup.sh --dry-run --agents opencode`. Setup prints missing-system-tool instructions instead of silently installing system packages.
 
-Flags: `--yes`, `--workspace PATH`, `--agents claude,opencode`, and `--watch-found`, `--gpu-encoder`, `--global-rule`, `--shortcut`, `--startup`, `--example` with `yes` or `no`. Launch with `./open.sh`. Linux also installs an application desktop entry and can add a Desktop copy.
+Flags: `--yes`, `--workspace PATH`, `--agents agy,opencode`, and `--watch-found`, `--gpu-encoder`, `--global-rule`, `--shortcut`, `--startup`, `--example` with `yes` or `no`. Launch with `./open.sh`. Linux also installs an application desktop entry and can add a Desktop copy.
 
 On macOS the optional Desktop launcher is **VideoHub.command**, which briefly opens Terminal. There is no unsigned `.app` bundle. If macOS blocks the downloaded launcher, attempt to open it, then go to **System Settings → Privacy & Security → Open Anyway**, confirm, and open it again. You can also launch with `./open.sh` from the installed folder.
 
-### Claude Code and OpenCode
-Setup detects the installed agents. Select one or both with `--agents claude,opencode` on every platform; legacy Windows `-Agents` spelling remains accepted. Each receives its own local MCP registration, the shared skill and the optional marked review rule. Restart the selected agent after setup.
+### Antigravity CLI, OpenCode and Claude Code
+Setup detects installed agents. Select any combination, for example `--agents agy,opencode` or `--agents agy`; add `claude` if wanted. The legacy Windows `-Agents` spelling remains accepted. Each receives its own local MCP registration, shared skill and optional marked review rule. Restart each selected agent after setup.
+
+For **Antigravity CLI (`agy`)**, VideoHub adds a stdio `videohub` entry to `~/.gemini/config/mcp_config.json` (shared with other Antigravity surfaces), installs the skill to `~/.gemini/antigravity-cli/skills/videohub/SKILL.md`, and optionally appends its marked rule to the shared `~/.gemini/GEMINI.md`. Existing settings and rules are preserved; a conflicting `videohub` entry or unreadable configuration is left untouched. A backup is made before rewriting an existing config or rule. Setup does not install or sign in to agy. In a fresh agy session use `/mcp` to check that `videohub` is ready and `/skills` to check the skill. Project-level configuration can override global configuration; check it if the tools do not appear. To test the server independently, run `node server/mcp-selftest.js` from the VideoHub installation.
+
+For an existing VideoHub installation, first update it with this version, then rerun its setup with `--agents agy,opencode` and your chosen flags; saved workspace settings are kept. Setup prints integration errors: resolve them and rerun if necessary. Update refreshes owned skills and rules, and uninstall removes only integrations owned by that installation. If MCP is unavailable, the skill documents the `node .../server/cli.js` fallback. These integrations need acceptance testing with your installed agy version and operating system.
 
 OpenCode's rules live in `~/.config/opencode/AGENTS.md` (under `$XDG_CONFIG_HOME` if set). When that file exists OpenCode reads it instead of Claude's global compatibility rules. Setup prints this consequence and never copies unrelated personal rules between agents. Settings → Agent name controls the review button label.
 
@@ -88,9 +100,9 @@ What a film folder must contain for each feature: [docs/PROJECT-CONTRACT.md](doc
 from [templates/new-film](templates/new-film).
 
 ## Working with your agent
-1. **Ask** Claude Code or OpenCode for a video. It builds the film from the template.
+1. **Ask** Antigravity CLI (agy), OpenCode, or Claude Code for a video. It builds the film from the template.
 2. **Preview** — when it plays, the agent calls `hub_live`, opens the film in VideoHub and stops for your review.
-3. **Notes** — watch, leave notes, press **Send to Claude / OpenCode** and paste the message into your chat.
+3. **Notes** — watch, leave notes, press **Send to Antigravity / OpenCode / Claude** and paste the message into your chat.
 4. **Fix** — the agent reads `hub_notes`, edits the code and marks the fixes. The preview updates itself; repeat as needed.
 5. **Render** — when you ask, the agent calls `hub_render`, or you press Render. Later fixes can render only the changed chunks; use Watch only the changes and Check fixes to review them.
 
@@ -147,7 +159,7 @@ Only integrations owned by this install are removed: MCP entry, skill, managed r
 - **Linux Trash unavailable** — VideoHub tries `gio`, `trash-put`, then the freedesktop Trash format; it refuses an unsafe or unwritable destination and leaves the item in place.
 - **The page is blank** — open it in a browser and look at the console; a missing Node 22 or a broken update are the
   usual causes. Restart with the Desktop shortcut.
-- **Your agent does not see `hub_*` tools** — start a new session; `claude mcp list` or `opencode mcp list` should show `videohub`. Re-run the installer for that agent if needed.
+- **Your agent does not see `hub_*` tools** — start a new session; use `/mcp` in agy, or `claude mcp list` / `opencode mcp list`, to check `videohub`. Re-run the installer for that agent if needed.
 - **"This folder is not a project VideoHub knows"** — put the film inside a watched folder or add its parent folder
   in Settings → Watched folders.
 - **"The live preview could not open"** — the page lacks `window.renderOut(t)` / `window.READY`; see

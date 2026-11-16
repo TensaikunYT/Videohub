@@ -85,3 +85,51 @@ test('Windows agent batch shims preserve special path characters and the supplie
   const args = ['mcp', 'add', path.join(o.home, '%VIDEOHUB_TRAP% & film!')], r = executeAgent(shim, args, { env }); assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(fs.readFileSync(out, 'utf8')), { args, home: o.home, marker: 'fake-only' });
 });
+
+test('agy setup, refresh, and uninstall preserve shared settings and unrelated rules', async () => {
+  const o = scratch(), p = agentPaths('agy', o), recycled = [];
+  write(p.config, '{"mcpServers":{"other":{"command":"other"}},"setting":42}');
+  write(p.rule, '# My global rules\nKeep this.\n');
+  const r = await integrateAgents({ ...o, agents: ['agy'], find: () => 'agy', run: () => { throw new Error('agy CLI must not be invoked'); } });
+  assert.deepEqual(r.errors, []); assert.equal(r.agentName, 'Antigravity');
+  let cfg = JSON.parse(fs.readFileSync(p.config, 'utf8'));
+  assert.deepEqual(cfg.mcpServers.videohub, { command: 'node', args: [path.join(hub, 'server', 'mcp.js')] });
+  assert.equal(cfg.setting, 42); assert.equal(cfg.mcpServers.other.command, 'other');
+  assert.match(fs.readFileSync(path.join(p.skill, 'SKILL.md'), 'utf8'), /VideoHub workflow/);
+  assert.match(fs.readFileSync(p.rule, 'utf8'), /My global rules/);
+  await integrateAgents({ ...o, agents: ['agy'] });
+  await integrateAgents({ ...o, action: 'refresh', agents: ['agy'] });
+  assert.equal([...fs.readFileSync(p.rule, 'utf8').matchAll(/<!-- videohub:begin/g)].length, 1);
+  const u = await integrateAgents({ ...o, action: 'uninstall', agents: ['agy'], recycle: async a => { recycled.push(...a); return a.map(path => ({ path, ok: true })); } });
+  assert.deepEqual(u.errors, []); assert.deepEqual(recycled, [p.skill]);
+  cfg = JSON.parse(fs.readFileSync(p.config, 'utf8')); assert.equal(cfg.mcpServers.videohub, undefined); assert.equal(cfg.mcpServers.other.command, 'other');
+  assert.match(fs.readFileSync(p.rule, 'utf8'), /My global rules/); assert.doesNotMatch(fs.readFileSync(p.rule, 'utf8'), /videohub:begin/);
+});
+test('agy detection and dry run are isolated; malformed and foreign configs stay untouched', async () => {
+  const o = scratch(), p = agentPaths('agy', o);
+  assert.deepEqual(detectAgents({ ...o, find: n => n === 'agy' ? 'agy' : null }), ['agy']);
+  let r = await integrateAgents({ ...o, agents: ['agy'], dryRun: true }); assert.deepEqual(r.errors, []); assert.equal(fs.existsSync(path.join(o.home, '.gemini')), false);
+  write(p.config, '{ invalid'); r = await integrateAgents({ ...o, agents: ['agy'] }); assert.match(r.errors[0], /left unchanged/); assert.equal(fs.readFileSync(p.config, 'utf8'), '{ invalid');
+  const foreign = JSON.stringify({ mcpServers: { videohub: { command: 'node', args: ['/other/server/mcp.js'] } } }); write(p.config, foreign);
+  r = await integrateAgents({ ...o, agents: ['agy'] }); assert.deepEqual(r.errors, []); assert.equal(fs.readFileSync(p.config, 'utf8'), foreign); assert.equal(fs.existsSync(p.skill), false);
+  await integrateAgents({ ...o, action: 'uninstall', agents: ['agy'] }); assert.equal(fs.readFileSync(p.config, 'utf8'), foreign);
+});
+test('agy and OpenCode get separate configuration and skills', async () => {
+  const o = scratch(), r = await integrateAgents({ ...o, agents: ['agy', 'opencode'], globalRule: false });
+  assert.deepEqual(r.errors, []); assert.equal(r.agentName, 'Agent');
+  for (const agent of ['agy', 'opencode']) assert.ok(fs.existsSync(path.join(agentPaths(agent, o).skill, 'SKILL.md')));
+  assert.equal(fs.existsSync(agentPaths('agy', o).rule), false);
+});
+
+test('agy-generated stdio configuration starts VideoHub MCP and exposes its tools', async () => {
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+  const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+  const o = scratch(), p = agentPaths('agy', o);
+  const r = await integrateAgents({ ...o, agents: ['agy'], globalRule: false }); assert.deepEqual(r.errors, []);
+  const entry = JSON.parse(fs.readFileSync(p.config, 'utf8')).mcpServers.videohub;
+  const client = new Client({ name: 'videohub-agy-test', version: '1.0.0' });
+  const env = { ...process.env, HOME: o.home, USERPROFILE: o.home, APPDATA: path.join(o.home, 'AppData', 'Roaming'), LOCALAPPDATA: path.join(o.home, 'AppData', 'Local'), XDG_CONFIG_HOME: o.env.XDG_CONFIG_HOME, XDG_DATA_HOME: path.join(o.home, '.local', 'share'), TMP: o.home, TEMP: o.home, TMPDIR: o.home, VIDEOHUB_PORT: '7799', VIDEOHUB_DATA_DIR: path.join(o.home, 'data'), VIDEOHUB_BASE_DIR: path.join(o.home, 'workspace'), VIDEOHUB_GUARD: 'off', VIDEOHUB_JOBS: 'off', VIDEOHUB_NO_WINDOW: '1' };
+  const transport = new StdioClientTransport({ command: entry.command, args: entry.args, env });
+  try { await client.connect(transport); const { tools } = await client.listTools(); for (const name of ['hub_workspace', 'hub_live', 'hub_notes', 'hub_render']) assert.ok(tools.some(t => t.name === name), name); }
+  finally { await client.close(); }
+});

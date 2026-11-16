@@ -121,3 +121,40 @@ test('a known lexical foreign install that aliases the target cannot authorize d
   const r = await runInstaller({ action: 'update', target: o.target, 'no-skill': true }, { ...o, resolveInstall: p => p === alias ? fs.realpathSync(o.target) : fs.realpathSync(p) });
   assert.ok(!o.calls.some(c => c[0] === 'trash' && c[2].includes(old))); assert.ok(r.warnings.some(s => /Old launcher files were kept/.test(s)));
 });
+
+test('interactive Windows setup asks for agents even when only agy is detected and registers the selected combination', async () => {
+  const o = fixture(), workspace = path.join(o.base, 'Work'), prompts = [], logs = [], replies = ['invalid', 'AGY, OpenCode'];
+  fs.mkdirSync(path.join(o.home, '.gemini', 'antigravity-cli'), { recursive: true });
+  const opts = { action: 'setup', workspace, 'global-rule': 'no', shortcut: 'no', startup: 'no', example: 'no' };
+  const result = await runInstaller(opts, { ...o, log: s => logs.push(s), ask: async prompt => { prompts.push(prompt); return replies.shift(); } });
+  assert.deepEqual(result.warnings.filter(s => !/ffmpeg|Chrome|Chromium/.test(s)), []);
+  assert.equal(prompts.length, 2); assert.match(prompts[0], /Agents.*agy,opencode.*\[agy\]/);
+  assert.ok(logs.some(s => /Choose at least one/.test(s)));
+  const answers = JSON.parse(fs.readFileSync(path.join(o.hub, 'data', 'setup-answers.json'), 'utf8'));
+  assert.deepEqual(answers.agents, ['agy', 'opencode']);
+  assert.ok(fs.existsSync(path.join(o.home, '.gemini', 'config', 'mcp_config.json')));
+  assert.ok(fs.existsSync(path.join(o.home, '.config', 'opencode', 'opencode.json')));
+  await runInstaller(opts, { ...o, ask: async () => { throw new Error('Saved answers must not be asked again'); } });
+});
+
+test('PowerShell agent argument selects the requested agents without prompting and rejects an empty list', async () => {
+  const o = fixture(), workspace = path.join(o.base, 'Work');
+  const options = parseOptions(['setup', '-Yes', '-Workspace', workspace, '-Agents', 'agy,opencode', '-Shortcut', 'no', '-Example', 'no']);
+  await runInstaller(options, { ...o, ask: async () => { throw new Error('Explicit choice must not prompt'); } });
+  const answers = JSON.parse(fs.readFileSync(path.join(o.hub, 'data', 'setup-answers.json'), 'utf8'));
+  assert.deepEqual(answers.agents, ['agy', 'opencode']);
+  const other = fixture();
+  await assert.rejects(runInstaller({ action: 'setup', yes: true, workspace: path.join(other.base, 'Work'), agents: ',' }, other), /--agents must contain/);
+});
+
+test('interactive choice supports each individual agent and accepting the detected default', async () => {
+  for (const [response, expected] of [['claude', 'claude'], ['agy', 'agy'], ['opencode', 'opencode'], ['', 'agy']]) {
+    const o = fixture(), workspace = path.join(o.base, 'Work'), seen = [];
+    fs.mkdirSync(path.join(o.home, '.gemini', 'antigravity-cli'), { recursive: true });
+    await runInstaller({ action: 'setup', workspace, 'global-rule': 'no', shortcut: 'no', startup: 'no', example: 'no' }, { ...o, ask: async q => { seen.push(q); return response; } });
+    assert.equal(seen.length, 1);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(o.hub, 'data', 'setup-answers.json'), 'utf8')).agents, [expected]);
+    const cfg = expected === 'agy' ? path.join(o.home, '.gemini', 'config', 'mcp_config.json') : expected === 'claude' ? path.join(o.home, '.claude.json') : path.join(o.home, '.config', 'opencode', 'opencode.json');
+    assert.ok(fs.existsSync(cfg), expected);
+  }
+});

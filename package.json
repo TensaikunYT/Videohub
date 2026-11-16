@@ -2,7 +2,7 @@
   "name": "videohub",
   "version": "0.1.0",
   "private": true,
-  "description": "Local cross-platform review studio and protected render queue for videos written as code by Claude Code or OpenCode.",
+  "description": "Local cross-platform review studio and protected render queue for videos written as code by Antigravity CLI, Claude Code or OpenCode.",
   "license": "MIT",
   "keywords": [
     "claude",
@@ -18,7 +18,9 @@
     "windows",
     "linux",
     "macos",
-    "opencode"
+    "opencode",
+    "antigravity",
+    "agy"
   ],
   "type": "module",
   "main": "server/hub.js",

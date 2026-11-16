@@ -1,7 +1,7 @@
 # VideoHub architecture
 
 A local Node 22 server (ES modules, no build step, two npm dependencies plus `puppeteer-core` for render scripts),
-a vanilla-JS UI, built-in Node render protection and MCP tools for Claude Code or OpenCode. Windows is established; Linux and macOS are new and await real-machine acceptance. There is no compiled helper program.
+a vanilla-JS UI, built-in Node render protection and MCP tools for Antigravity CLI, Claude Code and OpenCode. Windows is established; Linux and macOS are new and await real-machine acceptance. There is no compiled helper program.
 What film projects must look like is in [PROJECT-CONTRACT.md](PROJECT-CONTRACT.md).
 
 ## Processes and lifetime

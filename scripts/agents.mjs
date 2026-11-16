@@ -1,4 +1,4 @@
-// Agent integration is shared by both installers. Never replace another install's entry or unreadable config.
+// Agent integration is shared by all installers. Never replace another install's entry or unreadable config.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -33,6 +33,11 @@ export function parseJsonc(text) {
   const j = JSON.parse(clean); if (!object(j)) throw new Error('Expected a JSON object'); return j;
 }
 export function agentPaths(agent, { home = os.homedir(), env = process.env } = {}) {
+  if (!['claude', 'opencode', 'agy'].includes(agent)) throw new Error('Unknown agent: ' + agent);
+  if (agent === 'agy') {
+    const gemini = path.join(home, '.gemini'), dir = path.join(gemini, 'antigravity-cli');
+    return { dir, config: path.join(gemini, 'config', 'mcp_config.json'), skill: path.join(dir, 'skills', 'videohub'), rule: path.join(gemini, 'GEMINI.md') };
+  }
   const dir = agent === 'claude' ? path.join(home, '.claude') : path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'opencode');
   const json = agent === 'claude' ? path.join(home, '.claude.json') : path.join(dir, 'opencode.json');
   const config = agent === 'opencode' && fs.existsSync(path.join(dir, 'opencode.jsonc')) ? path.join(dir, 'opencode.jsonc') : json;
@@ -55,16 +60,16 @@ export function executeAgent(file, args, { env = process.env } = {}) {
   return spawnSync(file, args, { encoding: 'utf8', windowsHide: true, env });
 }
 export function detectAgents(options = {}) {
-  return ['claude', 'opencode'].filter(a => (options.find || executable)(a, options.env) || fs.existsSync(agentPaths(a, options).dir));
+  return ['claude', 'opencode', 'agy'].filter(a => (options.find || executable)(a, options.env) || fs.existsSync(agentPaths(a, options).dir));
 }
 function readConfig(file) { if (!fs.existsSync(file)) return {}; try { return parseJsonc(fs.readFileSync(file, 'utf8')); } catch (e) { throw new Error(`${file} is not readable JSON/JSONC; left unchanged (${e.message})`); } }
-function entriesOf(agent, j) { return (agent === 'claude' ? [j.mcpServers?.videohub] : [j.mcp?.servers?.videohub, j.mcp?.videohub]).filter(e => e != null); }
+function entriesOf(agent, j) { return (agent !== 'opencode' ? [j.mcpServers?.videohub] : [j.mcp?.servers?.videohub, j.mcp?.videohub]).filter(e => e != null); }
 function owns(entry, mcp) { return [...(Array.isArray(entry?.command) ? entry.command : []), ...(Array.isArray(entry?.args) ? entry.args : [])].some(p => same(p, mcp)); }
 function save(file, j) { fs.mkdirSync(path.dirname(file), { recursive: true }); if (fs.existsSync(file)) fs.copyFileSync(file, file + '.videohub-backup'); fs.writeFileSync(file, JSON.stringify(j, null, 2) + '\n'); }
 function mutateEntry(agent, j, mcp, remove) {
-  if (agent === 'claude') {
+  if (agent !== 'opencode') {
     if (!object(j.mcpServers) && j.mcpServers != null) throw new Error('mcpServers is not an object');
-    j.mcpServers ||= {}; if (remove) delete j.mcpServers.videohub; else j.mcpServers.videohub = { type: 'stdio', command: 'node', args: [mcp], env: {} };
+    j.mcpServers ||= {}; if (remove) delete j.mcpServers.videohub; else j.mcpServers.videohub = agent === 'agy' ? { command: 'node', args: [mcp] } : { type: 'stdio', command: 'node', args: [mcp], env: {} };
   } else {
     if (!object(j.mcp) && j.mcp != null) throw new Error('mcp is not an object'); j.mcp ||= {};
     if (!object(j.mcp.servers) && j.mcp.servers != null) throw new Error('mcp.servers is not an object'); j.mcp.servers ||= {};
@@ -79,10 +84,10 @@ export async function integrateAgents({ action = 'setup', agents = [], hub = ROO
   if (!['setup', 'refresh', 'uninstall'].includes(action)) throw new Error('Unknown agent action: ' + action);
   const actions = [], errors = [], mcp = path.join(hub, 'server', 'mcp.js');
   agents = [...new Set(agents.flatMap(a => String(a).split(',')).filter(Boolean))];
-  if (agents.some(a => !['claude', 'opencode'].includes(a))) throw new Error('Agents must be claude or opencode');
+  if (agents.some(a => !['claude', 'opencode', 'agy'].includes(a))) throw new Error('Agents must be claude, opencode, or agy');
   const say = s => actions.push((dryRun ? 'would ' : '') + s);
   for (const agent of agents) {
-    const p = agentPaths(agent, { home, env }), label = agent === 'claude' ? 'Claude Code' : 'OpenCode';
+    const p = agentPaths(agent, { home, env }), label = agent === 'claude' ? 'Claude Code' : agent === 'agy' ? 'Antigravity CLI' : 'OpenCode';
     try {
       const j = readConfig(p.config), current = entriesOf(agent, j), mine = current.length > 0 && current.every(e => owns(e, mcp)), cli = find(agent, env);
       if (current.length && !mine) { say(`leave ${label} MCP entry belonging to another install unchanged`); if (action !== 'uninstall') continue; }
@@ -90,7 +95,8 @@ export async function integrateAgents({ action = 'setup', agents = [], hub = ROO
         const remove = action === 'uninstall';
         say(`${remove ? 'remove' : 'register'} ${label} MCP server videohub (${p.config})`);
         if (!dryRun) {
-          if (cli) {
+          // The shared agy config is edited directly to avoid removing/replacing unrelated CLI entries.
+          if (cli && agent !== 'agy') {
             let useCli = true;
             if (remove && agent === 'opencode') { const help = run(cli, ['mcp', '--help'], { env }); useCli = /\bremove\b/.test(String(help.stdout) + String(help.stderr)); }
             if (useCli) {
@@ -122,12 +128,13 @@ export async function integrateAgents({ action = 'setup', agents = [], hub = ROO
         const rule = fs.readFileSync(path.join(hub, 'claude', 'global-rule.md'), 'utf8').replaceAll('{{VIDEOHUB_DIR}}', hub.replace(/\\/g, '/')).trim();
         const block = `${begin}\n${rule}\n${end}`;
         say(`write VideoHub rule to ${p.rule}`);
-        if (!dryRun) { fs.mkdirSync(p.dir, { recursive: true }); if (fs.existsSync(p.rule)) fs.copyFileSync(p.rule, p.rule + '.videohub-backup'); fs.writeFileSync(p.rule, found.length ? old.replace(blocks, () => block) : (old.trimEnd() ? old.trimEnd() + '\n\n' : '') + block + '\n'); }
+        if (!dryRun) { fs.mkdirSync(path.dirname(p.rule), { recursive: true }); if (fs.existsSync(p.rule)) fs.copyFileSync(p.rule, p.rule + '.videohub-backup'); fs.writeFileSync(p.rule, found.length ? old.replace(blocks, () => block) : (old.trimEnd() ? old.trimEnd() + '\n\n' : '') + block + '\n'); }
+        if (agent === 'agy') actions.push('Antigravity CLI shares ~/.gemini/config/mcp_config.json and ~/.gemini/GEMINI.md with other Google tools.');
         if (agent === 'opencode') actions.push('OpenCode reads its AGENTS.md instead of ~/.claude/CLAUDE.md; other rules were not copied.');
       }
     } catch (e) { errors.push(`${label}: ${e.message}`); }
   }
-  return { agents, actions, errors, agentName: agents.length === 1 && agents[0] === 'opencode' ? 'OpenCode' : 'Claude' };
+  return { agents, actions, errors, agentName: agents.length === 1 ? ({ claude: 'Claude', opencode: 'OpenCode', agy: 'Antigravity' }[agents[0]] || 'Claude') : agents.includes('agy') ? 'Agent' : 'Claude' };
 }
 export function parseAgentOptions(args) {
   const out = {};
@@ -144,7 +151,7 @@ export function parseAgentOptions(args) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const options = parseAgentOptions(process.argv.slice(2)), val = key => options[key];
-    if (val('--help')) { console.log('Usage: node scripts/agents.mjs [--detect] [--action setup|refresh|uninstall] [--agents claude,opencode] [--hub PATH] [--global-rule yes|no] [--dry-run]'); }
+    if (val('--help')) { console.log('Usage: node scripts/agents.mjs [--detect] [--action setup|refresh|uninstall] [--agents agy,opencode,claude] [--hub PATH] [--global-rule yes|no] [--dry-run]'); }
     else if (val('--detect')) console.log(JSON.stringify({ agents: detectAgents() }));
     else {
       const hub = val('--hub') || ROOT;
