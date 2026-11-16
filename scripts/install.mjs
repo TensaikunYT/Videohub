@@ -188,7 +188,7 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
     say('VideoHub is available at ' + base);
   };
   try {
-    if (options.help) { log('Usage: ./setup.sh [--dry-run] [--yes] [--workspace PATH] [--agents claude,opencode] [--watch-found yes|no] [--gpu-encoder yes|no] [--global-rule yes|no] [--shortcut yes|no] [--startup yes|no] [--example yes|no]\n./update.sh [--target PATH] [--dry-run]\n./uninstall.sh [--dry-run]\n./open.sh [--server]'); return { actions, warnings }; }
+    if (options.help) { log('Usage: ./setup.sh [--dry-run] [--yes] [--workspace PATH] [--agents agy,opencode,claude] [--watch-found yes|no] [--gpu-encoder yes|no] [--global-rule yes|no] [--shortcut yes|no] [--startup yes|no] [--example yes|no]\n./update.sh [--target PATH] [--dry-run]\n./uninstall.sh [--dry-run]\n./open.sh [--server]'); return { actions, warnings }; }
     if (options.action === 'validate-update') { const result = validateUpdatePaths(options.source || hub, options.target || hub, { platform }); if (result.same) throw new Error('Source and target refer to the same folder; nothing to update'); say('source and target are separate folders'); return { actions, warnings }; }
     if (options.action === 'stop') { await stopInstall(path.resolve(options.target || hub)); return { actions, warnings }; }
     if (options.action === 'autostart') {
@@ -207,13 +207,25 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
       packageInstall(hub);
       const answersFile = path.join(data, 'setup-answers.json'), saved = read(answersFile, {}), answers = { ...saved };
       for (const [old, key] of Object.entries({ globalRule: 'global-rule', watchFound: 'watch-found', gpuEncoder: 'gpu-encoder' })) if (saved[old] != null && saved[key] == null) saved[key] = saved[old];
-      let chosen = options.agents ? options.agents.split(',').map(s => s.trim()).filter(Boolean) : Array.isArray(saved.agents) ? saved.agents : typeof saved.agents === 'string' ? saved.agents.split(',').map(s => s.trim()) : null;
-      if (!chosen?.length) {
-        const found = detectAgents({ home, env });
-        if (found.length === 1 || quiet) chosen = found.length ? found : ['claude'];
-        else { const a = (await question('Which agents? claude, opencode, or claude,opencode [' + (found.join(',') || 'claude') + '] ')).trim(); chosen = (a || found.join(',') || 'claude').split(',').map(s => s.trim()); }
+      const agentList = value => [...new Set((Array.isArray(value) ? value : String(value || '').split(',')).map(s => String(s).trim().toLowerCase()).filter(Boolean))];
+      const validAgents = list => list.length > 0 && list.every(a => ['claude', 'opencode', 'agy'].includes(a));
+      let chosen = options.agents != null ? agentList(options.agents) : agentList(saved.agents);
+      if (options.agents != null && !validAgents(chosen)) throw new Error('--agents must contain agy, opencode, and/or claude');
+      if (!chosen.length) {
+        const found = detectAgents({ home, env }), recommended = found.length ? found : ['claude'];
+        if (quiet) chosen = recommended;
+        else {
+          log('Choose where to add VideoHub: Claude Code (claude), Antigravity CLI (agy), and/or OpenCode (opencode).');
+          if (found.length) log('Detected: ' + found.join(', ') + '.');
+          else log('No agent detected; you can still choose one to configure.');
+          while (!validAgents(chosen)) {
+            const answer = (await question('Agents (comma-separated, e.g. agy,opencode) [' + recommended.join(',') + ']: ')).trim();
+            chosen = answer ? agentList(answer) : recommended;
+            if (!validAgents(chosen)) log('Choose at least one of: claude, agy, opencode.');
+          }
+        }
       }
-      if (chosen.some(a => !['claude', 'opencode'].includes(a))) throw new Error('--agents must contain claude and/or opencode'); answers.agents = chosen;
+      if (!validAgents(chosen)) throw new Error('--agents must contain agy, opencode, and/or claude'); answers.agents = chosen;
       let workspace = st.workspace || options.workspace;
       if (!workspace && !quiet) workspace = (await question('Where should your video work live? [' + st.defaultWorkspace + '] ')).trim();
       workspace ||= st.defaultWorkspace;
@@ -288,7 +300,7 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
       }
       const lockAfter = fs.existsSync(path.join(target, 'package-lock.json')) ? fs.readFileSync(path.join(target, 'package-lock.json'), 'utf8') : null;
       packageInstall(target, lockBefore !== lockAfter);
-      if (!options['no-skill']) { const integration = await agents({ action: 'refresh', agents: ['claude', 'opencode'], hub: target, home, env, dryRun: dry }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e); }
+      if (!options['no-skill']) { const integration = await agents({ action: 'refresh', agents: ['claude', 'opencode', 'agy'], hub: target, home, env, dryRun: dry }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e); }
       if (platform.IS_WIN) {
         const installed = platformForInstall(target), shortcut = await installed.getShortcut(); let legacyLaunchersSafe = referencesClear(shortcut, target);
         if (shortcut.error) warn(shortcut.error);
@@ -300,7 +312,7 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
       log('Update complete. Open VideoHub with its existing launcher and restart your agent session.'); return { actions, warnings };
     }
     await stopInstall(hub);
-    const integration = await agents({ action: 'uninstall', agents: ['claude', 'opencode'], hub, home, env, dryRun: dry, recycle: platform.trash }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e);
+    const integration = await agents({ action: 'uninstall', agents: ['claude', 'opencode', 'agy'], hub, home, env, dryRun: dry, recycle: platform.trash }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e);
     let startup = false, startupCleanupSafe = true;
     try { if (platform.IS_WIN) { const info = await startupDetails(platform, hub); startup = info.owned; startupCleanupSafe = referencesClear(info, hub); if (info.error) warn(info.error); } else startup = await platform.getAutostart(); } catch (e) { startupCleanupSafe = false; warn(e.message); }
     // A macOS LaunchAgent may be installed but unloaded; setAutostart also removes that owned plist.

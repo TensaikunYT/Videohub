@@ -1,5 +1,6 @@
 # Optional compatibility entry point. SETUP.cmd runs Node directly and needs no PowerShell script permission.
 # This wrapper respects the machine's existing execution policy and forwards the original Windows options.
+# Interactive setup asks which agents to configure. Or pass -Agents 'agy','opencode','claude'.
 param([switch]$DryRun, [switch]$Yes, [string]$Workspace = '', [ValidateSet('ask', 'yes', 'no')][string]$WatchFound = 'ask',
   [ValidateSet('ask', 'yes', 'no')][string]$GpuEncoder = 'ask', [ValidateSet('ask', 'yes', 'no')][string]$GlobalRule = 'ask',
   [ValidateSet('ask', 'yes', 'no')][string]$Shortcut = 'ask', [ValidateSet('ask', 'yes', 'no')][string]$Startup = 'ask',

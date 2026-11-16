@@ -147,3 +147,16 @@ test('Bash launchers pass bash -n when a working Bash is available', t => {
   const version = spawnSync('bash', ['--version'], { encoding: 'utf8', timeout: 10000, windowsHide: true }); if (version.error || version.status !== 0) { t.skip('Bash is unavailable on this host; run bash -n on Linux/macOS'); return; }
   for (const f of ['setup.sh', 'update.sh', 'uninstall.sh', 'open.sh']) { const r = spawnSync('bash', ['-n', f], { cwd: ROOT, encoding: 'utf8', timeout: 10000, windowsHide: true }); assert.equal(r.status, 0, f + ': ' + r.stderr); }
 });
+
+test('installer accepts agy and OpenCode, remembers them, and uses generic agent label', async () => {
+  const o = fixture();
+  const r = await runInstaller({ action: 'setup', yes: true, workspace: o.workspace, agents: 'agy,opencode' }, o);
+  assert.deepEqual(r.warnings.filter(s => !/ffmpeg|Chrome|Chromium/.test(s)), []);
+  const cfg = JSON.parse(fs.readFileSync(path.join(o.hub, 'data', 'config.json'), 'utf8'));
+  assert.equal(cfg.agentName, 'Agent');
+  const agy = JSON.parse(fs.readFileSync(path.join(o.home, '.gemini', 'config', 'mcp_config.json'), 'utf8'));
+  assert.deepEqual(agy.mcpServers.videohub.args, [path.join(o.hub, 'server', 'mcp.js')]);
+  assert.ok(fs.existsSync(path.join(o.home, '.gemini', 'antigravity-cli', 'skills', 'videohub', 'SKILL.md')));
+  const answers = JSON.parse(fs.readFileSync(path.join(o.hub, 'data', 'setup-answers.json'), 'utf8'));
+  assert.deepEqual(answers.agents, ['agy', 'opencode']);
+});

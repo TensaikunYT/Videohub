@@ -16,7 +16,7 @@ frames, draws on them and leaves notes, and where renders are queued one at a ti
 | `hub_live({project?, open?})` | Open the film in the live preview — it plays from its code, no render. Call it as soon as a new film plays, then stop and wait for the user's notes. |
 | `hub_workspace()` | Where this PC keeps its video work: the workspace, the films folder for new films, the outputs folder. Call it before creating a new film. |
 | `hub_project({project?, set?})` | Find the project (folder / name / id; default: the working folder): status, versions, open notes, render recipe. `set` saves `title`, `status`, `render` (`env.DUR`, `workers`, `mux`). |
-| `hub_notes({project?})` | The user's open notes: time, frame, chunks, text, picture paths. Marks them "claude". |
+| `hub_notes({project?})` | The user's open notes: time, frame, chunks, text, picture paths. Marks them as sent to the agent (stored as the legacy status "claude"). |
 | `hub_note_update({id, status:"fixed", reply})` | After fixing a note; reply = one sentence of what changed. |
 | `hub_render({mode, notes?, seconds?, chunks?, wait:true})` | Queue a render — only when the user asked for one. `partial` re-renders only the chunks the notes touch. |
 | `hub_job({id, wait:true})` | Wait for / check a render. |
@@ -63,7 +63,7 @@ Do the same after any big change to an already rendered film.
 
 The pasted message starts `VideoHub: N notes on "…"` and names the project folder: pass it as `project` to every
 `hub_*` call, whatever folder this chat runs in. If this chat does not know the project yet, read its
-STATE.md / CLAUDE.md / README first.
+STATE.md / AGENTS.md / GEMINI.md / CLAUDE.md / README first, when present.
 1. `hub_notes({project})` → for each note open the `close-up` picture with Read (the full annotated frame only if the
    close-up is not enough). Do not render frames or contact sheets to find the moment: the note gives time, frame and chunk.
    A note marked `RANGE frames A–B` covers that whole range: look at its first/last-frame pictures and make the fix hold

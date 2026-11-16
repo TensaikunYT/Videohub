@@ -30,6 +30,7 @@ Windows remains the established platform. Linux and macOS support are **new, not
 | Install, update and uninstall | Shared Node lifecycle installer; `.cmd` entry points and optional policy-respecting `.ps1` forwarders | `setup.sh`, `update.sh`, `uninstall.sh` | Same Bash scripts with macOS paths and Homebrew hints |
 | Desktop launcher | Node-based shortcut (minimized) or `open.cmd`; a console may appear briefly | Desktop entry with SVG icon | Optional executable `VideoHub.command`; no `.app` bundle |
 | Claude Code integration | CLI MCP registration, skill and managed global rule | Same integrations through shared Node helper | Same integrations through shared Node helper |
+| Antigravity CLI integration | Shared MCP JSON config, CLI skill and managed global rule | Same integrations through shared Node helper | Same integrations through shared Node helper |
 | OpenCode integration | CLI MCP registration; JSONC-tolerant fallback only if CLI is absent; skill and managed rule | Same integrations through shared Node helper | Same integrations through shared Node helper |
 
 ## Windows security behavior
@@ -54,7 +55,7 @@ On Linux and macOS, raising priority after a slow period can require privileges.
 
 ## Agent integration
 
-Setup can target Claude Code, OpenCode or both. Skills share one source file and rules are limited to VideoHub's marked block. Existing unrelated settings and rules remain in their respective agent files. An OpenCode `AGENTS.md` causes OpenCode to prefer that rules file over Claude's global rules; setup prints this consequence and does not copy unrelated rules between agents.
+Setup can target Antigravity CLI (agy), Claude Code, OpenCode or any combination. The agy MCP configuration and GEMINI.md are shared with other Google tools; setup only manages the VideoHub entry and marked rule. Skills share one source file and rules are limited to VideoHub's marked block. Existing unrelated settings and rules remain in their respective agent files. An OpenCode `AGENTS.md` causes OpenCode to prefer that rules file over Claude's global rules; setup prints this consequence and does not copy unrelated rules between agents.
 
 ## Not supported
 
@@ -67,4 +68,4 @@ Setup can target Claude Code, OpenCode or both. Skills share one source file and
 
 ## Real-machine acceptance still required
 
-On Ubuntu 24.04 desktop, install from a fresh clone, open the example in live preview, send a note, render once with sound after approving the preview, inspect priority and `taskset`, stop a render with children, restore a deleted folder from Trash, update while retaining data, and uninstall. Repeat installation, live preview, notes, one sound render, priority/background QoS, whole-tree Stop, Trash restore, data-preserving update and uninstall on Apple Silicon and, if available, Intel macOS. Verify the `.command` first launch, Finder Automation prompt, LaunchAgent login startup and hidden CPU sliders. Confirm a real OpenCode session exposes the `hub_*` tools on each platform; verify Claude Code integration as well. These desktop, permissions, rendering and performance checks were not executed on Linux/macOS during the Windows implementation run.
+On Ubuntu 24.04 desktop, install from a fresh clone, open the example in live preview, send a note, render once with sound after approving the preview, inspect priority and `taskset`, stop a render with children, restore a deleted folder from Trash, update while retaining data, and uninstall. Repeat installation, live preview, notes, one sound render, priority/background QoS, whole-tree Stop, Trash restore, data-preserving update and uninstall on Apple Silicon and, if available, Intel macOS. Verify the `.command` first launch, Finder Automation prompt, LaunchAgent login startup and hidden CPU sliders. Confirm a real agy session and OpenCode session expose the `hub_*` tools on each platform; verify Claude Code integration as well. These desktop, permissions, rendering and performance checks were not executed on Linux/macOS during the Windows implementation run.
