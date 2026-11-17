@@ -83,7 +83,7 @@ export async function create(body) {
   if (!Number.isInteger(workers) || workers < 1 || workers > (p.studio ? 4 : 8)) throw Object.assign(new Error('Invalid number of render workers.'), { code: 400 });
   const job = { id: 'j' + Date.now().toString(36) + '-' + randomUUID().slice(0, 8), project: p.id, projectName: p.title || p.name, path: p.path, mode, state: 'queued', createdAt: now(), session: body.session || null, notes: body.notes || [], env: { ...rc.env, ...(body.env || {}) }, workers, progress: 0 };
   if (mode === 'partial') {
-    if (p.studio && !rc.chunkSec) throw Object.assign(new Error(`This 3D scene has no chunked render yet (out\\${p.name}\\render\\manifest.json). Render it in full once first: hub_render({mode:"full"}) or node make.mjs ${p.name}.`), { code: 400 });
+    if (p.studio && !rc.chunkSec) throw Object.assign(new Error(`This 3D scene has no chunked render yet (${path.join('out', p.name, 'render', 'manifest.json')}). Render it in full once first: hub_render({mode:"full"}) or node make.mjs ${p.name}.`), { code: 400 });
     if (!p.studio && (p.family !== 'A' || !rc.chunkSec)) throw Object.assign(new Error(`Partial renders need a chunked render script (family A, see docs/PROJECT-CONTRACT.md) or a 3D studio scene; this project is "${p.family}". Use mode:"full", or mode:"command" with your own command.`), { code: 400 });
     let chunks = new Set(body.chunks || []);
     for (const [a, b] of body.seconds || []) for (let c = Math.floor(Math.max(0, a) / rc.chunkSec); c <= Math.floor(Math.max(a, b - 1e-6) / rc.chunkSec); c++) chunks.add(c);
@@ -102,7 +102,7 @@ export async function create(body) {
   }
   job.dur = +rc.env.DUR || null;
   if (body.copyTo && mode !== 'command') {
-    if (!path.isAbsolute(String(body.copyTo))) throw Object.assign(new Error('The copy folder must be a full path (e.g. D:\\Videos)'), { code: 400 });
+    if (!path.isAbsolute(String(body.copyTo))) throw Object.assign(new Error(`The copy folder must be a full path (e.g. ${path.sep === '\\' ? 'D:\\Videos' : '/home/me/Videos'})`), { code: 400 });
     job.copyTo = path.resolve(String(body.copyTo));
   }
   // big programs holding RAM (an Android emulator can take 8 GB of 16): hub_render tells Claude, Claude tells the user
@@ -219,8 +219,10 @@ async function runJob(job) {
   assertActive(job);
   // VIDEOHUB_DIR: render scripts may load puppeteer-core from VideoHub's node_modules; VIDEOHUB_ENCODER: the encoder chosen in
   // setup/Settings (render.encoder) unless the job sets its own (scripts that do not read it are not affected)
-  const browser = findBrowser().path;
+  const browser = findBrowser().path, nodeDir = TOOLS.node && path.isAbsolute(TOOLS.node) ? path.dirname(TOOLS.node) : '';
   const env = { FFMPEG: TOOLS.ffmpeg, FFPROBE: TOOLS.ffprobe, VIDEOHUB_ENCODER_ORDER: PROBE_ORDER.join(','), ...process.env, ...(browser ? { VIDEOHUB_BROWSER: browser } : {}), ...(job.workers ? { WK: String(job.workers) } : {}), ...encoderEnv(job.env, config().render?.encoder), ...job.env, VIDEOHUB_JOB: job.id, VIDEOHUB_DIR: HUB_DIR };
+  // Ensure `node` / `npm` in custom render commands work when VideoHub was started from a GUI launcher (e.g. Walker / autostart with mise or nvm).
+  if (nodeDir && !(env.PATH || '').split(path.delimiter).includes(nodeDir)) env.PATH = nodeDir + (env.PATH ? path.delimiter + env.PATH : '');
   if (!browser && !Object.hasOwn(job.env, 'VIDEOHUB_BROWSER')) delete env.VIDEOHUB_BROWSER;
   const versions = readJson(path.join(vhDir(p), 'versions.json'), []);
   const vN = Math.max(versions.reduce((m, v) => Math.max(m, v.v || 0), 0), maxNameVersion(p)) + 1;
@@ -273,7 +275,7 @@ async function runJob(job) {
   }
   const listFile = path.join(rdir(p), 'render', 'list.txt');
   setPhase(job, 'concat');
-  fs.writeFileSync(listFile, files.map(f => `file '${path.join(chunkDir(p), f).split(path.sep).join('/')}'`).join('\n'));
+  fs.writeFileSync(listFile, files.map(f => `file '${path.join(chunkDir(p), f).split(path.sep).join('/').replace(/'/g, "'\\''")}'`).join('\n'));
   const video = path.join(rdir(p), 'render', 'video.mp4');
   const r = await spawnLogged(job, TOOLS.ffmpeg, ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', video]);
   assertActive(job);
@@ -450,7 +452,7 @@ async function renderInfo(p) {
 }
 async function renderOptions0(p) {
   const rc = await recipe(p);
-  if (p.studio) return { studio: true, partial: !!rc.chunkSec, preview: false, fps: null, workers: { default: rc.workers, max: 4 }, codecs: ['auto', 'x264', 'nvenc', 'amf'], dur: +rc.env.DUR || null };
+  if (p.studio) return { studio: true, partial: !!rc.chunkSec, preview: false, fps: null, workers: { default: rc.workers, max: 4 }, codecs: [...new Set(['auto', 'x264', ...PROBE_ORDER])], codecLabels: LABELS, dur: +rc.env.DUR || null };
   let src = ''; try { src = fs.readFileSync(path.join(p.path, rc.script), 'utf8'); } catch { }
   const env = new Set([...src.matchAll(/process\.env\.([A-Z_]+)/g)].map(m => m[1]));
   return { studio: false, script: fs.existsSync(path.join(p.path, rc.script)) ? rc.script : null, partial: p.family === 'A' && !!rc.chunkSec,

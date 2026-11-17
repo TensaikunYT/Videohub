@@ -43,7 +43,7 @@ export async function saveGuardSettings(patch) {
   const kv = readKv();
   for (const k of Object.keys(DEFAULTS)) if (patch[k] != null) kv[k] = String(typeof patch[k] === 'boolean' ? (patch[k] ? 1 : 0) : Math.round(+patch[k]));
   fs.mkdirSync(RG, { recursive: true });
-  fs.writeFileSync(SETTINGS, Object.entries(kv).map(([k, v]) => `${k}=${v}`).join('\r\n'));
+  fs.writeFileSync(SETTINGS, Object.entries(kv).map(([k, v]) => `${k}=${v}`).join(capabilities().platform === 'win32' ? '\r\n' : '\n'));
   if (patch.Startup != null) await setAutostart(!!patch.Startup);
   await cleanupLegacyAutostart();   // the old agent's autostart, if an old install left it
   guardCommand('reload');

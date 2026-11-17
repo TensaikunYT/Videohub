@@ -4,7 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { reveal, openUrlWindow, capabilities, findBrowser } from './platform.js';
+import { reveal, openUrlWindow, capabilities, findBrowser, findTool } from './platform.js';
 import { config, saveConfig, discoverRoots, baseDir } from './config.js';
 import { detectEncoders, LABELS as ENC_LABELS } from './encoders.js';
 import { scan, index, project, rescanProject, thumbnail, onScan, dropProject, hideKey } from './scan.js';
@@ -42,7 +42,7 @@ function computeUiVersion() {
 }
 computeUiVersion();
 let uiTimer = null;
-try { fs.watch(UI, { recursive: true }, () => { clearTimeout(uiTimer); uiTimer = setTimeout(() => { const old = uiVersion; computeUiVersion(); if (old !== uiVersion) broadcast('version', { v: uiVersion }); }, 400); }); } catch { }
+try { fs.watch(UI, { recursive: true }, () => { clearTimeout(uiTimer); uiTimer = setTimeout(() => { const old = uiVersion; computeUiVersion(); if (old !== uiVersion) broadcast('version', { v: uiVersion }); }, 400); }).on('error', () => { }); } catch { }
 
 // ---------- live events (SSE)
 const clients = new Set();
@@ -100,7 +100,7 @@ function lite(p) {
 function integrations() {
   const studio = config().studioDir && fs.existsSync(path.join(config().studioDir, 'engine', 'audio', 'synth.js'));
   return {
-    ffmpeg: fs.existsSync(TOOLS.ffmpeg) || TOOLS.ffmpeg !== 'ffmpeg',
+    ffmpeg: Boolean((typeof findTool === 'function' && findTool('ffmpeg')) || (TOOLS.ffmpeg !== 'ffmpeg' && fs.existsSync(TOOLS.ffmpeg))),
     browser: findBrowser().path,
     agent: { ok: true, builtIn: true, exe: null, why: null },   // render protection is part of the hub (no helper program since Nov 2026)
     sfx: { ok: !!studio, why: studio ? null : 'Ready-made sound effects need the optional 3D studio engine (studioDir). Your own sound folder works without it.' },
@@ -304,11 +304,11 @@ route('GET', '/api/disk/clean', () => cleanStatus() || { state: 'none' });
 onClean(st => { broadcast('clean', st); if (st.state === 'done') { ciktilar.afterClean(st.results).catch(() => { }); scan().catch(() => { }); } });
 // after every scan: each project's newest final in the outputs folder (the first scan fills it)
 onScan(ev => { if (ev.phase === 'done') try { ciktilar.sync(); } catch (e) { console.error('ciktilar sync:', e.message); } });
-route('GET', '/api/config', () => ({ ...config(), workspace: baseDir(), capabilities: capabilities(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations() }));
+route('GET', '/api/config', () => { const ff = findTool('ffmpeg'), fp = findTool('ffprobe'); return { ...config(), workspace: baseDir(), capabilities: capabilities(), discovered: discoverRoots(), tools: { ...TOOLS, ...(ff ? { ffmpeg: ff } : {}), ...(fp ? { ffprobe: fp } : {}), ...findBrowser() }, example: example.info(), integrations: integrations() }; });
 example.routes(route, readBody, () => scan());
 route('POST', '/api/config', async (req) => { const body = await readBody(req); const c = saveConfig(body); scan().catch(() => { }); return c; });
 // render encoders this PC can use (one tiny test encode each, cached in data/encoders.json; ?refresh=1 probes again)
-route('GET', '/api/encoders', async (req, url) => ({ ...(await detectEncoders({ ffmpeg: TOOLS.ffmpeg, cacheFile: path.join(DATA_DIR, 'encoders.json'), refresh: url.searchParams.get('refresh') === '1' })), chosen: config().render?.encoder || 'auto', labels: ENC_LABELS }));
+route('GET', '/api/encoders', async (req, url) => ({ ...(await detectEncoders({ ffmpeg: findTool('ffmpeg') || TOOLS.ffmpeg, cacheFile: path.join(DATA_DIR, 'encoders.json'), refresh: url.searchParams.get('refresh') === '1' })), chosen: config().render?.encoder || 'auto', labels: ENC_LABELS }));
 notesApi.routes(route, readBody);
 thumbstudio.routes(route, readBody);
 sound.routes(route, project);

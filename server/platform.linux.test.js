@@ -186,6 +186,166 @@ test('Linux launcher, shell and autostart entries keep arguments separate and id
   await h.openUrlWindow('http://127.0.0.1:7799'); assert.deepEqual(h.spawned[0].args, ['--app=http://127.0.0.1:7799']);
   await h.setAutostart(true); assert.equal(await h.getAutostart(), true);
   const entry = h.files.get('/home/me/.config/autostart/videohub.desktop').text;
-  const node = '"' + process.execPath.replace(/[%]/g, '%%').replace(/[\\"$`]/g, '\\$&') + '"';
-  assert.ok(entry.includes('Exec=' + node + ' "/opt/videohub/scripts/install.mjs" open --server\n')); assert.match(entry, /X-VideoHub-Install=\/opt\/videohub\n/);
+  const node = ('"' + process.execPath.replace(/[%]/g, '%%').replace(/[\\"$`]/g, '\\$&') + '"').replace(/\\/g, '\\\\');
+  assert.ok(entry.includes('Exec=' + node + ' "/opt/videohub/scripts/install.mjs" open --server\n'));
+  assert.match(entry, /NoDisplay=true\n/);
+  assert.match(entry, /Path=\/opt\/videohub\n/);
+  assert.match(entry, /StartupNotify=false\n/);
+  assert.match(entry, /X-VideoHub-Install=\/opt\/videohub\n/);
+  assert.doesNotMatch(h.desktopEntry(false), /NoDisplay=true/);
+});
+
+test('Omarchy and Wayland desktop support: mise/user PATH fallbacks, Brave/Helium, Wayland ozone flag, disabled ~/Desktop', async () => {
+  const h = harness({
+    env: { PATH: '', WAYLAND_DISPLAY: 'wayland-1', XDG_SESSION_TYPE: 'wayland', XDG_CONFIG_HOME: '/home/me', XDG_DATA_HOME: '/' },
+    sync: (_file, args) => args[0] === 'DESKTOP' ? '/home/me\n' : '/home/me/Documents\n',
+    files: {
+      '/home/me/.local/share/mise/shims/ffmpeg': 'native elf',
+      '/home/me/.local/bin/brave': '#!/bin/sh\n# native Arch launcher, unlike snap or flatpak packages\nexec /usr/lib/brave-browser/brave "$@"\n',
+      '/home/me/.local/share/omarchy/bin/xdg-user-dir': 'native',
+      '/usr/bin/notify-send': 'native',
+      '/opt/videohub/ui/icon.svg': '<svg/>',
+    },
+  });
+  assert.equal(h.findTool('ffmpeg'), '/home/me/.local/share/mise/shims/ffmpeg');
+  assert.equal(h.findBrowser().path, '/home/me/.local/bin/brave');
+  assert.equal(h.dirs.desktop, '/home/me/Desktop');
+  assert.equal(h.dirs.config, '/home/me/.config/videohub');
+  await h.openUrlWindow('http://127.0.0.1:7788');
+  assert.equal(h.spawned[0].file, '/home/me/.local/bin/brave');
+  assert.deepEqual(h.spawned[0].args, ['--ozone-platform-hint=auto', '--app=http://127.0.0.1:7788']);
+  await h.notify('-Render done', 'hello-film_v1.mp4');
+  assert.deepEqual(h.calls.at(-1).args, ['-a', 'VideoHub', '-i', '/opt/videohub/ui/icon.svg', '--', '-Render done', 'hello-film_v1.mp4']);
+
+  // Small native ELF binary containing literal "/snap/" string bytes still passes; real snap/flatpak wrappers remain rejected.
+  const elfAndHelium = harness({
+    files: {
+      '/usr/bin/chromium': '#!/bin/sh\nexec snap run chromium "$@"\n',
+      '/usr/bin/brave-browser': '#!/bin/sh\nflatpak run com.brave.Browser "$@"\n',
+      '/usr/bin/helium-browser': '\x7fELF\x02\x01\x01/snap/not-a-wrapper',
+    },
+  });
+  assert.equal(elfAndHelium.findBrowser().path, '/usr/bin/helium-browser');
+});
+
+test('Linux desktop fallbacks: dbus-send reveal, gio open, qarma/yad pickers, missing start folder, locale-safe taskset, and GPU fallbacks', async () => {
+  const h = harness({
+    tools: ['dbus-send', 'gio', 'qarma', 'taskset'],
+    proc: ['200', '201'],
+    files: {
+      ...procFiles(200, 1, 'node', 'node\0render.js\0', '500'),
+      ...procFiles(201, 200, 'ffmpeg', 'ffmpeg\0-i\0-\0', '501'),
+      '/proc/driver/nvidia/gpus/0000:01:00.0/information': 'Model: \t\tNVIDIA GeForce RTX 4070\nIRQ: 140\n',
+      '/sys/class/drm/card1/device/uevent': 'DRIVER=amdgpu\nPCI_ID=1002:164E\n',
+    },
+    run: (file, args, opts) => {
+      if (file.endsWith('/dbus-send')) return { code: 1, stdout: '', stderr: '' };
+      if (file.endsWith('/qarma')) return { code: 0, stdout: '/home/me/films\n', stderr: '' };
+      if (file.endsWith('/taskset') && args[0] === '-p') {
+        assert.equal(opts?.env?.LC_ALL, 'C');
+        return { code: 0, stdout: 'Aktuelle Affinitätsmaske von PID 200: 0f\n', stderr: '' };
+      }
+      if (file.endsWith('/taskset') && args.at(-1) === '201') return { code: 1, stdout: '', stderr: 'taskset: failed to set pid 201\'s affinity: No such process\n' };
+      return { code: 0, stdout: '', stderr: '' };
+    },
+  });
+  h.files.set('/proc/driver/nvidia/gpus', { dir: true });
+  h.files.set('/sys/class/drm', { dir: true });
+  await h.reveal('/home/me/films/cut.mp4', { select: true });
+  assert.equal(h.calls[0].file, '/usr/bin/dbus-send');
+  assert.equal(h.spawned[0].file, '/usr/bin/gio');
+  assert.deepEqual(h.spawned[0].args, ['open', '/home/me/films']);
+
+  assert.equal(await h.pickFolder({ start: '/home/me/films/not-created-yet/sub', title: 'Folder' }), '/home/me/films');
+  assert.deepEqual(h.calls[1].args, ['--file-selection', '--directory', '--title=Folder', '--filename=/home/me/films/']);
+
+  // Vanished short-lived child PID 201 does not fail render protection, while root PID 200 gets pinned to top 2 of 4 cores (0xc).
+  assert.deepEqual(await h.setTreePriority(200, 'low', 2), { cpuAffinity: true, priority: true });
+  assert.deepEqual(h.calls[3].args, ['-a', '-p', 'c', '200']);
+
+  // GPU names fall back to /proc/driver/nvidia and /sys/class/drm when pciutils (lspci) is not installed.
+  const gpuHarness = createPlatform({
+    osName: 'linux', home: '/home/me', temp: '/tmp', hubDir: '/opt/videohub', path: path.posix, env: { PATH: '' },
+    fs: {
+      constants: { X_OK: 1 }, existsSync: () => false, statSync: () => { throw new Error(); }, lstatSync: () => { throw new Error(); }, accessSync: () => { throw new Error(); }, realpathSync: f => f,
+      readdirSync: f => f === '/proc/driver/nvidia/gpus' ? ['0000:01:00.0'] : f === '/sys/class/drm' ? ['card0', 'card1', 'renderD128'] : [],
+      readFileSync: f => f.includes('/nvidia/') ? 'Model: \t\tNVIDIA GeForce RTX 4070\n' : f.includes('card1') ? 'DRIVER=amdgpu\n' : 'DRIVER=nvidia\n',
+    },
+  });
+  assert.deepEqual(await gpuHarness.gpuNames(), ['NVIDIA GeForce RTX 4070', 'AMD Radeon (amdgpu)']);
+
+  // Desktop entry escapes $, `, ", \, and % for both GKeyFile string parsing and freedesktop Exec quoting.
+  const special = createPlatform({ osName: 'linux', home: '/home/me', temp: '/tmp', hubDir: '/home/me/Film $1 "A" `B` %k\\dir', nodePath: '/home/me/.local/share/mise/shims/node', path: path.posix, env: { PATH: '' }, fs: { constants: { X_OK: 1 }, existsSync: () => false, statSync: () => { throw new Error(); }, lstatSync: () => { throw new Error(); }, accessSync: () => { throw new Error(); }, realpathSync: f => f, readdirSync: () => [], readFileSync: () => '' } });
+  const entry = special.desktopEntry(false);
+  assert.match(entry, /Exec="\/home\/me\/\.local\/share\/mise\/shims\/node" "\/home\/me\/Film \\\\\$1 \\\\"A\\\\" \\\\`B\\\\` %%k\\\\\\\\dir\/scripts\/install\.mjs" open\n/);
+  assert.match(entry, /X-VideoHub-Install=\/home\/me\/Film \$1 "A" `B` %k\\\\dir\n/);
+});
+
+test('Linux Trash handles read-only mounts and cross-subvolume Btrfs directories without deleting files', async () => {
+  const subvolFile = '/home/me/videos/film.mp4';
+  const btrfs = harness({
+    files: { '/home/me/videos': { dir: true, dev: 31 }, [subvolFile]: { text: 'film', dev: 31 } },
+    run: () => ({ code: 0, stdout: 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/mapper/root 500000 100000 400000 20% /home\n', stderr: '' }),
+  });
+  const [r] = await btrfs.trash([subvolFile]);
+  assert.equal(r.ok, false);
+  assert.match(r.error, /another filesystem|Btrfs subvolume/);
+  assert.equal(btrfs.files.has(subvolFile), true);
+  assert.equal(btrfs.renames.length, 0);
+});
+
+test('live Linux host verifies executable LF launchers, /proc inventory, priority/affinity, Stop, and Trash roundtrip', { skip: process.platform !== 'linux' }, async () => {
+  const realFs = await import('node:fs');
+  const realOs = await import('node:os');
+  const { spawn } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const live = await import('./platform.js');
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+  for (const script of ['setup.sh', 'open.sh', 'update.sh', 'uninstall.sh']) {
+    const p = path.join(repoRoot, script), text = realFs.readFileSync(p, 'utf8'), mode = realFs.statSync(p).mode;
+    assert.equal(text.includes('\r'), false, script + ' must use LF line endings');
+    assert.notEqual(mode & 0o111, 0, script + ' must be executable');
+  }
+
+  assert.equal(live.capabilities().platform, 'linux');
+  assert.equal(live.capabilities().trashLabel, 'Trash');
+  assert.ok(live.availableMemory() > 0);
+  const vols = await live.volumes();
+  assert.ok(vols.some(v => v.mount === '/' && v.totalBytes > 0));
+
+  // Spawn a real parent + child tree and verify priority, optional taskset affinity, and killTree cleanup.
+  const child = spawn(process.execPath, ['-e', "const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' }); process.stdout.write(c.pid + '\\n'); setInterval(()=>{},1000);"], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  const subPid = Number(await new Promise(resolve => child.stdout.once('data', d => resolve(String(d).trim()))));
+  try {
+    const procs = await live.processList();
+    assert.ok(procs.some(p => p.pid === child.pid && p.rssBytes > 0 && p.start));
+    assert.ok(procs.some(p => p.pid === subPid && p.ppid === child.pid));
+    const applied = await live.setTreePriority(child.pid, 'low', 1);
+    const niceOf = pid => { const s = realFs.readFileSync(`/proc/${pid}/stat`, 'utf8'); return Number(s.slice(s.lastIndexOf(')') + 2).split(' ')[16]); };
+    assert.equal(niceOf(child.pid), 10);
+    assert.equal(niceOf(subPid), 10);
+    if (applied.cpuAffinity && realOs.cpus().length > 1) {
+      const allowed = realFs.readFileSync(`/proc/${child.pid}/status`, 'utf8').match(/Cpus_allowed_list:\s*(\S+)/)?.[1];
+      assert.ok(allowed && !allowed.includes('-') && !allowed.includes(','), 'expected single pinned core, got ' + allowed);
+      await live.setTreePriority(child.pid, 'normal', realOs.cpus().length);
+      const restored = realFs.readFileSync(`/proc/${child.pid}/status`, 'utf8').match(/Cpus_allowed_list:\s*(\S+)/)?.[1];
+      assert.ok(restored && (restored.includes('-') || restored.includes(',')), 'expected restored multi-core mask, got ' + restored);
+    }
+  } finally {
+    await live.killTree(child.pid);
+  }
+  for (const pid of [child.pid, subPid]) assert.throws(() => process.kill(pid, 0));
+
+  // Verify real Linux Trash inside isolated .test-tmp home without touching the real user home.
+  const tmpRoot = realFs.mkdtempSync(path.join(repoRoot, '.test-tmp', 'linux-trash-'));
+  const sample = path.join(tmpRoot, 'take #1.mp4');
+  realFs.writeFileSync(sample, 'video-bytes');
+  const isolated = createPlatform({ osName: 'linux', home: tmpRoot, temp: tmpRoot, hubDir: repoRoot, env: { PATH: '', XDG_DATA_HOME: path.join(tmpRoot, '.local', 'share') } });
+  const [trashed] = await isolated.trash([sample]);
+  assert.equal(trashed.ok, true);
+  assert.equal(realFs.existsSync(sample), false);
+  assert.equal(realFs.readFileSync(path.join(tmpRoot, '.local', 'share', 'Trash', 'files', 'take #1.mp4'), 'utf8'), 'video-bytes');
+  assert.match(realFs.readFileSync(path.join(tmpRoot, '.local', 'share', 'Trash', 'info', 'take #1.mp4.trashinfo'), 'utf8'), /Path=.*take%20%231\.mp4\nDeletionDate=/);
+  realFs.rmSync(tmpRoot, { recursive: true, force: true });
 });

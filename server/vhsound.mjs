@@ -97,15 +97,47 @@ export const clipsOf = (tweaks) => ((tweaks && tweaks.audio && tweaks.audio.clip
 // when there are no clips, so mixes made earlier are not rebuilt for nothing
 export const mixKey = (entries, clips) => soundKey(entries) + (clips && clips.length ? '|' + JSON.stringify(clips.map((c) => [c.src, +c.t, c.gain ?? 1, c.fin ?? 0, c.fout ?? 0, c.trim ?? 0, c.len ?? null, !!c.loop])) : '');
 
+function resampleWav(wav, sr, nc) {
+  const srcLen = wav.ch[0]?.length || 0, outLen = wav.sr === sr ? srcLen : Math.round(srcLen * sr / wav.sr);
+  const adapt = Array.from({ length: nc }, (_, c) => {
+    if (wav.ch.length === nc) return wav.ch[c];
+    if (nc === 1 && wav.ch.length > 1) {
+      const mono = new Float32Array(srcLen), inv = 1 / wav.ch.length;
+      for (let i = 0; i < srcLen; i++) { let s = 0; for (let k = 0; k < wav.ch.length; k++) s += wav.ch[k][i]; mono[i] = s * inv; }
+      return mono;
+    }
+    return wav.ch[Math.min(c, wav.ch.length - 1)] || new Float32Array(srcLen);
+  });
+  if (wav.sr === sr) return adapt.map((a) => new Float32Array(a));
+  const ratio = wav.sr / sr;
+  return adapt.map((a) => {
+    const out = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * ratio, j = Math.floor(pos), frac = pos - j;
+      out[i] = j + 1 < srcLen ? a[j] * (1 - frac) + a[j + 1] * frac : (a[Math.min(j, srcLen - 1)] || 0);
+    }
+    return out;
+  });
+}
+
 const decoded = new Map();   // file|mtime|sr|nc → channels (the hub lives long; one decode per file)
 export function decodeAudio(file, sr, nc, ffmpeg = 'ffmpeg') {
   const st = fs.statSync(file), k = `${file}|${st.mtimeMs}|${sr}|${nc}`;
   if (decoded.has(k)) return decoded.get(k);
   const r = spawnSync(ffmpeg, ['-v', 'error', '-i', file, '-f', 'f32le', '-acodec', 'pcm_f32le', '-ac', String(nc), '-ar', String(sr), '-'], { maxBuffer: 2 * 1024 * 1024 * 1024 - 1, windowsHide: true });
-  if (r.status !== 0 || !r.stdout) throw new Error('could not read audio file: ' + file + ' ' + String(r.stderr || '').slice(0, 200));
-  const f = new Float32Array(r.stdout.buffer, r.stdout.byteOffset, Math.floor(r.stdout.length / 4));
-  const n = Math.floor(f.length / nc), ch = Array.from({ length: nc }, () => new Float32Array(n));
-  for (let i = 0; i < n; i++) for (let c = 0; c < nc; c++) ch[c][i] = f[i * nc + c];
+  let ch;
+  if (r.error?.code === 'ENOENT' && /\.wav$/i.test(file)) {
+    ch = resampleWav(readWav(file), sr, nc);
+  } else {
+    if (r.status !== 0 || !r.stdout) {
+      const detail = r.error?.code === 'ENOENT' ? `ffmpeg (${ffmpeg}) is not installed` : String(r.stderr || r.error?.message || '').trim().slice(0, 200);
+      throw new Error('could not read audio file: ' + file + (detail ? ' (' + detail + ')' : ''));
+    }
+    const f = new Float32Array(r.stdout.buffer, r.stdout.byteOffset, Math.floor(r.stdout.length / 4));
+    const n = Math.floor(f.length / nc);
+    ch = Array.from({ length: nc }, () => new Float32Array(n));
+    for (let i = 0; i < n; i++) for (let c = 0; c < nc; c++) ch[c][i] = f[i * nc + c];
+  }
   if (decoded.size > 40) decoded.delete(decoded.keys().next().value);
   decoded.set(k, ch);
   return ch;

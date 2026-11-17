@@ -2,7 +2,7 @@
 // deletions go to the Recycle Bin, old versions are moved to the archive folder. Nothing is hard-deleted.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import { recycleStream } from './platform.js';
+import { recycleStream, capabilities, IS_WIN } from './platform.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
@@ -145,7 +145,7 @@ async function computeCandidates() {
         const full = path.join(r, e.name);
         // parts replaced by partial renders and backups of earlier renders: the film is made from render\chunks
         if (e.isDirectory() && /^chunks_(v\d|prev)/i.test(e.name)) {
-          const st = await dirSize(full); if (st.size) add({ rule: 'oldChunks', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, dir: true, action: 'recycle', reason: /^chunks_prev/i.test(e.name) ? 'Backup chunks from the previous render.' : 'Old chunks replaced by a partial render; the film uses render\\chunks.' });
+          const st = await dirSize(full); if (st.size) add({ rule: 'oldChunks', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, dir: true, action: 'recycle', reason: /^chunks_prev/i.test(e.name) ? 'Backup chunks from the previous render.' : 'Old chunks replaced by a partial render; the film uses render/chunks.' });
         }
         if (e.isDirectory() && /^(tmp|profiles)$/i.test(e.name)) {
           const st = await dirSize(full); if (st.size) add({ rule: 'leftover', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, dir: true, action: 'recycle', reason: e.name.toLowerCase() === 'profiles' ? 'Chrome profiles from the render (recreated for each render).' : 'Temporary render files.' });
@@ -207,7 +207,7 @@ async function computeCandidates() {
     let stale = false;
     if (m) stale = !processAlive(+m[1]);
     else if (/^puppeteer_dev_chrome_profile-/.test(e.name)) { try { stale = Date.now() - fs.statSync(full).mtimeMs > 3600e3; } catch { } }
-    if (stale) { const s = await dirSize(full); add({ rule: 'tempProfile', preset: 'safe', project: null, projectName: '%TEMP%', path: full, size: s.size, dir: true, action: 'recycle', reason: 'Chrome profile left by a render; its process has exited.' }); }
+    if (stale) { const s = await dirSize(full); add({ rule: 'tempProfile', preset: 'safe', project: null, projectName: IS_WIN ? '%TEMP%' : TEMP, path: full, size: s.size, dir: true, action: 'recycle', reason: 'Browser profile left by a render; its process has exited.' }); }
   }
   // 9. old Claude scratch folders (optional)
   const ct = path.join(TEMP, 'claude');
@@ -267,14 +267,15 @@ const anyLeft = c => units(c).some(u => exists(u.path));
 
 // SHFileOperation error codes (incl. the old DE_* ones) in plain English
 function why(code) {
+  const bin = capabilities().trashLabel || 'Trash';
   if (code === -1) return 'Operation interrupted.';
-  if (code === -2) return 'Too large for the Recycle Bin; left untouched to avoid permanent deletion.';
-  if (code === -3) return 'The Recycle Bin is disabled or unavailable on this drive; left untouched to avoid permanent deletion.';
+  if (code === -2) return `Too large for the ${bin}; left untouched to avoid permanent deletion.`;
+  if (code === -3) return `The ${bin} is disabled or unavailable on this drive; left untouched to avoid permanent deletion.`;
   if ([2, 3, 0x7C, 0x402].includes(code)) return 'Not found.';
   if ([5, 0x78, 0x10074].includes(code)) return 'Access denied.';
   if ([32, 33].includes(code)) return 'In use by another program (open file).';
   if (code === 0x71 || code === 0x72) return 'Source and destination are the same.';
-  return `Windows error code ${code}.`;
+  return `${IS_WIN ? 'Windows error' : 'Error'} code ${code}.`;
 }
 
 // old versions: copy (async, so the hub keeps answering), check, then remove the original
@@ -347,7 +348,7 @@ async function runJob(ids) {
   for (const c of recycleList) {
     const rest = await leftOf(c), freed = Math.max(0, c.size - rest), e = codes.get(c);
     // Windows says "not found" also when a file inside is held open by another program (seen with a locked Chrome profile)
-    const err = !e ? null : e.code != null && e.code > 0 && rest ? `Could not delete: a file inside may be open in another program (Windows code ${e.code}). Try again after closing that program.` : e.text;
+    const err = !e ? null : e.code != null && e.code > 0 && rest ? `Could not delete: a file inside may be open in another program (${IS_WIN ? 'Windows code' : 'code'} ${e.code}). Try again after closing that program.` : e.text;
     if (!rest) { job.freed += c.size; res(c, 'ok', { freed: c.size }); logLine({ action: 'recycle', path: c.path, ok: true, size: c.size }); }
     else { job.freed += freed; res(c, 'error', { freed, left: rest, error: (freed ? `Partially removed: ${Math.round(rest / 1048576)} MB left. ` : '') + (err || 'Still on disk.') }); logLine({ action: 'recycle', path: c.path, ok: false, error: err, left: rest }); }
   }

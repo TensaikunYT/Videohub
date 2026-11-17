@@ -107,5 +107,5 @@ title text into the image: the user adds it in VideoHub's Final step. New templa
 
 ## Cleanup
 Intermediate files (silent renders next to a voiced final, old chunks, browser profiles, old QA frames, old versions)
-are listed by `hub_cleanup` and removed by the user from VideoHub → Disk (Recycle Bin; old versions to the archive).
+are listed by `hub_cleanup` and removed by the user from VideoHub → Disk (Trash / Recycle Bin; old versions to the archive).
 Do not delete them yourself.

@@ -35,19 +35,28 @@ function loadPuppeteer() {
   console.error('puppeteer-core not found: run "npm install" in this folder (or render through VideoHub, which ships it).');
   process.exit(2);
 }
-// the browser: CHROME env (the film's own choice), else the hub's browser (VIDEOHUB_BROWSER), else Edge/Chrome/Chromium
+// the browser: CHROME env (the film's own choice), else the hub's browser (VIDEOHUB_BROWSER), else native Edge/Chrome/Chromium/Brave
 function browserPath() {
   const c = [process.env.CHROME, process.env.VIDEOHUB_BROWSER,
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
     'C:/Program Files/Google/Chrome/Application/chrome.exe', path.join(os.homedir(), 'AppData/Local/Google/Chrome/Application/chrome.exe')].filter(Boolean);
-  for (const dir of (process.env.PATH || '').split(path.delimiter)) for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'microsoft-edge-stable']) { if (dir && !/snap|flatpak/i.test(dir)) c.push(path.join(dir, name)); }
-  for (const dir of ['/Applications', path.join(os.homedir(), 'Applications')]) for (const name of ['Google Chrome', 'Microsoft Edge', 'Chromium']) c.push(path.join(dir, name + '.app', 'Contents', 'MacOS', name));
+  const searchDirs = [...new Set([...(process.env.PATH || '').split(path.delimiter), ...(os.type?.() === 'Linux' ? [path.join(os.homedir(), '.local/bin'), '/usr/local/bin', '/usr/bin'] : [])])];
+  for (const dir of searchDirs) for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'brave', 'brave-browser', 'helium-browser', 'microsoft-edge', 'microsoft-edge-stable']) { if (dir && !/snap|flatpak/i.test(dir)) c.push(path.join(dir, name)); }
+  for (const dir of ['/Applications', path.join(os.homedir(), 'Applications')]) for (const name of ['Google Chrome', 'Microsoft Edge', 'Chromium', 'Brave Browser']) c.push(path.join(dir, name + '.app', 'Contents', 'MacOS', name));
   const f = c.find(x => {
     if (!fs.existsSync(x) || /[\\/](snap|flatpak)[\\/]/i.test(x)) return false;
-    try { const real = fs.realpathSync(x), st = fs.statSync(real); if (!st.isFile() || /[\\/](snap|flatpak)[\\/]/i.test(real)) return false; fs.accessSync(real, fs.constants.X_OK); if (st.size < 65536 && /snap run|\/snap\/|flatpak run/.test(String(fs.readFileSync(real, 'utf8')))) return false; } catch { return false; }
+    try {
+      const real = fs.realpathSync(x), st = fs.statSync(real);
+      if (!st.isFile() || /[\\/](snap|flatpak)[\\/]/i.test(real)) return false;
+      fs.accessSync(real, fs.constants.X_OK);
+      if (st.size < 65536) {
+        const head = String(fs.readFileSync(real, 'utf8'));
+        if (!head.startsWith('\x7fELF') && /\bsnap\s+(?:run|exec)\b|\/snap\/|\bflatpak\s+run\b|\/flatpak\//.test(head.replace(/^\s*#.*$/gm, ''))) return false;
+      }
+    } catch { return false; }
     return true;
   });
-  if (!f) { console.error('No native Edge, Chrome or Chromium found (set VIDEOHUB_BROWSER to its executable).'); process.exit(2); }
+  if (!f) { console.error('No native Chromium, Chrome, Brave or Edge found (set VIDEOHUB_BROWSER to its executable).'); process.exit(2); }
   return f;
 }
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
@@ -64,12 +73,26 @@ const ENCODER_ARGS = {
   amf: [['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18', '-bf', '3'],
     ['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18']],
   qsv: [['-c:v', 'h264_qsv', '-preset', 'veryslow', '-global_quality', '18', '-look_ahead', '1']],
-  vaapi: [['-vaapi_device', '/dev/dri/renderD128', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-qp', '18']],
+  vaapi: [['-vaapi_device', '/dev/dri/renderD128', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-qp', '18'],
+    ['-vaapi_device', '/dev/dri/renderD129', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-qp', '18']],
   videotoolbox: [['-c:v', 'h264_videotoolbox', '-q:v', '65'], ['-c:v', 'h264_videotoolbox', '-b:v', '10M']],
   x264: [['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16']],
   lossless: [['-c:v', 'libx264rgb', '-preset', 'ultrafast', '-qp', '0']],   // for checks only (huge files)
 };
-const probe = args => spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=640x360:r=30', '-frames:v', '5', '-pix_fmt', 'yuv420p', ...args, '-f', 'null', '-'], { stdio: 'ignore', timeout: 20000, windowsHide: true }).status === 0;
+function splitHwArgs(raw) {
+  const pre = [], rest = [...raw];
+  for (let i = 0; i < rest.length;) {
+    if (['-vaapi_device', '-init_hw_device', '-filter_hw_device'].includes(rest[i]) && i + 1 < rest.length) pre.push(...rest.splice(i, 2));
+    else i++;
+  }
+  const filterAt = rest.indexOf('-vf'), filter = filterAt >= 0 ? rest.splice(filterAt, 2)[1] : '';
+  return { pre, rest, filter, hwSurface: /\bhwupload\b/.test(filter) };
+}
+const probe = args => {
+  const hw = splitHwArgs(args);
+  return spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', ...hw.pre, '-f', 'lavfi', '-i', 'color=c=gray:s=640x360:r=30', '-frames:v', '5',
+    ...(hw.filter ? ['-vf', hw.filter] : []), ...(hw.hwSurface ? [] : ['-pix_fmt', 'yuv420p']), ...hw.rest, '-f', 'null', '-'], { stdio: 'ignore', timeout: 20000, windowsHide: true }).status === 0;
+};
 function pickEncoder() {
   const want = String(process.env.VIDEOHUB_ENCODER || 'auto').toLowerCase();
   const works = n => { const candidates = ENCODER_ARGS[n] || []; return (n === 'videotoolbox' && os.arch?.() !== 'arm64' ? [...candidates].reverse() : candidates).find(probe) || null; };
@@ -86,10 +109,11 @@ function encoder(input, out) {
   // RGB → YUV with the BT.601 matrix (what x264 got before; old and new chunks of a film match) and the file says so:
   // left to itself AMF marks its output BT.709, so players showed BT.601 colours as BT.709 (a visible shift)
   const size = input === 'raw' && scale !== 1 ? `${Math.round(VW * scale)}:${Math.round(VH * scale)}:flags=bicubic:` : '';
-  const encodeArgs = [...ENC.args], filterAt = encodeArgs.indexOf('-vf'), extraFilter = filterAt >= 0 ? encodeArgs.splice(filterAt, 2)[1] : '';
-  const pix = ENC.name === 'lossless' ? ['-pix_fmt', 'rgb24'] : ['-vf', `scale=${size}out_color_matrix=bt601:out_range=tv${extraFilter ? ',' + extraFilter : ''}`, '-pix_fmt', 'yuv420p', '-colorspace', 'smpte170m', '-color_range', 'tv'];
+  const hw = splitHwArgs(ENC.args);
+  const pix = ENC.name === 'lossless' ? ['-pix_fmt', 'rgb24']
+    : ['-vf', `scale=${size}out_color_matrix=bt601:out_range=tv${hw.filter ? ',' + hw.filter : ''}`, ...(hw.hwSurface ? [] : ['-pix_fmt', 'yuv420p']), '-colorspace', 'smpte170m', '-color_range', 'tv'];
   if (ENC.name === 'lossless' && size) pix.unshift('-vf', `scale=${size.slice(0, -1)}`);
-  return spawn(FFMPEG, ['-y', '-loglevel', 'error', ...inArgs, ...encodeArgs, ...pix, '-r', String(fps), out], { stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
+  return spawn(FFMPEG, ['-y', '-loglevel', 'error', ...hw.pre, ...inArgs, ...hw.rest, ...pix, '-r', String(fps), out], { stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
 }
 
 // ---------- page side of the raw path (runs in the page): is the canvas the whole picture? then read it every frame
@@ -247,7 +271,7 @@ async function rawChunk(w, a, b, tmp, hold) {
   ff.stdin.on('drain', onDrain); ff.stdin.on('error', () => { });
   s.onData = piece => { got += piece.length; ff.stdin.write(piece); if (!paused && ff.stdin.writableLength > 2 * FRAME) { paused = true; sock.pause(); } };
   s.onEnd = () => { n++; if (got !== FRAME && !bad) bad = `frame ${n} has ${got} bytes, not ${FRAME}`; got = 0; acks++; flush(); };
-  const closed = new Promise(r => ff.on('close', r));
+  const closed = new Promise((r, rej) => { ff.on('error', rej); ff.on('close', r); });
   try {
     const errors = await Promise.race([w.page.evaluate((a, b, fps) => window.__vhRaw.chunk(a, b, fps), a, b, fps), closed.then(code => { throw new Error('ffmpeg stopped (code ' + code + ')'); })]);
     for (const e of errors) console.error(e);
@@ -258,17 +282,21 @@ async function rawChunk(w, a, b, tmp, hold) {
   ff.stdin.end(); return { ff, code: await closed };
 }
 async function shotChunk(w, a, b, tmp, hold) {
-  const ff = hold.ff = encoder('png', tmp), closed = new Promise(r => ff.on('close', r));
+  const ff = hold.ff = encoder('png', tmp), closed = new Promise((r, rej) => { ff.on('error', rej); ff.on('close', r); });
+  ff.stdin.on('error', () => { });
   for (let f = a; f < b; f++) { const buf = await w.shot(f / fps); if (!ff.stdin.write(buf)) await new Promise(r => ff.stdin.once('drain', r)); }
   ff.stdin.end(); return { ff, code: await closed };
 }
 
 (async () => {
-  const puppeteer = loadPuppeteer(), exe = browserPath();
+  const puppeteer = loadPuppeteer(), exe = browserPath(), isLinux = os.type?.() === 'Linux';
   // 2D canvases are drawn in software: Chromium moves a canvas that is read back often (the raw path) to software
   // drawing anyway, and with both paths on the same rasteriser raw frames and screenshots are pixel-identical (WebGL is
-  // not affected)
-  const launch = () => puppeteer.launch({ executablePath: exe, headless: 'new', protocolTimeout: 0, args: ['--allow-file-access-from-files', '--force-device-scale-factor=1', '--hide-scrollbars', '--disable-accelerated-2d-canvas'] });
+  // not affected). On Linux/Wayland (including Arch/Omarchy chromium-flags.conf), avoid /dev/shm exhaustion and force headless ozone.
+  const launchArgs = ['--allow-file-access-from-files', '--force-device-scale-factor=1', '--hide-scrollbars', '--disable-accelerated-2d-canvas',
+    ...(isLinux ? ['--disable-dev-shm-usage', '--ozone-platform=headless'] : []),
+    ...(isLinux && process.env.VIDEOHUB_CHROMIUM_NO_SANDBOX === '1' ? ['--no-sandbox', '--disable-setuid-sandbox'] : [])];
+  const launch = () => puppeteer.launch({ executablePath: exe, headless: 'new', protocolTimeout: 0, args: launchArgs });
 
   if (process.argv[2] === 'snap') {
     const br = await launch(), w = await openPage(br, null, 0); fs.mkdirSync('snaps', { recursive: true });
@@ -285,7 +313,7 @@ async function shotChunk(w, a, b, tmp, hold) {
   const queue = []; for (let c = 0; c < nCh; c++) if ((PREVIEW || !fs.existsSync(cf(c))) && (!only || only.includes(c))) queue.push(c);
   console.log(`${queue.length}/${nCh} chunks to render`);   // VideoHub reads this line and the "chunk N ok — D done" ones for its progress bar
   if (!queue.length) { console.log('done 0s'); return; }
-  ENC = pickEncoder(); console.log(`encoder: ${ENC.name} (${ENC.args[1]})`);
+  ENC = pickEncoder(); console.log(`encoder: ${ENC.name} (${ENC.args[ENC.args.indexOf('-c:v') + 1] || ENC.args[1]})`);
   const sockets = process.env.VIDEOHUB_TRANSPORT === 'png' ? null : await frameServer().catch(e => { console.log('frames: PNG screenshots (' + e.message + ')'); return null; });
   const T0 = Date.now(); let done = 0, frames = 0;
   // a chunk that takes far longer than it should (a hung page or ffmpeg) is killed and rendered again, up to 3 times
@@ -323,7 +351,7 @@ async function shotChunk(w, a, b, tmp, hold) {
   if (PREVIEW) { fs.renameSync(cf(0), path.join(OUT, 'video.mp4')); console.log('preview done: render/preview/video.mp4'); return; }
   if (only) { console.log('partial done'); return; }
   // joined picture (VideoHub joins the chunks again itself; this is for running the script by hand)
-  fs.writeFileSync('render/list.txt', Array.from({ length: nCh }, (_, c) => `file '${cf(c).split(path.sep).join('/')}'`).join('\n'));
+  fs.writeFileSync('render/list.txt', Array.from({ length: nCh }, (_, c) => `file '${cf(c).split(path.sep).join('/').replace(/'/g, "'\\''")}'`).join('\n'));
   execFileSync(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'render/list.txt', '-c', 'copy', 'render/video.mp4']);
   if (!process.env.VIDEOHUB_JOB && fs.existsSync('audio/mix.wav')) {
     const name = path.basename(process.cwd());

@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { HUB_DIR, isInside, readJson, writeJson } from '../util.js';
 import { project, index } from '../scan.js';
 import { recyclePaths } from '../janitor.js';
+import { capabilities } from '../platform.js';
 import { outputsDir } from '../ciktilar-dir.js';
 import { describeSpatialTr } from './prompt.js';
 import crypto from 'node:crypto';
@@ -187,7 +188,7 @@ export async function deleteThumbnail(pid, tid, { recycle = recyclePaths } = {})
   const results = await recycle([{ path: dir }]);
   const ok = results.every(r => r.ok);
   if (!ok) {
-    const err = results.find(r => !r.ok)?.error || 'Could not move to the Recycle Bin';
+    const err = results.find(r => !r.ok)?.error || `Could not move to the ${capabilities().trashLabel || 'Trash'}`;
     throw Object.assign(new Error(err), { code: 500 });
   }
 
@@ -658,7 +659,7 @@ export async function deleteVariant(pid, tid, vid) {
   const f = path.join(dir, v.file);
   if (isInside(f, dir) && fs.existsSync(f)) {
     const r = await recyclePaths([{ path: f }]);
-    if (!r.every(x => x.ok)) throw Object.assign(new Error(r.find(x => !x.ok)?.error || 'Could not move to the Recycle Bin'), { code: 500 });
+    if (!r.every(x => x.ok)) throw Object.assign(new Error(r.find(x => !x.ok)?.error || `Could not move to the ${capabilities().trashLabel || 'Trash'}`), { code: 500 });
   }
   const variants = brief.variants.filter(x => x.id !== vid);
   const b = saveThumbnail(pid, tid, { variants, chosen: brief.chosen === vid ? null : brief.chosen });

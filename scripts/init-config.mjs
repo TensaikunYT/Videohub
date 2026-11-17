@@ -40,7 +40,7 @@ export function checkWorkspace(p, hubDir = HUB) {
   const r = path.resolve(p);
   if (low(path.parse(r).root) === low(r)) return 'Pick a folder, not a whole drive or filesystem root (for example ' + path.join(r, 'VideoHub') + ').';
   if (inside(r, hubDir)) return 'Pick a folder outside the VideoHub program folder (updates replace that folder).';
-  let a = r; while (!fs.existsSync(a)) { const up = path.dirname(a); if (up === a) return 'The drive ' + path.parse(r).root + ' does not exist on this PC.'; a = up; }
+  let a = r; while (!fs.existsSync(a)) { const up = path.dirname(a); if (up === a) return IS_WIN ? 'The drive ' + path.parse(r).root + ' does not exist on this PC.' : 'The folder root ' + path.parse(r).root + ' does not exist on this computer.'; a = up; }
   try { if (!fs.statSync(a).isDirectory()) return a === r ? 'That is a file, not a folder.' : a + ' is a file, not a folder.'; } catch { return 'That folder cannot be read.'; }
   return null;
 }
@@ -106,7 +106,7 @@ export function initConfig({ dataDir = path.join(HUB, 'data'), hubDir = HUB, wor
   if (changed) W(`write ${file}`);
   if (!dryRun) {
     for (const d of dirs) fs.mkdirSync(d, { recursive: true });
-    if (wantReadme) fs.writeFileSync(readme, README.replace(/\n/g, '\r\n'), { flag: 'wx' });
+    if (wantReadme) fs.writeFileSync(readme, IS_WIN ? README.replace(/\n/g, '\r\n') : README, { flag: 'wx' });
     if (changed) { fs.mkdirSync(dataDir, { recursive: true }); const tmp = file + '.' + process.pid + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(cfg, null, 1)); fs.renameSync(tmp, file); }
   }
   return { file, existed: !!saved, workspace: ws, encoder: cfg.render.encoder, roots: cfg.roots, wrote: changed && !dryRun, dryRun, actions };

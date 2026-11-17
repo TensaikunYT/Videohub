@@ -33,6 +33,32 @@ test('Linux RAM hogs omit the desktop and services while preserving ordinary use
   assert.equal(result.find(r => r.name === 'Chromium (browser)').bytes, 2 ** 30);
 });
 
+test('Omarchy/Hyprland RAM hogs omit kernel threads, Wayland/portal daemons, and VideoHub app windows while grouping Brave and Helium', async () => {
+  const MB = 1048576;
+  const rows = [
+    { pid: 2, ppid: 0, name: 'kthreadd', rssBytes: 0, cmd: '' },
+    { pid: 45, ppid: 2, name: 'btrfs-transacti', rssBytes: 1200 * MB, cmd: '' },
+    { pid: 500, ppid: 1, name: 'Hyprland', rssBytes: 1200 * MB, cmd: '' },
+    { pid: 510, ppid: 500, name: 'waybar', rssBytes: 1100 * MB, cmd: '' },
+    { pid: 520, ppid: 500, name: 'walker', rssBytes: 1100 * MB, cmd: '' },
+    { pid: 525, ppid: 500, name: 'elephant', rssBytes: 1100 * MB, cmd: '' },
+    { pid: 530, ppid: 1, name: 'xdg-desktop-por', rssBytes: 1100 * MB, cmd: '' },
+    { pid: 540, ppid: 1, name: 'pipewire-pulse', rssBytes: 1100 * MB, cmd: '' },
+    { pid: 600, ppid: 500, name: 'brave', rssBytes: 600 * MB, cmd: '/usr/bin/brave --ozone-platform-hint=auto --app=http://127.0.0.1:7788' },
+    { pid: 601, ppid: 600, name: 'brave', rssBytes: 600 * MB, cmd: '/usr/lib/brave-browser/brave --type=renderer' },
+    { pid: 700, ppid: 500, name: 'brave', rssBytes: 700 * MB, cmd: '/usr/bin/brave' },
+    { pid: 701, ppid: 700, name: 'brave-browser', rssBytes: 500 * MB, cmd: '/usr/lib/brave-browser/brave --type=renderer' },
+    { pid: 800, ppid: 500, name: 'helium-browser', rssBytes: 1050 * MB, cmd: '/usr/bin/helium-browser' },
+    { pid: 900, ppid: 500, name: 'kdenlive', rssBytes: 1300 * MB, cmd: '/usr/bin/kdenlive' },
+  ];
+  const result = await harness(rows, 'linux').ramHogsNow();
+  assert.deepEqual(Array.from(result, r => ({ name: r.name, bytes: r.bytes, procs: r.procs })), [
+    { name: 'Kdenlive', bytes: 1300 * MB, procs: 1 },
+    { name: 'Brave (browser)', bytes: 1200 * MB, procs: 2 },
+    { name: 'Helium (browser)', bytes: 1050 * MB, procs: 1 },
+  ]);
+});
+
 test('macOS RAM hogs group browser helpers with their app and omit helpers belonging to a headless render', async () => {
   const row = (pid, ppid, name, cmd = '') => ({ pid, ppid, name, cmd, rssBytes: 2 ** 30 });
   const rows = [row(1, 0, 'Google Chrome', '--headless'), row(2, 1, 'Google Chrome Helper (Renderer)'), row(3, 2, 'Google Chrome Helper (GPU)'),
