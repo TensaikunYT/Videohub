@@ -8,11 +8,13 @@ const NAMES = {
   'hd-player': 'BlueStacks (Android emulator)', 'hd-agent': 'BlueStacks (Android emulator)', ldplayer: 'LDPlayer (Android emulator)', 'dnplayer': 'LDPlayer (Android emulator)',
   noxvmhandle: 'Nox (Android emulator)', nox: 'Nox (Android emulator)',
   chrome: 'Chrome (browser)', 'google-chrome': 'Chrome (browser)', chromium: 'Chromium (browser)', 'chromium-browser': 'Chromium (browser)',
-  msedge: 'Edge (browser)', 'microsoft-edge': 'Edge (browser)', firefox: 'Firefox', opera: 'Opera', brave: 'Brave',
-  discord: 'Discord', steam: 'Steam', steamwebhelper: 'Steam', epicgameslauncher: 'Epic Games', obs64: 'OBS',
-  razerappengine: 'Razer Synapse', spotify: 'Spotify', telegram: 'Telegram', whatsapp: 'WhatsApp', teams: 'Teams', 'ms-teams': 'Teams',
-  code: 'VS Code', photoshop: 'Photoshop', 'adobe premiere pro': 'Premiere Pro', afterfx: 'After Effects', resolve: 'DaVinci Resolve',
-  blender: 'Blender', vmmem: 'WSL / virtual machine', vmmemwsl: 'WSL / virtual machine', 'vmware-vmx': 'VMware', virtualboxvm: 'VirtualBox',
+  msedge: 'Edge (browser)', 'microsoft-edge': 'Edge (browser)', firefox: 'Firefox', 'zen-bin': 'Zen (browser)', opera: 'Opera',
+  brave: 'Brave (browser)', 'brave-browser': 'Brave (browser)', helium: 'Helium (browser)', 'helium-browser': 'Helium (browser)',
+  discord: 'Discord', vesktop: 'Vesktop (Discord)', steam: 'Steam', steamwebhelper: 'Steam', epicgameslauncher: 'Epic Games', obs64: 'OBS', obs: 'OBS',
+  razerappengine: 'Razer Synapse', spotify: 'Spotify', telegram: 'Telegram', 'telegram-desktop': 'Telegram', 'signal-desktop': 'Signal', slack: 'Slack', whatsapp: 'WhatsApp', teams: 'Teams', 'ms-teams': 'Teams',
+  code: 'VS Code', 'code-oss': 'VS Code', codium: 'VSCodium', cursor: 'Cursor', 'zed-editor': 'Zed',
+  photoshop: 'Photoshop', 'adobe premiere pro': 'Premiere Pro', afterfx: 'After Effects', resolve: 'DaVinci Resolve', kdenlive: 'Kdenlive', gimp: 'GIMP', krita: 'Krita', inkscape: 'Inkscape',
+  blender: 'Blender', vmmem: 'WSL / virtual machine', vmmemwsl: 'WSL / virtual machine', 'vmware-vmx': 'VMware', virtualboxvm: 'VirtualBox', 'qemu-system-x86_64': 'QEMU / virtual machine',
 };
 // Hide infrastructure rather than suggesting the user close it to free RAM.
 const SKIP_BY_OS = { win32: ['system', 'registry', 'memory compression', 'idle', 'secure system', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass',
@@ -20,35 +22,53 @@ const SKIP_BY_OS = { win32: ['system', 'registry', 'memory compression', 'idle',
   'runtimebroker', 'ctfmon', 'fontdrvhost', 'sihost', 'taskhostw', 'audiodg', 'conhost', 'powershell', 'pwsh', 'cmd', 'wmiprvse', 'spoolsv',
   'claude', 'node', 'ffmpeg', 'ffprobe', 'renderguard', 'msedgewebview2', 'radeonsoftware', 'amdrssrcext', 'atieclxx', 'atiesrxx', 'amdfendrsr',
   'nvcontainer', 'nvdisplay.container', 'lockapp', 'widgets', 'phoneexperiencehost', 'securityhealthservice', 'smartscreen', 'dllhost', 'applicationframehost'],
-  linux: ['systemd', 'systemd-journald', 'systemd-logind', 'systemd-udevd', 'dbus-daemon', 'dbus-broker', 'xorg', 'xwayland', 'gnome-shell',
-    'kwin_wayland', 'kwin_x11', 'plasmashell', 'pipewire', 'pipewire-pulse', 'wireplumber', 'pulseaudio', 'networkmanager', 'sshd',
-    'claude', 'opencode', 'codex', 'node', 'ffmpeg', 'ffprobe', 'sh', 'bash', 'zsh', 'ps', 'kworker', 'kthreadd'],
+  linux: ['systemd', 'systemd-journald', 'systemd-logind', 'systemd-udevd', 'systemd-resolved', 'systemd-timesyncd', 'systemd-oomd',
+    'dbus-daemon', 'dbus-broker', 'dbus-broker-launch', 'polkitd', 'rtkit-daemon', 'bluetoothd', 'iwd', 'wpa_supplicant', 'networkmanager',
+    'xorg', 'xwayland', 'gnome-shell', 'kwin_wayland', 'kwin_x11', 'plasmashell',
+    'hyprland', 'hyprpaper', 'hypridle', 'hyprlock', 'hyprsunset', 'hyprpolkitagent', 'waybar', 'walker', 'elephant',
+    'mako', 'dunst', 'swaync', 'swayosd-server', 'swayosd-libinput-backend', 'swaybg', 'swayidle', 'swaylock', 'uwsm', 'rofi', 'wofi', 'fuzzel',
+    'sddm', 'sddm-helper', 'gdm', 'gdm-wayland-session', 'lightdm', 'greetd', 'seatd',
+    'pipewire', 'pipewire-pulse', 'wireplumber', 'pulseaudio', 'gvfsd', 'gvfsd-fuse', 'gvfsd-trash', 'dconf-service', 'gnome-keyring-daemon',
+    'at-spi-bus-launcher', 'at-spi2-registryd', 'fcitx5', 'ibus-daemon', 'sshd',
+    'claude', 'opencode', 'agy', 'codex', 'node', 'ffmpeg', 'ffprobe', 'sh', 'bash', 'zsh', 'fish', 'nu', 'tmux', 'ps', 'kworker', 'kthreadd'],
   darwin: ['kernel_task', 'launchd', 'windowserver', 'loginwindow', 'coreaudiod', 'runningboardd', 'powerd', 'notifyd', 'cfprefsd',
     'syslogd', 'logd', 'distnoted', 'mds', 'mds_stores', 'securityd', 'trustd', 'bird', 'usernoted', 'sharingd', 'spotlight',
-    'claude', 'opencode', 'codex', 'node', 'ffmpeg', 'ffprobe', 'sh', 'bash', 'zsh', 'ps'],
+    'claude', 'opencode', 'agy', 'codex', 'node', 'ffmpeg', 'ffprobe', 'sh', 'bash', 'zsh', 'fish', 'ps'],
 };
 const SKIP = new Set(SKIP_BY_OS[OS] || []);
+// Linux /proc/<pid>/stat truncates comm names to 15 bytes; skip truncated desktop portal, systemd, gvfs and keyring daemons.
+const SKIP_LINUX_PREFIX = /^(?:systemd-|xdg-desktop-por|xdg-document-po|xdg-permission-|gvfsd?-|at-spi|polkit-|gnome-keyring|swayosd-|kworker\/|irq\/|btrfs-)/;
 const processKey = name => String(name || '').replace(/\.exe$/i, '').toLowerCase();
-const browserFamily = key => /^(?:google[ -])?chrome(?: helper.*)?$/.test(key) ? 'chrome' : /^chromium(?:-browser| helper.*)?$/.test(key) ? 'chromium' : /^(?:msedge|microsoft[ -]edge)(?: helper.*)?$/.test(key) ? 'msedge' : null;
+const browserFamily = key => /^(?:google[ -])?chrome(?: helper.*)?$/.test(key) ? 'chrome'
+  : /^chromium(?:-browser| helper.*)?$/.test(key) ? 'chromium'
+  : /^(?:msedge|microsoft[ -]edge)(?: helper.*)?$/.test(key) ? 'msedge'
+  : /^brave(?:-browser| browser(?: helper.*)?)?$/.test(key) ? 'brave'
+  : /^helium(?:-browser)?$/.test(key) ? 'helium' : null;
 
 let cache = { at: 0, list: [] }, running = null;
+
+export function groupRamHogs(rows, osName = OS) {
+  const skip = osName === OS ? SKIP : new Set(SKIP_BY_OS[osName] || []);
+  const byPid = new Map(rows.map(r => [r.pid, r]));
+  // a browser process belongs to a headless render (or the VideoHub window) when the top process of its tree says so
+  const top = r => { let x = r, k = 0; while (k++ < 20) { const up = byPid.get(x.ppid), family = browserFamily(processKey(x.name)); if (!up || (up.name !== x.name && (!family || browserFamily(processKey(up.name)) !== family))) return x; x = up; } return x; };
+  const groups = new Map();
+  for (const r of rows) {
+    const key = processKey(r.name), family = browserFamily(key);
+    if (!key || skip.has(key)) continue;
+    if (osName === 'linux' && (r.pid === 2 || r.ppid === 2 || SKIP_LINUX_PREFIX.test(key))) continue;
+    if (family && (top(r).headless || /--headless|--app=http:\/\/127\.0\.0\.1/.test(top(r).cmd || ''))) continue;
+    const name = NAMES[family || key] || r.name.replace(/\.exe$/i, '');
+    const g = groups.get(name) || { name, bytes: 0, procs: 0 };
+    g.bytes += r.rssBytes || 0; g.procs++; groups.set(name, g);
+  }
+  return [...groups.values()].sort((a, b) => b.bytes - a.bytes);
+}
 
 async function scan() {
   try {
     const rows = await processList(); if (!rows) return null;
-    const byPid = new Map(rows.map(r => [r.pid, r]));
-    // a browser process belongs to a headless render (or the VideoHub window) when the top process of its tree says so
-    const top = r => { let x = r, k = 0; while (k++ < 20) { const up = byPid.get(x.ppid), family = browserFamily(processKey(x.name)); if (!up || (up.name !== x.name && (!family || browserFamily(processKey(up.name)) !== family))) return x; x = up; } return x; };
-    const groups = new Map();
-    for (const r of rows) {
-      const key = processKey(r.name), family = browserFamily(key);
-      if (!key || SKIP.has(key)) continue;
-      if (family && (top(r).headless || /--headless|--app=http:\/\/127\.0\.0\.1/.test(top(r).cmd || ''))) continue;
-      const name = NAMES[family || key] || r.name.replace(/\.exe$/i, '');
-      const g = groups.get(name) || { name, bytes: 0, procs: 0 };
-      g.bytes += r.rssBytes || 0; g.procs++; groups.set(name, g);
-    }
-    return [...groups.values()].sort((a, b) => b.bytes - a.bytes);
+    return groupRamHogs(rows, OS);
   } catch { return null; }
 }
 

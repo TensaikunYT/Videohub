@@ -55,7 +55,7 @@ let rendersCache = null; const renderSubs = new Set();
 const es = new EventSource('/api/events');
 // VideoHub closes itself when unused; if this window outlived it, say how to bring it back (EventSource keeps retrying)
 let downTimer = null;
-const downBar = h('div', { class: 'downbar', hidden: true }, 'The VideoHub server is off (it shut down because it was idle). Click the VideoHub shortcut on your desktop; this window will reconnect automatically.');
+const downBar = h('div', { class: 'downbar', hidden: true }, 'The VideoHub server is off (it shut down because it was idle). Reopen VideoHub from its launcher or shortcut; this window will reconnect automatically.');
 document.body.append(downBar);
 es.addEventListener('error', () => { if (!downTimer) downTimer = setTimeout(() => { downBar.hidden = false; }, 4000); });
 es.addEventListener('open', () => { clearTimeout(downTimer); downTimer = null; if (!downBar.hidden) location.reload(); });
@@ -168,7 +168,7 @@ async function welcomePanel() {
       h('button', { onclick: () => location.hash = '#/settings' }, '📂 Add a folder…')),
     c.workspace ? h('div', { class: 'sub', style: { marginTop: '10px' } }, 'Your workspace (films, outputs, sounds, thumbnails, archive): ', h('span', { class: 'mono' }, c.workspace)) : null,
     h('div', { class: 'row', style: { gap: '8px', marginTop: '8px', alignItems: 'center' } }, h('span', { class: 'sub' }, 'Render speed:'), renderSpeedControl(c)),
-    h('p', { class: 'dim', style: { fontSize: '12.5px', marginBottom: 0 } }, 'The example (examples\\hello-film) is a 10-second film that shows the whole loop: live preview, notes, a chunked render with sound, partial re-renders. What a film folder needs is described in docs\\PROJECT-CONTRACT.md.'));
+    h('p', { class: 'dim', style: { fontSize: '12.5px', marginBottom: 0 } }, 'The example (examples/hello-film) is a 10-second film that shows the whole loop: live preview, notes, a chunked render with sound, partial re-renders. What a film folder needs is described in docs/PROJECT-CONTRACT.md.'));
   return box;
 }
 
@@ -399,7 +399,7 @@ function tidyBlock(p, after) {
   return h('div', {},
     h('h2', {}, 'Tidy up this project'),
     h('div', { class: 'sub', style: { marginBottom: '8px' } }, `Videos ${GB(film)} · leftovers ${GB(left)}`,
-      inReview && p.render?.chunkSec ? h('span', { class: 'dim' }, ' · film in review: render\\chunks are kept for partial renders (mark it "approved" to include them in cleanup)') : null),
+      inReview && p.render?.chunkSec ? h('span', { class: 'dim' }, ' · film in review: render/chunks are kept for partial renders (mark it "approved" to include them in cleanup)') : null),
     !p.busy && (p.sizes?.chunk || 0) > 0 && (inReview || p.statusAuto) ? h('div', { class: 'panel release-chunks' },
       h('b', {}, GB(p.sizes.chunk) + ' of render chunks kept for revision.'),
       h('p', { class: 'sub' }, 'Once review is finished, you can release the chunks for cleanup. Code, audio and final videos stay; later changes will need a full render.'),
@@ -721,7 +721,7 @@ async function settingsPage(page) {
   const okRow = (name, ok, text) => [h('div', { class: 'k' }, name), h('div', {}, ok ? h('span', { class: 'green' }, '✓ ') : h('span', { class: 'muted' }, '— '), text)];
   page.append(h('h2', {}, 'Optional parts on this computer'), h('div', { class: 'panel kv' },
     okRow('ffmpeg', I.ffmpeg, I.ffmpeg ? 'found (frame pictures, previews, renders)' : 'not found — see README installation instructions for your system'),
-    okRow('Browser for renders', !!I.browser, I.browser || 'no Chrome, Chromium or Edge found — renders need a native browser (Snap/Flatpak browsers are not supported)'),
+    okRow('Browser for renders', !!I.browser, I.browser || 'no Chromium, Chrome, Brave or Edge found — renders need a native browser (Snap/Flatpak browsers are not supported)'),
     okRow('Render protection', true, c.capabilities?.cpuAffinity === false ? (c.capabilities.cpuLimitReason || 'CPU limit not available on this system') + '; priority and RAM protection remain available' : 'built in (CPU limit, low priority, RAM slow mode)'),
     okRow('Ready-made sound effects', I.sfx?.ok, I.sfx?.ok ? 'available' : I.sfx?.why || 'not available')));
   page.append(h('h2', {}, 'Workspace'), h('div', { class: 'sub' }, 'The folder chosen in setup: the default home of every folder below (films, outputs, sounds, thumbnails, archive). Each folder can still be changed on its own here.'),

@@ -22,10 +22,23 @@ export const ENCODER_ARGS = {
     ['-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '14', '-qp_p', '16', '-qp_b', '18']],
   // unverified (no Intel GPU was available): global quality 18 with look-ahead
   qsv: [['-c:v', 'h264_qsv', '-preset', 'veryslow', '-global_quality', '18', '-look_ahead', '1']],
-  vaapi: [['-vaapi_device', '/dev/dri/renderD128', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-qp', '18']],
+  // renderD128 is the primary DRM render node; renderD129 covers hybrid Linux laptops where renderD128 is a discrete GPU without VA-API
+  vaapi: [['-vaapi_device', '/dev/dri/renderD128', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-qp', '18'],
+    ['-vaapi_device', '/dev/dri/renderD129', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-qp', '18']],
   videotoolbox: [['-c:v', 'h264_videotoolbox', '-q:v', '65'], ['-c:v', 'h264_videotoolbox', '-b:v', '10M']],
   x264: [['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16']],
 };
+
+// Separate global hardware-device flags (before -i) and hardware upload filters (which replace output -pix_fmt yuv420p).
+export function buildProbeArgs(args) {
+  const pre = [], rest = [...args];
+  for (let i = 0; i < rest.length;) {
+    if (['-vaapi_device', '-init_hw_device', '-filter_hw_device'].includes(rest[i]) && i + 1 < rest.length) pre.push(...rest.splice(i, 2));
+    else i++;
+  }
+  const hwSurface = rest.some((a, i) => rest[i - 1] === '-vf' && /\bhwupload\b/.test(a));
+  return ['-hide_banner', '-loglevel', 'error', ...pre, '-f', 'lavfi', '-i', 'color=c=gray:s=640x360:r=30', '-frames:v', '5', ...(hwSurface ? [] : ['-pix_fmt', 'yuv420p']), ...rest, '-f', 'null', '-'];
+}
 
 // what to use: a named encoder if its probe passes, auto → the first GPU encoder that passes, otherwise x264.
 // probe(name) → the working argument list or null. Never throws; `why` says when a wish could not be met.
@@ -45,7 +58,7 @@ export function probeWith(ffmpeg = 'ffmpeg') {
   return name => new Promise(async resolve => {
     for (const args of encoderCandidates(name)) {
       const ok = await new Promise(r => {
-        let c; try { c = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=640x360:r=30', '-frames:v', '5', '-pix_fmt', 'yuv420p', ...args, '-f', 'null', '-'], { windowsHide: true, stdio: 'ignore' }); } catch { return r(false); }
+        let c; try { c = spawn(ffmpeg, buildProbeArgs(args), { windowsHide: true, stdio: 'ignore' }); } catch { return r(false); }
         const t = setTimeout(() => { try { c.kill(); } catch { } r(false); }, 20000);
         c.on('error', () => { clearTimeout(t); r(false); }); c.on('close', code => { clearTimeout(t); r(code === 0); });
       });

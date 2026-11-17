@@ -45,7 +45,9 @@ export function agentPaths(agent, { home = os.homedir(), env = process.env } = {
 }
 function executable(name, env = process.env) {
   for (const d of (env.PATH || '').split(path.delimiter)) for (const ext of IS_WIN ? ['.exe', '.cmd', '.bat', ''] : ['']) {
-    const p = path.join(d, name + ext); if (d && fs.existsSync(p)) return p;
+    if (!d) continue;
+    const p = path.join(d, name + ext);
+    try { if (!fs.statSync(p).isFile()) continue; if (!IS_WIN) fs.accessSync(p, fs.constants.X_OK); return p; } catch { }
   }
   return null;
 }
@@ -77,7 +79,7 @@ function mutateEntry(agent, j, mcp, remove) {
     if (remove) delete j.mcp.servers.videohub; else j.mcp.servers.videohub = { type: 'local', command: ['node', mcp], disabled: false };
   }
 }
-const begin = '<!-- videohub:begin (added by VideoHub setup; remove with uninstall.ps1) -->', end = '<!-- videohub:end -->';
+const begin = `<!-- videohub:begin (added by VideoHub setup; remove with ${IS_WIN ? 'UNINSTALL.cmd' : 'uninstall.sh'}) -->`, end = '<!-- videohub:end -->';
 const blocks = /<!-- videohub:begin[^>]*-->[\s\S]*?<!-- videohub:end -->/g;
 function ownedText(text, hub) { return new RegExp('(?:^|["\u0027`(\\s])' + normal(hub).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:/|["\u0027`\\s]|$)').test(normal(text)); }
 export async function integrateAgents({ action = 'setup', agents = [], hub = ROOT, home = os.homedir(), env = process.env, globalRule = true, dryRun = false, find = executable, run = executeAgent, recycle = trash } = {}) {

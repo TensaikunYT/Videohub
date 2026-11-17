@@ -56,7 +56,8 @@ export function validateUpdatePaths(source, target, { platform = platformDefault
 }
 function processMatches(p, install, platform) {
   if (!/^node(?:js|\.exe)?$/i.test(path.basename(p.name || ''))) return false;
-  const cmd = casePath(String(p.cmd || '').replace(/\\/g, '/'), platform), head = cmd.match(/^(?:"[^"]+"|\S+)\s+/), script = casePath(path.join(install, 'server', 'hub.js').replace(/\\/g, '/'), platform);
+  const cmd = casePath(String(p.cmd || '').replace(/\\/g, '/'), platform), execPrefix = casePath(process.execPath.replace(/\\/g, '/'), platform) + ' ';
+  const head = cmd.startsWith(execPrefix) ? [execPrefix] : cmd.match(/^(?:"[^"]+"|\S+)\s+/), script = casePath(path.join(install, 'server', 'hub.js').replace(/\\/g, '/'), platform);
   if (!head) return false;
   const args = cmd.slice(head[0].length);
   return args === script || args.startsWith(script + ' ') || args === '"' + script + '"' || args.startsWith('"' + script + '" ');
@@ -149,7 +150,8 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
     while (true) { const a = (await question(prompt + (recommended ? ' [Y/n] ' : ' [y/N] '))).trim().toLowerCase(); if (!a) return recommended; if (['y', 'yes'].includes(a)) return true; if (['n', 'no'].includes(a)) return false; }
   };
   const markerFile = path.join(platform.dirs.config, ...(platform.IS_WIN ? ['VideoHub'] : []), 'install.json');
-  const entryFile = path.join(env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'applications', 'videohub.desktop');
+  const xdgData = (() => { const v = env.XDG_DATA_HOME; if (!v || !path.isAbsolute(v)) return path.join(home, '.local', 'share'); const r = path.resolve(v); return r === path.parse(r).root || r === path.resolve(home) ? path.join(home, '.local', 'share') : v; })();
+  const entryFile = path.join(xdgData, 'applications', 'videohub.desktop');
   const desktopFile = path.join(platform.dirs.desktop, platform.IS_MAC ? 'VideoHub.command' : 'VideoHub.desktop');
   const shellQuote = s => "'" + String(s).replaceAll("'", "'\\''") + "'";
   const owned = (f, install) => { try { return fs.readFileSync(f, 'utf8').includes('# VideoHub install: ' + install + '\n'); } catch { return false; } };
@@ -162,7 +164,14 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
   const packageInstall = (install, force = false) => {
     if (!force && fs.existsSync(path.join(install, 'node_modules', '@modelcontextprotocol', 'sdk', 'package.json')) && fs.existsSync(path.join(install, 'node_modules', 'puppeteer-core', 'package.json'))) { say('keep installed Node packages'); return; }
     say('install Node packages with npm ci');
-    if (!dry) { const p = platform.IS_WIN ? platform.shellCommand('npm ci --no-audit --no-fund') : { file: 'npm', args: ['ci', '--no-audit', '--no-fund'], opts: {} }, r = run(p.file, p.args, { ...p.opts, cwd: install, env }); if (r.status !== 0) throw new Error('npm ci failed; install Node dependencies before continuing'); }
+    if (!dry) {
+      const nodeDir = path.dirname(process.execPath), siblingNpm = path.join(nodeDir, 'npm');
+      const npmBin = !platform.IS_WIN && fs.existsSync(siblingNpm) ? siblingNpm : 'npm';
+      const npmEnv = !platform.IS_WIN && nodeDir && !(env.PATH || '').split(path.delimiter).includes(nodeDir) ? { ...env, PATH: nodeDir + (env.PATH ? path.delimiter + env.PATH : '') } : env;
+      const p = platform.IS_WIN ? platform.shellCommand('npm ci --no-audit --no-fund') : { file: npmBin, args: ['ci', '--no-audit', '--no-fund'], opts: {} };
+      const r = run(p.file, p.args, { ...p.opts, cwd: install, env: npmEnv });
+      if (r.status !== 0) throw new Error('npm ci failed; install Node dependencies before continuing');
+    }
   };
   const settings = install => {
     const f = path.join(env.VIDEOHUB_DATA_DIR || path.join(install, 'data'), 'config.json'); if (!fs.existsSync(f)) return {};
@@ -201,8 +210,8 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
     if (options.action === 'setup') {
       if (+process.versions.node.split('.')[0] < 22) throw new Error('Node.js 22 or newer is required');
       const ffmpeg = platform.findTool('ffmpeg'), browser = platform.findBrowser().path;
-      if (!ffmpeg) warn(platform.IS_WIN ? 'ffmpeg is missing. Install it with: winget install -e --id Gyan.FFmpeg.' : platform.IS_MAC ? 'ffmpeg is missing. With Homebrew, run: brew install node ffmpeg.' : 'ffmpeg is missing. Install it using your distribution: sudo apt install ffmpeg; sudo dnf install ffmpeg; or sudo pacman -S ffmpeg.');
-      if (!browser) warn(platform.IS_WIN ? 'Install Edge or Chrome for rendering. Chrome: winget install -e --id Google.Chrome.' : platform.IS_MAC ? 'Install Google Chrome from google.com/chrome or use: brew install --cask google-chrome.' : 'Install a native Chrome or Chromium package. Flatpak and Snap browsers cannot be driven reliably for renders.');
+      if (!ffmpeg) warn(platform.IS_WIN ? 'ffmpeg is missing. Install it with: winget install -e --id Gyan.FFmpeg.' : platform.IS_MAC ? 'ffmpeg is missing. With Homebrew, run: brew install node ffmpeg.' : 'ffmpeg is missing. Install it using your package manager: sudo pacman -S --needed ffmpeg (Arch / Omarchy); sudo apt install ffmpeg (Debian / Ubuntu); or sudo dnf install ffmpeg (Fedora).');
+      if (!browser) warn(platform.IS_WIN ? 'Install Edge or Chrome for rendering. Chrome: winget install -e --id Google.Chrome.' : platform.IS_MAC ? 'Install Google Chrome from google.com/chrome or use: brew install --cask google-chrome.' : 'Install a native Chromium, Chrome, Brave or Edge package (Arch / Omarchy: sudo pacman -S --needed chromium). Flatpak and Snap browsers cannot be driven reliably for renders.');
       const st = state({ dataDir: data, ...(discover ? { discover } : {}) }); if (st.error) throw new Error(st.error);
       packageInstall(hub);
       const answersFile = path.join(data, 'setup-answers.json'), saved = read(answersFile, {}), answers = { ...saved };
@@ -251,7 +260,9 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
         if (makeShortcut) { say('create or refresh the owned Desktop shortcut through the installed Node runtime'); if (!dry) try { await platform.setShortcut(true); } catch (e) { legacyLaunchersSafe = false; warn(e.message); } }
       } else {
         const entry = platform.IS_MAC ? '#!/bin/bash\n# VideoHub install: ' + hub + '\nset -euo pipefail\nexport PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\nexec ' + shellQuote(process.execPath) + ' ' + shellQuote(path.join(hub, 'scripts', 'install.mjs')) + ' open "$@"\n' : '# VideoHub install: ' + hub + '\n' + platform.desktopEntry(false);
-        for (const f of [...(platform.IS_MAC ? [] : [entryFile]), ...(makeShortcut ? [desktopFile] : [])]) {
+        // Tiling Linux desktops such as Omarchy / Hyprland often have no ~/Desktop directory; keep the app-launcher entry without creating an empty ~/Desktop folder.
+        const copyToDesktop = makeShortcut && (platform.IS_MAC || !!stat(platform.dirs.desktop)?.isDirectory());
+        for (const f of [...(platform.IS_MAC ? [] : [entryFile]), ...(copyToDesktop ? [desktopFile] : [])]) {
           if (fs.existsSync(f) && !owned(f, hub)) { warn('Shortcut belongs to another install; left unchanged: ' + f); continue; }
           say('write launcher ' + f); if (!dry) write(f, entry, 0o755);
         }
@@ -296,7 +307,7 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
         const src = path.join(hub, name), dst = path.join(target, name); if (!fs.existsSync(src)) continue;
         if (fs.lstatSync(src).isSymbolicLink()) continue;
         if (fs.existsSync(dst)) { if (fs.lstatSync(dst).isSymbolicLink()) throw new Error('Update target contains a symbolic link: ' + dst); if (fs.statSync(dst).isDirectory()) copyTree(dst, path.join(backup, name)); else { fs.mkdirSync(path.dirname(path.join(backup, name)), { recursive: true }); fs.copyFileSync(dst, path.join(backup, name)); } }
-        if (fs.statSync(src).isDirectory()) copyTree(src, dst, { skip: skipCode }); else { fs.copyFileSync(src, dst); fs.chmodSync(dst, fs.statSync(src).mode); }
+        if (fs.statSync(src).isDirectory()) copyTree(src, dst, { skip: skipCode }); else { fs.copyFileSync(src, dst); fs.chmodSync(dst, fs.statSync(src).mode | (!platform.IS_WIN && /\.sh$/.test(name) ? 0o111 : 0)); }
       }
       const lockAfter = fs.existsSync(path.join(target, 'package-lock.json')) ? fs.readFileSync(path.join(target, 'package-lock.json'), 'utf8') : null;
       packageInstall(target, lockBefore !== lockAfter);
@@ -308,6 +319,14 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
         try { const startup = await startupDetails(installed, target); legacyLaunchersSafe &&= referencesClear(startup, target); if (startup.error) warn(startup.error); if (startup.owned) { say('refresh this install at login through Node'); if (!dry) await installed.setAutostart(true); } } catch (e) { legacyLaunchersSafe = false; warn(e.message); }
         if (!legacyLaunchersSafe) warnRetainedLaunchers(target);
         await retireLegacyAgent({ install: target, platform: installed, stopPid, delay, dryRun: dry, launchers: legacyLaunchersSafe, onAction: say });
+      } else {
+        const installed = platformForInstall(target);
+        const ownedLaunchers = [...(platform.IS_MAC ? [] : [entryFile]), desktopFile].filter(f => owned(f, target));
+        if (ownedLaunchers.length) {
+          const entry = platform.IS_MAC ? '#!/bin/bash\n# VideoHub install: ' + target + '\nset -euo pipefail\nexport PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\nexec ' + shellQuote(process.execPath) + ' ' + shellQuote(path.join(target, 'scripts', 'install.mjs')) + ' open "$@"\n' : '# VideoHub install: ' + target + '\n' + installed.desktopEntry(false);
+          for (const f of ownedLaunchers) { say('refresh launcher ' + f); if (!dry) write(f, entry, 0o755); }
+        }
+        if (platform.IS_LINUX) try { if (await installed.getAutostart()) { say('refresh login startup entry'); if (!dry) await installed.setAutostart(true); } } catch (e) { warn(e.message); }
       }
       log('Update complete. Open VideoHub with its existing launcher and restart your agent session.'); return { actions, warnings };
     }

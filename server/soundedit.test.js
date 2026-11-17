@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { writeWav, readWav, mixClips, clipsOf, mixKey, soundKey } from './vhsound.mjs';
+import { writeWav, readWav, decodeAudio, mixClips, clipsOf, mixKey, soundKey } from './vhsound.mjs';
 import { cleanAudio } from './soundedit.js';
 import { cleanItems, cleanActors } from './edit2d.js';
 
@@ -56,4 +56,23 @@ test('2D items and actors are validated', () => {
   const a = cleanActors({ 'shot1|hero#1': { dx: 10, s: 1 }, '*|robot#1': { hide: true }, 'bad': { dx: 1 }, 'x|y#1': { dx: 0, dy: 0, s: 1 } });
   assert.deepEqual(Object.keys(a), ['shot1|hero#1', '*|robot#1']);
   assert.equal(a['shot1|hero#1'].s, undefined);
+});
+
+test('decodeAudio falls back to pure-JS WAV resampling when ffmpeg is missing and reports missing ffmpeg for compressed files', () => {
+  const dir = path.join(os.tmpdir(), 'vh-wav-fallback-' + process.pid);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const wav = path.join(dir, 'tone.wav'), mp3 = path.join(dir, 'clip.mp3');
+    const sr = 24000, samples = new Float32Array(sr / 2);
+    for (let i = 0; i < samples.length; i++) samples[i] = 0.5 * Math.sin(2 * Math.PI * 440 * i / sr);
+    writeWav(wav, { sr, ch: [samples] });
+    fs.writeFileSync(mp3, 'not-an-mp3');
+    const stereo48 = decodeAudio(wav, 48000, 2, '/nonexistent/videohub-ffmpeg');
+    assert.equal(stereo48.length, 2);
+    assert.equal(stereo48[0].length, 24000);
+    assert.equal(stereo48[1].length, 24000);
+    assert.throws(() => decodeAudio(mp3, 48000, 2, '/nonexistent/videohub-ffmpeg'), /ffmpeg.*is not installed/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

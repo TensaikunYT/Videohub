@@ -3,7 +3,7 @@
 **A local review studio and render queue for videos that Antigravity CLI (agy), OpenCode, or Claude Code writes as code.**
 Ask your agent for a video. It builds a film as a web page that draws every frame in code. VideoHub plays the film straight from its code, so you can watch it, step through frames, draw and leave notes before rendering. Send the notes back to your agent, review the fixes in the reloading preview, then render when you are ready. The queue keeps the computer usable and can re-render only the seconds that changed.
 
-> **Windows 10/11, Linux and macOS; Antigravity CLI (agy), OpenCode, or Claude Code. Linux and macOS are new, not yet tested on real machines.** See [platform support](docs/PLATFORMS.md) for feature limits and the remaining hardware checks.
+> **Windows 10/11, Linux (including Omarchy / Arch + Hyprland + Wayland) and macOS; Antigravity CLI (agy), OpenCode, or Claude Code.** See [platform support](docs/PLATFORMS.md) for Omarchy and distro packages, feature details and remaining real-GPU/desktop checks.
 
 ![Live preview with a note on a frame](docs/screenshots/review-live-preview.png)
 
@@ -45,13 +45,14 @@ Built into the Node server, with no compiled helper:
 ![Renders](docs/screenshots/renders.png)
 
 ## Requirements
-All platforms need Node.js 22+, ffmpeg on PATH, a native Chrome/Chromium/Edge browser for headless rendering, and Antigravity CLI (agy), OpenCode, or Claude Code for making and fixing films. No native modules or compiled render-protection helper are required.
+All platforms need Node.js 22+, ffmpeg on PATH, a native Chromium/Chrome/Brave/Edge browser for headless rendering, and Antigravity CLI (agy), OpenCode, or Claude Code for making and fixing films. No native modules or compiled render-protection helper are required.
 
 | Platform | Install missing tools | Notes |
 |---|---|---|
 | Windows 10/11 | `winget install -e --id OpenJS.NodeJS.LTS`; `winget install -e --id Gyan.FFmpeg` | Edge or Chrome; setup retains the existing Windows paths |
-| Linux desktop | Your distribution's Node 22+ package; `sudo apt install ffmpeg`, `sudo dnf install ffmpeg`, or `sudo pacman -S ffmpeg` | Install a native browser; Snap/Flatpak browser wrappers are unsupported. Optional `taskset`, `zenity`/`kdialog`, `notify-send` |
-| macOS | With Homebrew: `brew install node ffmpeg`; `brew install --cask google-chrome`, or Chrome from its download page | Chrome / Edge / Chromium in `/Applications` or `~/Applications`; Apple Silicon and Intel code paths need hardware verification |
+| Omarchy (Arch + Hyprland) | `mise use -g node@22` (or `sudo pacman -S --needed nodejs npm`); `sudo pacman -S --needed ffmpeg chromium` | Chromium, Brave, Helium or Chrome work natively on Wayland; `util-linux` (`taskset`), `libnotify` (`notify-send`), `glib2` (`gio`) and Nautilus are already part of Omarchy. Optional folder dialog: `sudo pacman -S --needed zenity` |
+| Other Linux desktops | Your distro's Node 22+ (or `mise`); `sudo pacman -S --needed ffmpeg chromium`, `sudo apt install ffmpeg`, or `sudo dnf install ffmpeg` | Install a native Chromium/Chrome/Brave/Edge package; Snap and Flatpak browser wrappers are unsupported. Optional: `taskset` (`util-linux`), `zenity`/`qarma`/`yad`/`kdialog`, `notify-send` (`libnotify`), `gio` (`glib2`) or `trash-cli` |
+| macOS | With Homebrew: `brew install node ffmpeg`; `brew install --cask google-chrome`, or Chrome from its download page | Chrome / Edge / Chromium / Brave in `/Applications` or `~/Applications`; Apple Silicon and Intel code paths need hardware verification |
 
 A graphical desktop session is needed for windows, folder dialogs, desktop notifications and file-manager actions. A compatible graphics encoder is optional.
 
@@ -73,10 +74,26 @@ Use `-DryRun -Agents 'agy','opencode'` to preview, or `-Yes` to accept defaults 
 
 Open VideoHub from its Desktop shortcut or **open.cmd**. The shortcut starts the installed Node.js executable directly; a console window may appear briefly. `open.cmd` and login startup may also show a short console window. The current launch path uses neither VBScript nor hidden PowerShell. Update migrates owned shortcut/startup entries and recycles the old `open.vbs` / `open.ps1` only when those references are safe; custom, unreadable or failed migrations retain the files and show a warning. Start a new session in your selected agent to load `hub_*` tools.
 
-### Linux and macOS
-Run `chmod +x setup.sh update.sh uninstall.sh open.sh`, then `./setup.sh`. Preview first with `./setup.sh --dry-run --agents opencode`. Setup prints missing-system-tool instructions instead of silently installing system packages.
+### Linux, Omarchy and macOS
+The shell launchers (`setup.sh`, `open.sh`, `update.sh`, `uninstall.sh`) ship executable with LF line endings (if unpacked from an archive that stripped permissions, run `chmod +x setup.sh update.sh uninstall.sh open.sh` once), then run `./setup.sh`. Preview first with `./setup.sh --dry-run --agents opencode`. Setup prints missing-system-tool instructions instead of silently installing system packages.
 
-Flags: `--yes`, `--workspace PATH`, `--agents agy,opencode`, and `--watch-found`, `--gpu-encoder`, `--global-rule`, `--shortcut`, `--startup`, `--example` with `yes` or `no`. Launch with `./open.sh`. Linux also installs an application desktop entry and can add a Desktop copy.
+Flags: `--yes`, `--workspace PATH`, `--agents agy,opencode,claude`, and `--watch-found`, `--gpu-encoder`, `--global-rule`, `--shortcut`, `--startup`, `--example` with `yes` or `no`. Launch any time with `./open.sh` (or `./open.sh --server` to start only the background server).
+
+#### Omarchy quick start (Arch Linux + Hyprland + Wayland)
+```bash
+# 1. Ensure Node 22+, ffmpeg and a native Chromium-family browser (skip any you already have)
+mise use -g node@22            # or: sudo pacman -S --needed nodejs npm
+sudo pacman -S --needed ffmpeg chromium   # optional folder dialog: zenity
+
+# 2. Clone and run setup
+git clone <repo-url> ~/Apps/VideoHub
+cd ~/Apps/VideoHub
+./setup.sh                     # or non-interactive: ./setup.sh --yes --workspace ~/Videos/VideoHub --agents opencode
+```
+- **Walker launcher** — setup installs `~/.local/share/applications/videohub.desktop` (with the exact Node path, including `mise` installs), so VideoHub opens straight from Walker (`Super + Space`) as a native Wayland app window (`--ozone-platform-hint=auto --app=…`). Because tiling Hyprland/Omarchy setups usually have no `~/Desktop` folder, setup only copies a Desktop shortcut when `~/Desktop` already exists and never creates an empty folder.
+- **Login autostart (optional)** — writes `~/.config/autostart/videohub.desktop` (`open --server`, `NoDisplay=true`). Under `uwsm`-managed Hyprland sessions with XDG autostart enabled it starts automatically; otherwise you can add `exec-once = ~/Apps/VideoHub/open.sh --server` to `~/.config/hypr/autostart.conf` (or launch on demand — agent `hub_*` tools also auto-start the server).
+- **GPU encoding on Arch / Omarchy** — Intel/AMD VA-API (`libva-mesa-driver` for AMD, `intel-media-driver` for Intel; probes `/dev/dri/renderD128` and `renderD129`), NVIDIA NVENC (`nvidia-utils`), Intel QSV (`vpl-gpu-rt`), with automatic `libx264` CPU fallback.
+- **Trash, notifications & files** — uses `gio trash` / `trash-put` / freedesktop Trash (never permanent delete), `notify-send` (shown by `mako`), and D-Bus `FileManager1` (selects files in Nautilus) with `xdg-open` / `gio open` fallback. See [docs/PLATFORMS.md](docs/PLATFORMS.md#omarchy-arch-linux--hyprland--wayland) for Btrfs subvolume and Wayland notes.
 
 On macOS the optional Desktop launcher is **VideoHub.command**, which briefly opens Terminal. There is no unsigned `.app` bundle. If macOS blocks the downloaded launcher, attempt to open it, then go to **System Settings → Privacy & Security → Open Anyway**, confirm, and open it again. You can also launch with `./open.sh` from the installed folder.
 
@@ -91,7 +108,7 @@ OpenCode's rules live in `~/.config/opencode/AGENTS.md` (under `$XDG_CONFIG_HOME
 
 ## Your first film
 1. If setup added the example film, its card is on the Projects page. Otherwise the page shows **Welcome to
-   VideoHub** with your workspace and films folder (`<workspace>\films`): click **▶ Add the example film**.
+   VideoHub** with your workspace and films folder (`<workspace>/films`): click **▶ Add the example film**.
 2. Click its card: it opens in the **live preview**. Press Space, step with ← →, click on the video to leave a note.
 3. Press **🎬 Render** → *Full film*: the queue renders 5 two-second chunks and saves `hello-film_v1.mp4` with sound.
 4. Leave a note on a frame, change `film.js` (e.g. a colour), then **🎬 Render** → *Only the fixed parts*: only the
@@ -140,9 +157,10 @@ If an examined distributable still receives a malware detection, use that produc
 
 
 ## Update
-Download the new version and unpack it separately. Windows: double-click `UPDATE.cmd`, or run `node scripts/install.mjs update --target "C:/path/to/installed/VideoHub" --dry-run`, then repeat without `--dry-run`. Linux/macOS: from the new copy run `./update.sh --target /path/to/installed/VideoHub --dry-run`, then repeat without `--dry-run`.
+- **From a new ZIP / folder:** unpack the new version separately. Windows: double-click `UPDATE.cmd`, or run `node scripts/install.mjs update --target "C:/path/to/installed/VideoHub" --dry-run`, then repeat without `--dry-run`. Linux/Omarchy/macOS: from the new copy run `./update.sh --target /path/to/installed/VideoHub --dry-run`, then repeat without `--dry-run`. The updater stops the running server, backs up replaced code under `data/update-backup/`, updates dependencies, refreshes owned agent skills/rules and `.desktop`/autostart entries, and preserves your workspace, settings, queue, films and notes.
+- **From a `git clone` (Linux / Omarchy / macOS):** stop any idle/running hub (or wait until no render is running), run `git pull && npm ci --no-audit --no-fund && ./setup.sh --yes`. Re-running `./setup.sh --yes` preserves your saved answers, workspace and `data/config.json` while refreshing agent skills/rules and your `.desktop` launcher (including if `mise` upgraded your Node version path).
 
-The update backs up replaced code and keeps the workspace, settings, queue, films and notes. Use the existing launcher afterwards and restart your agent session. Downloaded or shared copies do not change automatically: distribute this version and explicitly update each installed copy that needs it.
+Restart your agent session after updating so it picks up refreshed skills and MCP tools. Downloaded or shared copies do not change automatically: distribute this version and explicitly update each installed copy that needs it.
 
 ## Uninstall
 Windows: from the installed folder run `node scripts/install.mjs uninstall --dry-run`, then repeat without `--dry-run` or use `UNINSTALL.cmd`. Linux/macOS: `./uninstall.sh --dry-run`, then `./uninstall.sh` from the installed folder.
@@ -153,12 +171,13 @@ Only integrations owned by this install are removed: MCP entry, skill, managed r
 - **macOS Trash permission** — Finder may ask for Automation permission the first time VideoHub moves a file to Trash. Allow it in System Settings → Privacy & Security → Automation for the requesting terminal/process. If denied, VideoHub refuses the operation and keeps the source; it never falls back to permanent deletion.
 - **macOS launcher blocked** — use Privacy & Security → Open Anyway after the first blocked launch of `VideoHub.command`, or run `./open.sh`. No `.app` bundle is shipped.
 - **macOS Render power is missing** — macOS has no supported CPU-core limit. Low priority, background QoS and RAM protection remain available; the Renders page explains the limitation.
-- **Linux folder picker is unavailable** — install `zenity`/`kdialog`, or enter the path in the text field.
-- **Linux CPU limit unavailable** — install `taskset` (util-linux). Low priority and RAM watching still work. Raising Unix priority after slowing down may require privileges; a fresh render starts with its configured priority.
-- **Linux browser not found** — use a native browser package. Snap/Flatpak browser wrappers cannot reliably be driven by Puppeteer; `VIDEOHUB_BROWSER` can select a native executable.
-- **Linux Trash unavailable** — VideoHub tries `gio`, `trash-put`, then the freedesktop Trash format; it refuses an unsafe or unwritable destination and leaves the item in place.
+- **Linux / Omarchy folder picker is unavailable** — install `zenity` (`sudo pacman -S --needed zenity` on Arch/Omarchy), `qarma`, `yad` or `kdialog`, or enter the folder path directly in the text field.
+- **Linux CPU limit unavailable** — install `taskset` (`util-linux`). Low priority and RAM watching still work. Raising Unix priority after slowing down may require privileges; a fresh render starts with its configured priority.
+- **Linux / Omarchy browser not found or sandbox error** — install a native Chromium, Chrome, Brave or Edge package (`sudo pacman -S --needed chromium` on Arch/Omarchy). Snap and Flatpak browser wrappers cannot reliably be driven by Puppeteer; set `VIDEOHUB_BROWSER=/path/to/browser` to choose a specific native binary. In restricted containers without user namespaces, set `VIDEOHUB_CHROMIUM_NO_SANDBOX=1` (never enabled automatically on desktop Linux).
+- **Linux / Omarchy VA-API encoder not listed** — install your GPU's VA-API driver (`libva-mesa-driver` for AMD, `intel-media-driver` for Intel) and verify `/dev/dri/renderD128` (or `renderD129`) exists, then click refresh in the render encoder picker; otherwise `x264` runs on CPU.
+- **Linux / Omarchy Trash unavailable (including Btrfs subvolumes)** — VideoHub tries `gio trash` (`glib2`), `trash-put` (`trash-cli`), then the freedesktop Trash format (`~/.local/share/Trash` or `<mount>/.Trash-<uid>`). It never copies/unlinks across filesystems or unmounted Btrfs subvolumes and never hard-deletes; if no safe Trash destination exists, the item stays in place.
 - **The page is blank** — open it in a browser and look at the console; a missing Node 22 or a broken update are the
-  usual causes. Restart with the Desktop shortcut.
+  usual causes. Restart with `./open.sh` or your launcher shortcut.
 - **Your agent does not see `hub_*` tools** — start a new session; use `/mcp` in agy, or `claude mcp list` / `opencode mcp list`, to check `videohub`. Re-run the installer for that agent if needed.
 - **"This folder is not a project VideoHub knows"** — put the film inside a watched folder or add its parent folder
   in Settings → Watched folders.
@@ -166,9 +185,9 @@ Only integrations owned by this install are removed: MCP entry, skill, managed r
   PROJECT-CONTRACT.md. The message says what is missing.
 - **Partial renders refused** — the render script is not chunked (family A) or the film length is unknown:
   `hub_project({set:{render:{env:{DUR:"…"}}}})`.
-- **Renders fail at once** — ffmpeg or a native Chrome/Chromium/Edge browser missing (Settings → Tools), or `puppeteer-core` missing for a
+- **Renders fail at once** — ffmpeg or a native Chromium/Chrome/Brave/Edge browser missing (Settings → Tools), or `puppeteer-core` missing for a
   film's render script (VideoHub ships one; run `npm install` in VideoHub's folder).
-- **Port 7788 is taken** — set `"port"` in `data\config.json`.
+- **Port 7788 is taken** — set `"port"` in `data/config.json` (or `VIDEOHUB_PORT` in the environment).
 - **A warning names `RenderGuard.exe` / `VideoHubAgent.exe`** — these names belonged to the retired compiled render-protection helper. Current source neither builds nor ships it. Update retires a recognized helper belonging to the target install without launching that executable. Classify the exact warning using the distinctions above; its filename alone does not establish a false positive.
 - **Coming from an older (Turkish) build** — see [docs/MIGRATING.md](docs/MIGRATING.md).
 

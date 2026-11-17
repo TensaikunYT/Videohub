@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
-import { ENCODERS, ENCODER_ARGS, PROBE_ORDER, pickEncoder, detectEncoders, encoderEnv, encoderCandidates } from './encoders.js';
+import { ENCODERS, ENCODER_ARGS, PROBE_ORDER, pickEncoder, detectEncoders, encoderEnv, encoderCandidates, buildProbeArgs } from './encoders.js';
 
 // the film render script carries its own copy of the table (films copy the script): both must say the same
 test('the render script template and its example copy use the same encoder arguments as the hub', () => {
@@ -74,21 +74,35 @@ test('VideoToolbox chooses constant quality on Apple Silicon and bitrate on Inte
   assert.deepEqual(encoderCandidates('videotoolbox', 'x64')[0], ['-c:v','h264_videotoolbox','-b:v','10M']);
 });
 
-test('VAAPI render filtering keeps conversion and hardware upload in one filter chain', () => {
+test('VAAPI render and probe place -vaapi_device before -i, avoid conflicting -pix_fmt, and include renderD129 fallback', () => {
+  assert.equal(ENCODER_ARGS.vaapi.length, 2);
+  assert.ok(ENCODER_ARGS.vaapi[1].includes('/dev/dri/renderD129'));
+  for (const cand of ENCODER_ARGS.vaapi) {
+    const probe = buildProbeArgs(cand);
+    assert.ok(probe.indexOf('-vaapi_device') >= 0 && probe.indexOf('-vaapi_device') < probe.indexOf('-i'));
+    assert.equal(probe.includes('yuv420p'), false);
+    assert.match(probe[probe.indexOf('-vf') + 1], /format=nv12,hwupload/);
+  }
   const r = renderScript({VIDEOHUB_ENCODER:'vaapi'}, ['vaapi']); r.setEnc(r.pickEncoder()); r.encoder('raw','vaapi.mp4'); const args = r.spawned[0];
-  assert.equal(args.filter(a => a === '-vf').length, 1); assert.match(args[args.indexOf('-vf')+1], /out_color_matrix=bt601.*format=nv12,hwupload/);
+  assert.ok(args.indexOf('-vaapi_device') >= 0 && args.indexOf('-vaapi_device') < args.indexOf('-i'));
+  assert.equal(args.includes('yuv420p'), false);
+  assert.equal(args.filter(a => a === '-vf').length, 1);
+  assert.match(args[args.indexOf('-vf')+1], /out_color_matrix=bt601.*format=nv12,hwupload/);
 });
 
-test('copied render scripts honor native browser overrides and discover macOS applications', () => {
+test('copied render scripts honor native browser overrides and discover macOS and Linux/Omarchy browsers', () => {
   const source = fs.readFileSync(new URL('../templates/new-film/render.js', import.meta.url), 'utf8');
   const body = source.slice(source.indexOf('function browserPath()'), source.indexOf('const FFMPEG'));
-  function pick(env, present) {
-    const files = new Set(present), ctx = { fs: { existsSync: p => files.has(p), realpathSync: p => p, statSync: () => ({size:100000,isFile:()=>true}), accessSync(){}, constants:{X_OK:1} }, path: path.posix, os: {homedir:()=>'/home/me'}, process:{env,exit:()=>{throw Error('no browser')}},console:{error(){}} };
+  function pick(env, present, texts = {}, platform = 'linux') {
+    const files = new Set(present), ctx = { fs: { existsSync: p => files.has(p), realpathSync: p => p, statSync: p => ({size: texts[p] ? texts[p].length : 100000, isFile:()=>true}), readFileSync: p => texts[p] || '', accessSync(){}, constants:{X_OK:1} }, path: path.posix, os: {homedir:()=>'/home/me', type:()=>platform==='linux'?'Linux':'Darwin'}, process:{env,platform,exit:()=>{throw Error('no browser')}},console:{error(){}} };
     vm.createContext(ctx); vm.runInContext(body,ctx); return ctx.browserPath();
   }
   const mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-  assert.equal(pick({VIDEOHUB_BROWSER:'/native/browser'}, ['/native/browser',mac]),'/native/browser');
-  assert.equal(pick({},[mac]),mac);
+  assert.equal(pick({VIDEOHUB_BROWSER:'/native/browser'}, ['/native/browser',mac], {}, 'darwin'),'/native/browser');
+  assert.equal(pick({},[mac], {}, 'darwin'),mac);
   assert.equal(pick({PATH:'/usr/bin'},['/usr/bin/chromium']),'/usr/bin/chromium');
+  assert.equal(pick({PATH:''},['/usr/bin/brave'],{'/usr/bin/brave':'#!/bin/sh\n# native Arch brave wrapper (not snap)\nexec /usr/lib/brave-browser/brave "$@"\n'}),'/usr/bin/brave');
+  assert.equal(pick({PATH:''},['/usr/bin/helium-browser']),'/usr/bin/helium-browser');
   assert.throws(()=>pick({PATH:'/snap/bin'},['/snap/bin/chromium']),/no browser/);
+  assert.throws(()=>pick({PATH:'/usr/bin'},['/usr/bin/chromium'],{'/usr/bin/chromium':'#!/bin/sh\nexec snap run chromium "$@"\n'}),/no browser/);
 });

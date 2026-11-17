@@ -160,3 +160,63 @@ test('installer accepts agy and OpenCode, remembers them, and uses generic agent
   const answers = JSON.parse(fs.readFileSync(path.join(o.hub, 'data', 'setup-answers.json'), 'utf8'));
   assert.deepEqual(answers.agents, ['agy', 'opencode']);
 });
+
+test('Omarchy/Hyprland Linux setup avoids creating ~/Desktop, emits pacman hints, and update refreshes owned launchers and autostart', async () => {
+  const o = fixture(); let startupOn = false;
+  o.platform.getAutostart = async () => startupOn;
+  o.platform.setAutostart = async on => { startupOn = !!on; o.calls.push(['startup', on]); return { code: 0 }; };
+  fs.rmSync(o.platform.dirs.desktop, { recursive: true, force: true });
+  const r = await runInstaller({ action: 'setup', yes: true, workspace: o.workspace, shortcut: 'yes', startup: 'yes', agents: 'opencode' }, o);
+  assert.ok(r.warnings.some(w => /pacman -S --needed ffmpeg/.test(w)));
+  assert.ok(r.warnings.some(w => /pacman -S --needed chromium/.test(w)));
+  assert.equal(fs.existsSync(o.platform.dirs.desktop), false, '~/Desktop must not be created when absent');
+  const appEntry = path.join(o.home, '.local', 'share', 'applications', 'videohub.desktop');
+  assert.ok(fs.existsSync(appEntry));
+  assert.equal(startupOn, true);
+
+  // Update from a fresh source folder refreshes owned .desktop + autostart and preserves executable .sh scripts.
+  const src = o.hub + '-release';
+  fs.mkdirSync(src, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'open.sh'), path.join(src, 'open.sh'));
+  fs.writeFileSync(path.join(src, 'server-marker'), '');
+  fs.mkdirSync(path.join(src, 'server'), { recursive: true });
+  fs.writeFileSync(path.join(src, 'server', 'hub.js'), '// updated hub');
+  fs.chmodSync(path.join(src, 'open.sh'), 0o644);
+  const upd = await runInstaller({ action: 'update', target: o.hub }, { ...o, hub: src, platformForInstall: () => o.platform });
+  assert.ok(upd.actions.some(a => a.includes('refresh launcher ' + appEntry)));
+  assert.ok(upd.actions.some(a => a.includes('refresh login startup entry')));
+  if (process.platform !== 'win32') assert.notEqual(fs.statSync(path.join(o.hub, 'open.sh')).mode & 0o111, 0);
+});
+
+test('live Linux shell launchers discover mise-managed Node under a stripped GUI PATH and support spaces and symlinks', { skip: process.platform !== 'linux' }, () => {
+  const tmpBase = path.join(ROOT, '.test-tmp'); fs.mkdirSync(tmpBase, { recursive: true });
+  const root = fs.mkdtempSync(path.join(tmpBase, 'vh-omarchy-sh-'));
+  try {
+    const home = path.join(root, 'home'), miseShims = path.join(home, '.local', 'share', 'mise', 'shims'), omarchyBin = path.join(home, '.local', 'share', 'omarchy', 'bin');
+    const install = path.join(root, 'Omarchy Apps', 'VideoHub'), workspace = path.join(home, 'Videos', 'VideoHub');
+    fs.mkdirSync(miseShims, { recursive: true }); fs.mkdirSync(omarchyBin, { recursive: true }); fs.mkdirSync(install, { recursive: true });
+    for (const item of ['server', 'ui', 'templates', 'skill', 'claude', 'examples', 'scripts', 'package.json', 'package-lock.json', 'setup.sh', 'open.sh', 'update.sh', 'uninstall.sh']) {
+      fs.cpSync(path.join(ROOT, item), path.join(install, item), { recursive: true });
+    }
+    fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(install, 'node_modules'));
+    fs.symlinkSync(process.execPath, path.join(miseShims, 'node'));
+    fs.symlinkSync(path.join(install, 'setup.sh'), path.join(omarchyBin, 'videohub-setup'));
+    fs.symlinkSync(path.join(install, 'uninstall.sh'), path.join(omarchyBin, 'videohub-uninstall'));
+    const env = { HOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), PATH: '/usr/bin:/bin', VIDEOHUB_NO_WINDOW: '1', VIDEOHUB_PORT: '18794', TMPDIR: root };
+    const dry = spawnSync(path.join(omarchyBin, 'videohub-setup'), ['--dry-run', '--yes', '--workspace', workspace, '--agents', 'opencode'], { env, encoding: 'utf8', timeout: 15000 });
+    assert.equal(dry.status, 0, dry.stderr || dry.stdout);
+    assert.match(dry.stdout, /write launcher/);
+    assert.equal(fs.existsSync(workspace), false);
+
+    // Full setup without launching background daemon (--dry-run verified above; also verify uninstall cleans owned launchers under stripped PATH).
+    const appEntry = path.join(home, '.local', 'share', 'applications', 'videohub.desktop');
+    fs.mkdirSync(path.dirname(appEntry), { recursive: true });
+    fs.writeFileSync(appEntry, `# VideoHub install: ${install}\n[Desktop Entry]\nType=Application\nName=VideoHub\n`);
+    const un = spawnSync(path.join(omarchyBin, 'videohub-uninstall'), [], { env, encoding: 'utf8', timeout: 15000 });
+    assert.equal(un.status, 0, un.stderr || un.stdout);
+    assert.equal(fs.existsSync(appEntry), false);
+    assert.equal(fs.existsSync(path.join(home, '.local', 'share', 'Trash', 'files', 'videohub.desktop')), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

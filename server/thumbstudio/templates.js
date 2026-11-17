@@ -315,5 +315,6 @@ export function watchTemplates(emitFn) {
         }
       }, 400);
     });
+    watcher.on('error', () => { try { watcher?.close(); } catch { } watcher = null; });
   } catch { }
 }

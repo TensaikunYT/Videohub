@@ -320,8 +320,12 @@ export const {getShortcut,setShortcut,getAutostartState,casePath,desktopEntry,ca
 function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, run, runSync, hubDir, kill, delay, uid, now, nodePath }) {
   const IS_WIN = false, IS_MAC = OS === 'darwin', IS_LINUX = OS === 'linux';
   const exists = f => { try { return fs.existsSync(f); } catch { return false; } };
-  // Login services omit shell setup; include Homebrew's standard locations for the documented macOS install.
-  const toolDirs = [...new Set((env.PATH || '').split(':').filter(Boolean).concat(IS_MAC ? ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'] : []))];
+  // Login services and Wayland launchers (e.g. Walker / uwsm on Omarchy) omit interactive shell setup; append standard user and system locations after PATH.
+  const nodeBin = nodePath && path.isAbsolute(nodePath) ? path.dirname(nodePath) : '';
+  const extraDirs = IS_MAC ? ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']
+    : [nodeBin, path.join(home, '.local', 'share', 'mise', 'shims'), path.join(home, '.local', 'bin'), path.join(home, '.local', 'share', 'omarchy', 'bin'), '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  const toolDirs = [...new Set((env.PATH || '').split(':').filter(Boolean).concat(extraDirs.filter(Boolean)))];
+  const cLocaleEnv = { env: { ...env, LC_ALL: 'C' } };
   function findTool(name) {
     for (const d of toolDirs) {
       const f = path.resolve(d, name);
@@ -329,8 +333,19 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     }
     return null;
   }
-  function userDir(kind) { if (!IS_MAC) try { const tool = findTool('xdg-user-dir'); if (tool) { const s = String(runSync(tool, [kind], { encoding: 'utf8', timeout: 3000 })).trim(); if (path.isAbsolute(s)) return s; } } catch { } return path.join(home, kind === 'DESKTOP' ? 'Desktop' : 'Documents'); }
-  const dirs = { home, desktop: userDir('DESKTOP'), documents: userDir('DOCUMENTS'), config: IS_MAC ? path.join(home, 'Library', 'Application Support', 'VideoHub') : path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'videohub'), temp };
+  function userDir(kind) {
+    if (!IS_MAC) try {
+      const tool = findTool('xdg-user-dir');
+      if (tool) {
+        const s = String(runSync(tool, [kind], { encoding: 'utf8', timeout: 3000 })).trim();
+        // xdg-user-dir returns $HOME when a folder such as ~/Desktop is disabled (common on Hyprland/Omarchy); keep a dedicated subpath instead.
+        if (path.isAbsolute(s)) { const r = path.resolve(s); if (r !== path.resolve(home) && r !== path.parse(r).root) return r; }
+      }
+    } catch { }
+    return path.join(home, kind === 'DESKTOP' ? 'Desktop' : 'Documents');
+  }
+  const xdgBase = (key, ...fallback) => { const v = env[key]; if (!v || !path.isAbsolute(v)) return path.join(home, ...fallback); const r = path.resolve(v); return r === path.parse(r).root || r === path.resolve(home) ? path.join(home, ...fallback) : v; };
+  const dirs = { home, desktop: userDir('DESKTOP'), documents: userDir('DOCUMENTS'), config: IS_MAC ? path.join(home, 'Library', 'Application Support', 'VideoHub') : path.join(xdgBase('XDG_CONFIG_HOME', '.config'), 'videohub'), temp };
   dirs.guard = dirs.config;
   function nativeExecutable(file) {
     try {
@@ -338,16 +353,22 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
       fs.accessSync(file, fs.constants?.X_OK ?? 1);
       const real = fs.realpathSync(file);
       if ([file, real].some(f => /\/(?:snap|flatpak)(?:\/|$)/.test(f))) return false;
-      if (fs.statSync(real).size < 65536 && /\bsnap\s+(?:run|exec)\b|\/snap\/|\bflatpak\s+run\b/.test(String(fs.readFileSync(real, 'utf8')))) return false;
+      if (fs.statSync(real).size < 65536) {
+        const head = String(fs.readFileSync(real, 'utf8'));
+        if (!head.startsWith('\x7fELF') && /\bsnap\s+(?:run|exec)\b|\/snap\/|\bflatpak\s+run\b|\/flatpak\//.test(head.replace(/^\s*#.*$/gm, ''))) return false;
+      }
       return true;
     } catch { return false; }
   }
   const nativeBrowser = names => names.map(findTool).find(nativeExecutable) || null;
   function findBrowser() {
     const app = name => ['/Applications', path.join(home, 'Applications')].map(dir => path.join(dir, name + '.app', 'Contents', 'MacOS', name)).find(nativeExecutable) || null;
-    const edge = IS_MAC ? app('Microsoft Edge') : nativeBrowser(['microsoft-edge', 'microsoft-edge-stable']), chrome = IS_MAC ? app('Google Chrome') : nativeBrowser(['google-chrome', 'google-chrome-stable']), chromium = IS_MAC ? app('Chromium') : nativeBrowser(['chromium', 'chromium-browser']);
+    const edge = IS_MAC ? app('Microsoft Edge') : nativeBrowser(['microsoft-edge', 'microsoft-edge-stable']);
+    const chrome = IS_MAC ? app('Google Chrome') : nativeBrowser(['google-chrome', 'google-chrome-stable']);
+    const chromium = IS_MAC ? app('Chromium') : nativeBrowser(['chromium', 'chromium-browser']);
+    const other = IS_MAC ? app('Brave Browser') : nativeBrowser(['brave', 'brave-browser', 'helium-browser']);
     const override = env.VIDEOHUB_BROWSER;
-    return { edge, chrome, chromium, path: nativeExecutable(override) ? override : edge || chrome || chromium };
+    return { edge, chrome, chromium, path: nativeExecutable(override) ? override : edge || chrome || chromium || other };
   }
   const browser = findBrowser();
   const TOOLS = { ffmpeg: findTool('ffmpeg') || 'ffmpeg', ffprobe: findTool('ffprobe') || 'ffprobe', node: nodePath, ...browser };
@@ -355,22 +376,43 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     if (env.VIDEOHUB_NO_WINDOW) return Promise.resolve();
     return new Promise((resolve, reject) => { try { const c = spawn(file, args, { detached: true, stdio: 'ignore' }); c.once('error', reject); c.once('spawn', () => { c.unref(); resolve(); }); } catch (e) { reject(e); } });
   }
-  function fileOpenPlan(target, { select = false } = {}) { return IS_MAC ? { command: 'open', args: [...(select ? ['-R'] : []), target] } : { command: 'xdg-open', args: [select ? path.dirname(target) : target] }; }
-  const openPath = target => launch(IS_MAC ? 'open' : 'xdg-open', [target]);
+  function linuxOpenPlan(target) {
+    const xdg = findTool('xdg-open'), gio = !xdg && findTool('gio');
+    return gio ? { command: gio, args: ['open', target] } : { command: xdg && !env.PATH?.split(':').includes(path.dirname(xdg)) ? xdg : 'xdg-open', args: [target] };
+  }
+  function fileOpenPlan(target, { select = false } = {}) { return IS_MAC ? { command: 'open', args: [...(select ? ['-R'] : []), target] } : linuxOpenPlan(select ? path.dirname(target) : target); }
+  const openPath = target => { if (IS_MAC) return launch('open', [target]); const p = linuxOpenPlan(target); return launch(p.command, p.args); };
   async function reveal(target, { select = false } = {}) {
     if (env.VIDEOHUB_NO_WINDOW) return;
-    if (!IS_MAC && select && findTool('gdbus')) {
+    if (!IS_MAC && select) {
       const uri = 'file://' + target.split('/').map(encodeURIComponent).join('/');
-      const r = await run('gdbus', ['call', '--session', '--dest', 'org.freedesktop.FileManager1', '--object-path', '/org/freedesktop/FileManager1', '--method', 'org.freedesktop.FileManager1.ShowItems', JSON.stringify([uri]), '']);
-      if (r.code === 0) return;
+      const gdbus = findTool('gdbus'), dbusSend = !gdbus && findTool('dbus-send');
+      if (gdbus) {
+        const r = await run(gdbus, ['call', '--session', '--dest', 'org.freedesktop.FileManager1', '--object-path', '/org/freedesktop/FileManager1', '--method', 'org.freedesktop.FileManager1.ShowItems', JSON.stringify([uri]), '']);
+        if (r.code === 0) return;
+      } else if (dbusSend) {
+        const r = await run(dbusSend, ['--session', '--print-reply', '--dest=org.freedesktop.FileManager1', '/org/freedesktop/FileManager1', 'org.freedesktop.FileManager1.ShowItems', 'array:string:' + uri, 'string:']);
+        if (r.code === 0) return;
+      }
     }
     const p = fileOpenPlan(target, { select }); return launch(p.command, p.args);
   }
   const openUrlWindow = url => {
     const b = findBrowser().path; if (!b) return openPath(url);
     const appEnd = b.indexOf('.app/');
-    return IS_MAC && appEnd >= 0 ? launch('open', ['-na', b.slice(0, appEnd + 4), '--args', '--app=' + url]) : launch(b, ['--app=' + url]);
+    if (IS_MAC && appEnd >= 0) return launch('open', ['-na', b.slice(0, appEnd + 4), '--args', '--app=' + url]);
+    const wayland = IS_LINUX && Boolean(env.WAYLAND_DISPLAY || /^wayland$/i.test(env.XDG_SESSION_TYPE || ''));
+    return launch(b, [...(wayland ? ['--ozone-platform-hint=auto'] : []), '--app=' + url]);
   };
+  function existingDir(start) {
+    if (!start) return null;
+    let cur = path.resolve(start);
+    while (cur) {
+      try { if (fs.statSync(cur).isDirectory()) return cur; } catch { }
+      const up = path.dirname(cur); if (up === cur) return null; cur = up;
+    }
+    return null;
+  }
   async function pickFolder({ title = 'Choose folder', start = '' } = {}) {
     if (IS_MAC) {
       if (env.VIDEOHUB_NO_WINDOW) return null;
@@ -379,17 +421,20 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
       const r = await run('osascript', ['-e', script, '--', String(title), initial]);
       return r.code === 0 ? r.stdout.replace(/\r?\n$/, '') || null : null;
     }
-    const zenity = findTool('zenity'), kdialog = findTool('kdialog');
-    if (!zenity && !kdialog) return { unsupported: true };
+    const gtk = ['zenity', 'qarma', 'yad'].map(findTool).find(Boolean), kdialog = !gtk && findTool('kdialog');
+    if (!gtk && !kdialog) return { unsupported: true };
     if (env.VIDEOHUB_NO_WINDOW) return null;
-    const r = zenity ? await run(zenity, ['--file-selection', '--directory', '--title=' + title, ...(start ? ['--filename=' + start.replace(/\/$/, '') + '/'] : [])]) : await run(kdialog, ['--getexistingdirectory', start || home, '--title', title]);
+    const initial = start ? (existingDir(start) || start) : '';
+    const r = gtk ? await run(gtk, ['--file-selection', '--directory', '--title=' + title, ...(initial ? ['--filename=' + initial.replace(/\/$/, '') + '/'] : [])]) : await run(kdialog, ['--getexistingdirectory', initial || home, '--title', title]);
     return r.code === 0 ? r.stdout.replace(/\r?\n$/, '') || null : null;
   }
   async function volumes() {
-    const r = await run('df', ['-kP']); if (r.code !== 0) return [];
-    return r.stdout.split(/\r?\n/).slice(1).flatMap(line => { const m = line.match(/^\S+\s+(\d+)\s+\d+\s+(\d+)\s+\S+\s+(.+)$/); return m ? [{ mount: m[3].replace(/\\([0-7]{3})/g, (_, n) => String.fromCharCode(parseInt(n, 8))), freeBytes: +m[2] * 1024, totalBytes: +m[1] * 1024 }] : []; });
+    const r = await run('df', ['-kP'], cLocaleEnv); if (r.code !== 0) return [];
+    return r.stdout.split(/\r?\n/).slice(1).flatMap(line => { const m = line.match(/^.+?\s+(\d+)\s+\d+\s+(\d+)\s+(?:\d+%|-) +(\/.*)$/); return m ? [{ mount: m[3].replace(/\\([0-7]{3})/g, (_, n) => String.fromCharCode(parseInt(n, 8))), freeBytes: +m[2] * 1024, totalBytes: +m[1] * 1024 }] : []; });
   }
   const encodePath = p => p.split('/').map(encodeURIComponent).join('/');
+  const pathOccupied = p => { try { fs.lstatSync(p); return true; } catch { return false; } };
+  const nearestDev = p => { for (let d = path.resolve(p); ;) { try { return fs.statSync(d).dev; } catch { const up = path.dirname(d); if (up === d) return null; d = up; } } };
   async function trashOne(source) {
     const target = path.resolve(source);
     if (target === path.parse(target).root || target === home) throw new Error('Refusing to trash a filesystem root or home folder.');
@@ -403,12 +448,13 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     for (const [name, args] of [['gio', ['trash', '--', target]], ['trash-put', ['--', target]]]) {
       const tool = findTool(name); if (!tool) continue;
       const r = await run(tool, args); if (r.code === 0) return;
-      if (!exists(target)) return;
+      if (!pathOccupied(target)) return;
     }
-    // A rename is reversible and atomic on one filesystem. Never copy/unlink across devices.
-    const parent = fs.statSync(path.dirname(target)), homeStat = fs.statSync(home);
+    // A rename is reversible and atomic on one filesystem/subvolume. Never copy/unlink across devices.
+    const parent = fs.statSync(path.dirname(target));
+    const homeTrash = path.join(xdgBase('XDG_DATA_HOME', '.local', 'share'), 'Trash');
     let root, infoPath = target;
-    if (parent.dev === homeStat.dev) root = path.join(env.XDG_DATA_HOME || path.join(home, '.local', 'share'), 'Trash');
+    if (parent.dev === nearestDev(homeTrash)) root = homeTrash;
     else {
       const mounts = (await volumes()).filter(v => target.startsWith(v.mount.replace(/\/$/, '') + '/')).sort((a, b) => b.mount.length - a.mount.length);
       if (!mounts.length || uid() == null) throw new Error('Trash is unavailable on this filesystem; the item was left untouched.');
@@ -417,15 +463,16 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     }
     const files = path.join(root, 'files'), info = path.join(root, 'info');
     for (const dir of [root, files, info]) {
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); }
+      catch (e) { if (['EACCES', 'EPERM', 'EROFS'].includes(e?.code)) throw new Error('Trash is unavailable on this filesystem; the item was left untouched.'); throw e; }
       const st = fs.lstatSync(dir); if (!st.isDirectory() || st.isSymbolicLink() || (uid() != null && st.uid != null && st.uid !== uid()) || (st.mode != null && (st.mode & 0o077))) throw new Error('Trash folder is unsafe; the item was left untouched.');
     }
-    if (fs.statSync(files).dev !== parent.dev) throw new Error('Trash is on another filesystem; the item was left untouched.');
+    if (fs.statSync(files).dev !== parent.dev) throw new Error('Trash is on another filesystem or Btrfs subvolume; the item was left untouched.');
     const date = new Date(), pad = n => String(n).padStart(2, '0'), deleted = `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     const base = path.basename(target);
     for (let i = 0; i < 10000; i++) {
       const name = base + (i ? '.' + i : ''), dest = path.join(files, name), metadata = path.join(info, name + '.trashinfo');
-      if (exists(dest)) continue;
+      if (pathOccupied(dest)) continue;
       try { fs.writeFileSync(metadata, `[Trash Info]\nPath=${encodePath(infoPath)}\nDeletionDate=${deleted}\n`, { flag: 'wx', mode: 0o600 }); } catch (e) { if (e.code === 'EEXIST') continue; throw e; }
       try { fs.renameSync(target, dest); return; } catch (e) { try { fs.unlinkSync(metadata); } catch { } throw e; }
     }
@@ -440,13 +487,16 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
   function notify(title, body) {
     if (env.VIDEOHUB_NO_WINDOW) return;
     const tool = IS_MAC ? 'osascript' : findTool('notify-send'); if (!tool) return;
-    const args = IS_MAC ? ['-e', 'on run argv\ndisplay notification (item 2 of argv) with title (item 1 of argv)\nend run', '--', String(title), String(body)] : [String(title), String(body)];
+    const icon = path.join(hubDir, 'ui', 'icon.svg');
+    const args = IS_MAC
+      ? ['-e', 'on run argv\ndisplay notification (item 2 of argv) with title (item 1 of argv)\nend run', '--', String(title), String(body)]
+      : ['-a', 'VideoHub', ...(exists(icon) ? ['-i', icon] : []), '--', String(title), String(body)];
     try { Promise.resolve(run(tool, args)).catch(() => {}); } catch { }
   }
   async function psList() {
-      // Both fields may contain spaces. Query separately, with full width and a start identity to reject PID reuse.
+      // Both fields may contain spaces. Query separately, with full width, C locale for lstart, and a start identity to reject PID reuse.
       const flag = IS_MAC ? '-axo' : '-eo';
-      const [table, commands] = await Promise.all([run('ps', ['-ww', flag, 'pid=,ppid=,rss=,lstart=,comm=']), run('ps', ['-ww', flag, 'pid=,args='])]);
+      const [table, commands] = await Promise.all([run('ps', ['-ww', flag, 'pid=,ppid=,rss=,lstart=,comm='], cLocaleEnv), run('ps', ['-ww', flag, 'pid=,args='], cLocaleEnv)]);
       if (table.code !== 0) return null;
       const args = new Map(commands.code === 0 ? commands.stdout.split(/\r?\n/).flatMap(line => { const m = line.match(/^\s*(\d+)\s+(.*)$/); return m ? [[+m[1], m[2]]] : []; }) : []);
       return table.stdout.split(/\r?\n/).flatMap(line => {
@@ -485,7 +535,7 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     const start = rows?.find(p => p.pid === +rootPid)?.start, cached = affinity.get(rootPid);
     let original = start != null && cached?.start === start ? cached.mask : null, failure = rows == null ? 'Could not read the render process tree.' : null;
     if (taskset && original == null) {
-      const r = await run(taskset, ['-p', String(rootPid)]), h = r.stdout.match(/mask:\s*([0-9a-f,]+)/i)?.[1]?.replaceAll(',', '');
+      const r = await run(taskset, ['-p', String(rootPid)], cLocaleEnv), h = r.stdout.match(/(?:mask)?:\s*([0-9a-f,]+)\s*$/im)?.[1]?.replaceAll(',', '');
       if (r.code === 0 && h) { original = BigInt('0x'+h); if (start != null) affinity.set(rootPid, { start, mask: original }); }
       else failure = r.stderr || 'Could not read render CPU affinity.';
     }
@@ -493,18 +543,23 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
     if (mask != null && cores != null) { let selected = 0n, count = 0; for (let i = mask.toString(2).length - 1; i >= 0 && count < cores; i--) if (mask & (1n << BigInt(i))) { selected |= 1n << BigInt(i); count++; } mask = selected || original; }
     for (const pid of ids) {
       try { os.setPriority(pid, { normal: 0, low: 10, idle: 19 }[level] ?? 0); } catch { }
-      if (IS_MAC) { const r = await run('taskpolicy', [level === 'idle' ? '-b' : '-B', '-p', String(pid)]); if (r.code !== 0) failure ||= r.stderr || 'Could not apply render background QoS.'; }
-      if (taskset && mask != null) { const r = await run(taskset, ['-a', '-p', mask.toString(16), String(pid)]); if (r.code !== 0) failure ||= r.stderr || 'Could not apply render CPU affinity.'; }
+      if (IS_MAC) { const r = await run('taskpolicy', [level === 'idle' ? '-b' : '-B', '-p', String(pid)]); if (r.code !== 0 && !(pid !== +rootPid && /no such process|ESRCH/i.test(r.stderr || ''))) failure ||= r.stderr || 'Could not apply render background QoS.'; }
+      if (taskset && mask != null) {
+        const r = await run(taskset, ['-a', '-p', mask.toString(16), String(pid)], cLocaleEnv);
+        // Short-lived ffmpeg / Chromium helper children frequently exit mid-chunk; ignore vanished descendants.
+        if (r.code !== 0 && !(pid !== +rootPid && /no such process|ESRCH/i.test(r.stderr || ''))) failure ||= r.stderr || 'Could not apply render CPU affinity.';
+      }
     }
     if (failure) throw new Error(failure);
     return { cpuAffinity: !!taskset, priority: true };
   }
-  const startupFile = IS_MAC ? path.join(home, 'Library', 'LaunchAgents', 'com.videohub.hub.plist') : path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'autostart', 'videohub.desktop');
-  const desktopQuote = s => '"' + String(s).replace(/[%]/g, '%%').replace(/[\\"$`]/g, '\\$&') + '"';
-  const desktopEntry = (server = false) => `[Desktop Entry]\nType=Application\nName=VideoHub\nComment=Local video review studio\nExec=${desktopQuote(process.execPath)} ${desktopQuote(path.join(hubDir,'scripts','install.mjs'))} open${server ? ' --server' : ''}\nIcon=${path.join(hubDir,'ui','icon.svg')}\nTerminal=false\nCategories=AudioVideo;Video;\nX-VideoHub-Install=${hubDir}\n`;
+  const startupFile = IS_MAC ? path.join(home, 'Library', 'LaunchAgents', 'com.videohub.hub.plist') : path.join(xdgBase('XDG_CONFIG_HOME', '.config'), 'autostart', 'videohub.desktop');
+  const desktopString = s => String(s).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/^ /, '\\s');
+  const desktopQuote = s => desktopString('"' + String(s).replace(/[%]/g, '%%').replace(/[\\"$`]/g, '\\$&') + '"');
+  const desktopEntry = (server = false) => `[Desktop Entry]\nType=Application\nName=VideoHub\nComment=Local video review studio\nExec=${desktopQuote(nodePath)} ${desktopQuote(path.join(hubDir,'scripts','install.mjs'))} open${server ? ' --server' : ''}\nPath=${desktopString(hubDir)}\nIcon=${desktopString(path.join(hubDir,'ui','icon.svg'))}\nTerminal=false\nStartupNotify=false\n${server ? 'NoDisplay=true\n' : ''}Categories=AudioVideo;Video;\nX-VideoHub-Install=${desktopString(hubDir)}\n`;
   const xml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
   const launchAgent = () => `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>com.videohub.hub</string>\n<key>ProgramArguments</key><array><string>${xml(TOOLS.node)}</string><string>${xml(path.join(hubDir,'server','hub.js'))}</string></array>\n<key>WorkingDirectory</key><string>${xml(hubDir)}</string>\n<key>EnvironmentVariables</key><dict><key>PATH</key><string>${xml(toolDirs.join(':'))}</string></dict>\n<key>RunAtLoad</key><true/>\n<key>VideoHubInstall</key><string>${xml(hubDir)}</string>\n</dict></plist>\n`;
-  const ownsStartup = () => { try { const data = String(fs.readFileSync(startupFile, 'utf8')); return IS_MAC ? data.includes('<key>VideoHubInstall</key><string>' + xml(hubDir) + '</string>') : data.includes('X-VideoHub-Install=' + hubDir + '\n'); } catch { return false; } };
+  const ownsStartup = () => { try { const data = String(fs.readFileSync(startupFile, 'utf8')); return IS_MAC ? data.includes('<key>VideoHubInstall</key><string>' + xml(hubDir) + '</string>') : (data.includes('X-VideoHub-Install=' + desktopString(hubDir) + '\n') || data.includes('X-VideoHub-Install=' + hubDir + '\n')); } catch { return false; } };
   const launchDomain = () => { const id = uid(); if (id == null) throw new Error('The login user is unavailable; autostart was left unchanged.'); return 'gui/' + id; };
   const getAutostart = async () => {
     if (!ownsStartup()) return false;
@@ -531,8 +586,39 @@ function createUnixPlatform({ osName: OS, env, home, temp, fs, os, path, spawn, 
   const cleanupLegacyAutostart = async () => {};
   const shellCommand = cmd => ({ file: '/bin/sh', args: ['-c', cmd], opts: {} });
   const renderSpawnOptions = { detached: true };
-  async function gpuNames() { if (IS_MAC) return []; const tool = findTool('lspci'); if (!tool) return []; const r = await run(tool, []); return r.code === 0 ? r.stdout.split(/\r?\n/).filter(s => /VGA|3D controller|Display controller/i.test(s)) : []; }
-  const capabilities = () => ({ platform: OS, cpuAffinity: !IS_MAC && !!findTool('taskset'), cpuLimitReason: IS_MAC ? 'macOS does not provide a CPU-core affinity limit; priority and background QoS protect responsiveness.' : findTool('taskset') ? null : 'CPU limit not available on this system (taskset is missing).', trashLabel: 'Trash', fileManager: IS_MAC ? 'Finder' : 'file manager', browserWarning: IS_MAC ? null : 'Snap and Flatpak browsers are not supported for rendering; install a native Chrome or Chromium package.' });
+  async function gpuNames() {
+    if (IS_MAC) return [];
+    const tool = findTool('lspci');
+    if (tool) {
+      const r = await run(tool, [], cLocaleEnv);
+      if (r.code === 0) {
+        const names = r.stdout.split(/\r?\n/).filter(s => /VGA|3D controller|Display controller/i.test(s))
+          .map(s => s.replace(/^[0-9a-f:.]+\s+[^:]+:\s*/i, '').replace(/\s*\(rev [0-9a-f]+\)\s*$/i, '').trim()).filter(Boolean);
+        if (names.length) return names;
+      }
+    }
+    // Minimal Arch / Omarchy installs may omit pciutils (lspci); fall back to NVIDIA procfs and DRM sysfs driver names.
+    const names = [];
+    try {
+      for (const g of fs.readdirSync('/proc/driver/nvidia/gpus')) {
+        const m = String(fs.readFileSync('/proc/driver/nvidia/gpus/' + g + '/information', 'utf8')).match(/^Model:\s+(.+)$/m);
+        if (m?.[1]) names.push(m[1].trim());
+      }
+    } catch { }
+    try {
+      const labels = { amdgpu: 'AMD Radeon (amdgpu)', i915: 'Intel Graphics (i915)', xe: 'Intel Xe Graphics (xe)', nvidia: 'NVIDIA GPU', nouveau: 'NVIDIA GPU (nouveau)' };
+      for (const c of fs.readdirSync('/sys/class/drm')) {
+        if (!/^card\d+$/.test(c)) continue;
+        try {
+          const drv = String(fs.readFileSync('/sys/class/drm/' + c + '/device/uevent', 'utf8')).match(/^DRIVER=(\S+)$/m)?.[1];
+          if (drv === 'nvidia' && names.some(n => /nvidia/i.test(n))) continue;
+          if (drv && labels[drv] && !names.includes(labels[drv])) names.push(labels[drv]);
+        } catch { }
+      }
+    } catch { }
+    return names;
+  }
+  const capabilities = () => ({ platform: OS, cpuAffinity: !IS_MAC && !!findTool('taskset'), cpuLimitReason: IS_MAC ? 'macOS does not provide a CPU-core affinity limit; priority and background QoS protect responsiveness.' : findTool('taskset') ? null : 'CPU limit not available on this system (taskset is missing).', trashLabel: 'Trash', fileManager: IS_MAC ? 'Finder' : 'file manager', browserWarning: IS_MAC ? null : 'Snap and Flatpak browsers are not supported for rendering; install a native Chromium, Chrome, Brave or Edge package.' });
   const casePath = value => String(value), pathKey = value => path.resolve(value);
   let memoryCache = null;
   function availableMemory() {
