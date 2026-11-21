@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { parseOptions, runInstaller, stopInstalledHub, validateUpdatePaths } from './install.mjs';
+import { parseOptions, runInstaller, stopInstalledHub, validateUpdatePaths, stableNodePath } from './install.mjs';
 import { IS_WIN } from '../server/platform.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const write = (f, t = '{}') => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); };
@@ -68,7 +68,7 @@ test('macOS dry-run gives Homebrew hints and writes no Desktop command or Librar
 });
 test('macOS setup creates a quoted executable Desktop command and Library installation record', async () => {
   const o = fixture('darwin', "VideoHub's copy"); await runInstaller({ action: 'setup', yes: true, workspace: o.workspace, agents: 'opencode' }, o);
-  const command = path.join(o.home, 'Desktop', 'VideoHub.command'), text = fs.readFileSync(command, 'utf8'); assert.ok(text.startsWith('#!/bin/bash\n')); assert.ok(text.includes('# VideoHub install: ' + o.hub + '\n')); assert.ok(text.includes('/opt/homebrew/bin:/usr/local/bin:$PATH')); assert.ok(text.includes("exec '" + process.execPath.replaceAll("'", "'\\''") + "' '" + path.join(o.hub, 'scripts', 'install.mjs').replaceAll("'", "'\\''") + "' open \"$@\""));
+  const command = path.join(o.home, 'Desktop', 'VideoHub.command'), text = fs.readFileSync(command, 'utf8'); assert.ok(text.startsWith('#!/bin/bash\n')); assert.ok(text.includes('# VideoHub install: ' + o.hub + '\n')); assert.ok(text.includes('/opt/homebrew/bin:/usr/local/bin:$PATH')); assert.ok(text.includes("exec '" + stableNodePath().replaceAll("'", "'\\''") + "' '" + path.join(o.hub, 'scripts', 'install.mjs').replaceAll("'", "'\\''") + "' open \"$@\""));
   if (!IS_WIN) assert.ok(fs.statSync(command).mode & 0o111);
   assert.ok(fs.existsSync(path.join(o.home, 'Library', 'Application Support', 'VideoHub', 'install.json'))); assert.equal(fs.existsSync(path.join(o.home, '.local', 'share', 'applications')), false);
   o.calls.length = 0; await runInstaller({ action: 'uninstall' }, { ...o, request: async () => null }); assert.ok(o.calls.some(c => c[0] === 'startup' && c[1] === false)); assert.ok(o.calls.some(c => c[0] === 'trash' && c[1].includes(command))); assert.ok(fs.existsSync(path.join(o.workspace, 'films', 'hello-film', 'index.html')));
@@ -146,4 +146,12 @@ test('canonical update validation rejects nested junction aliases before stop or
 test('Bash launchers pass bash -n when a working Bash is available', t => {
   const version = spawnSync('bash', ['--version'], { encoding: 'utf8', timeout: 10000, windowsHide: true }); if (version.error || version.status !== 0) { t.skip('Bash is unavailable on this host; run bash -n on Linux/macOS'); return; }
   for (const f of ['setup.sh', 'update.sh', 'uninstall.sh', 'open.sh']) { const r = spawnSync('bash', ['-n', f], { cwd: ROOT, encoding: 'utf8', timeout: 10000, windowsHide: true }); assert.equal(r.status, 0, f + ': ' + r.stderr); }
+});
+
+test('macOS launcher uses Homebrew\'s stable opt link so brew upgrade does not break it', () => {
+  const real = { '/opt/homebrew/opt/node/bin/node': 'n26', '/opt/homebrew/Cellar/node/26.11.1/bin/node': 'n26', '/usr/local/opt/node@22/bin/node': 'n22', '/usr/local/Cellar/node@22/22.9.0/bin/node': 'n22' }, rp = f => { if (!(f in real)) throw new Error('ENOENT'); return real[f]; };
+  assert.equal(stableNodePath('/opt/homebrew/Cellar/node/26.11.1/bin/node', rp), '/opt/homebrew/opt/node/bin/node');
+  assert.equal(stableNodePath('/usr/local/Cellar/node@22/22.9.0/bin/node', rp), '/usr/local/opt/node@22/bin/node');
+  assert.equal(stableNodePath('/opt/homebrew/Cellar/node/25.0.0/bin/node', rp), '/opt/homebrew/Cellar/node/25.0.0/bin/node');
+  assert.equal(stableNodePath('/Users/me/.nvm/versions/node/v22.0.0/bin/node', rp), '/Users/me/.nvm/versions/node/v22.0.0/bin/node');
 });

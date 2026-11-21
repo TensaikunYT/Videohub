@@ -73,6 +73,8 @@ test('macOS Finder Trash passes unusual filenames as data and refuses failures w
   assert.equal((await h.trash([target]))[0].ok, true);
   assert.equal(h.calls[0].file, 'osascript'); assert.deepEqual(h.calls[0].args.slice(2), ['--', target]);
   assert.equal(h.calls[0].args[1].includes(target), false); assert.match(h.calls[0].args[1], /tell application "Finder" to delete/);
+  // Finder cannot resolve "POSIX file" inside its own tell block; the coercion must happen before it (verified on macOS).
+  assert.match(h.calls[0].args[1], /^set f to POSIX file \(item 1 of argv\)$/m); assert.doesNotMatch(h.calls[0].args[1], /tell application "Finder"[^\n]*POSIX file/);
   const failed = harness({ files: { [target]: 'film' }, answer: () => ({ code: 1, stdout: '', stderr: 'Not authorized to send Apple events' }) });
   const [r] = await failed.trash([target]); assert.equal(r.ok, false); assert.match(r.error, /Automation permission/); assert.equal(failed.files.has(target), true);
   assert.equal((await h.trash(['/']))[0].ok, false); assert.equal((await h.trash(['/Users/me']))[0].ok, false);
