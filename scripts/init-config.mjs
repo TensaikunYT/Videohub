@@ -25,7 +25,6 @@ export const README = `This is your VideoHub workspace: everything VideoHub make
 films        your film projects, one folder per film (your coding agent builds new films here)
 outputs      every finished render, one folder per day (hard links: no extra disk space)
 sounds       your own music beds and sound effects, for "Add sound" in the review timeline
-thumbnails   thumbnails that do not belong to one film (Thumbnail Studio)
 archive      old versions moved here by Disk cleanup instead of being deleted
 
 VideoHub never deletes anything here by itself. Settings > Folders shows and changes each folder.

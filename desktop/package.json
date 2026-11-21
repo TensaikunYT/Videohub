@@ -1,0 +1,19 @@
+{
+  "name": "videohub-desktop",
+  "productName": "VideoHub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional desktop window for VideoHub: starts or reuses the local hub and shows it in its own window.",
+  "license": "MIT",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "electron": "44.9.3"
+  }
+}

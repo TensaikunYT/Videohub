@@ -92,3 +92,20 @@ test('copied render scripts honor native browser overrides and discover macOS ap
   assert.equal(pick({PATH:'/usr/bin'},['/usr/bin/chromium']),'/usr/bin/chromium');
   assert.throws(()=>pick({PATH:'/snap/bin'},['/snap/bin/chromium']),/no browser/);
 });
+
+// run by VideoHub's queue (VIDEOHUB_JOB), the script makes only the chunks: the queue joins them and lays the sound, so the
+// script's own render/video.mp4 and render/<name>.mp4 (a second copy of the same film) are never written
+test('render.js: under the queue (VIDEOHUB_JOB) it stops after the chunks; by hand it joins them and adds the sound', () => {
+  const src = fs.readFileSync(new URL('../templates/new-film/render.js', import.meta.url), 'utf8');
+  const ctx = {}; vm.createContext(ctx);
+  vm.runInContext(/^const afterChunks = .+$/m.exec(src)[0] + '\nglobalThis.afterChunks = afterChunks;', ctx);
+  assert.equal(ctx.afterChunks({ VIDEOHUB_JOB: 'j1' }), 'queue');
+  assert.equal(ctx.afterChunks({ VIDEOHUB_JOB: 'j1', ONLY: '2,3' }), 'partial');
+  assert.equal(ctx.afterChunks({ VIDEOHUB_JOB: 'j1', PREVIEW: '1' }), 'preview', 'a preview still makes render/preview/video.mp4 (the queue reads it)');
+  assert.equal(ctx.afterChunks({}), 'join');
+  // the tail: the queue's stop comes before the concat and the mux
+  const tail = src.slice(src.indexOf('const next = afterChunks(process.env)'));
+  const stop = tail.indexOf("if (next === 'queue')"), concat = tail.indexOf("'concat'"), mux = tail.indexOf("'audio/mix.wav'");
+  assert(stop > 0 && concat > stop && mux > concat);
+  assert(/if \(next === 'queue'\) \{[^}]*return; \}/.test(tail));
+});

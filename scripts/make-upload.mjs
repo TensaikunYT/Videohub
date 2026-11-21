@@ -3,12 +3,14 @@
 //   node scripts/make-upload.mjs [target folder]      default: VideoHub-upload next to this repo
 // The browser upload takes at most 100 files at a time and drops names that start with a dot, so the target gets
 // part-1, part-2 … (each under 100 files, same sub-folders): open a part, select everything inside, drag it in,
-// commit, then the next part. It stops if a tracked file would be dropped by the browser.
+// commit, then the next part. It stops if a tracked file would be dropped by the browser or a required file (the desktop
+// shell's sources, the docs, README's screenshots) is missing. Installed packages (desktop/node_modules: Electron),
+// data, .test-tmp and anything in .git (the phase checkpoints) are never part of it.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { droppedByBrowser } from './upload-rules.mjs';
+import { droppedByBrowser, excludedFromUpload, missingFromUpload } from './upload-rules.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.resolve(process.argv[2] || path.join(root, '..', 'VideoHub-upload'));
@@ -29,9 +31,12 @@ const files = [];
 (function walk(d, rel) {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
     const r = rel ? rel + '/' + e.name : e.name;
+    if (excludedFromUpload(r)) { fs.rmSync(path.join(d, e.name), { recursive: true, force: true }); console.warn('Left out (never uploaded): ' + r); continue; }
     if (e.isDirectory()) walk(path.join(d, e.name), r); else files.push(r);
   }
 })(stage, '');
+const missing = missingFromUpload(files, fs.existsSync(path.join(stage, 'README.md')) ? fs.readFileSync(path.join(stage, 'README.md'), 'utf8') : '');
+if (missing.length) { fs.rmSync(stage, { recursive: true, force: true }); console.error('Missing from the last commit (commit them first):\n  ' + missing.join('\n  ')); process.exit(1); }
 const bad = files.filter(droppedByBrowser);
 if (bad.length) { fs.rmSync(stage, { recursive: true, force: true }); console.error('The browser upload would drop these (rename them):\n  ' + bad.join('\n  ')); process.exit(1); }
 const big = files.filter(f => fs.statSync(path.join(stage, f)).size > 25 * 1024 * 1024);

@@ -34,3 +34,24 @@ test('integration status reports the selected browser override rather than a cac
   const ctx = vm.createContext({ path, config: () => ({}), fs: { existsSync: () => true }, TOOLS: { ffmpeg: 'ffmpeg', edge: '/default/edge' }, findBrowser: () => ({ path: '/selected/browser' }) });
   vm.runInContext(code, ctx); assert.equal(ctx.integrations().browser, '/selected/browser');
 });
+
+test('the Files tab shows a file in its folder only when the path from the page stays inside the film', async () => {
+  const { resolveInFilm } = await import('./film-files.js');
+  const { isInside } = await import('./util.js');
+  const films = path.resolve('.test-tmp', 'hub-paths', 'films-' + process.pid + '-' + Date.now()), dir = path.join(films, 'watch'), other = path.join(films, 'other');
+  fs.mkdirSync(path.join(dir, 'scenes'), { recursive: true }); fs.mkdirSync(other, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'scenes', 'a.js'), 'x'); fs.writeFileSync(path.join(other, 'b.js'), 'x');
+  const start = source.indexOf("route('POST', '/api/project/:id/open-folder'"), code = source.slice(start, source.indexOf('\n});', start) + 4);
+  const handlers = new Map(), shown = [];
+  const p = { id: 'w', path: dir, outputs: [] };
+  vm.runInNewContext(code, { route: (m, r, fn) => handlers.set(m + r, fn), project: () => p, readBody: async b => b, resolveInFilm, isInside, path, fs,
+    allowedFile: f => isInside(f, films), process: { env: {} }, reveal: async (t, o) => { shown.push([t, o.select]); } });
+  const open = async body => JSON.parse(JSON.stringify(await handlers.get('POST/api/project/:id/open-folder')(body, null, { id: 'w' })));   // (objects from the vm context)
+  assert.deepEqual(await open({ rel: 'scenes/a.js' }), { ok: true, path: path.join(dir, 'scenes', 'a.js'), select: true });
+  assert.deepEqual(await open({}), { ok: true, path: dir, select: false }, 'no path: the film folder itself');
+  for (const rel of ['../other/b.js', 'scenes/../../other/b.js', path.join(other, 'b.js'), '']) await assert.rejects(open({ rel }), e => e.code === 403, rel);
+  await assert.rejects(open({ rel: 'scenes/missing.js' }), e => e.code === 403);
+  let junction = false; try { fs.symlinkSync(other, path.join(dir, 'leak'), 'junction'); junction = true; } catch { }
+  if (junction) await assert.rejects(open({ rel: 'leak/b.js' }), e => e.code === 403, 'a junction leading out of the film');
+  assert.equal(shown.length, 2);
+});

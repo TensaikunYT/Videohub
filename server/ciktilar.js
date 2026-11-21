@@ -95,6 +95,11 @@ export function sync() {
   return n;
 }
 
+// is this file's other hard link its outputs-folder link (which afterClean sends along when the file goes)?
+export function linkGoes(file) {
+  try { const e = load()[key(file)]; return !!(e && e.mode !== 'copy' && e.link && fs.existsSync(e.link) && fid(e.link) === fid(file)); } catch { return false; }
+}
+
 // renders the janitor just recycled or archived: their links follow to the Recycle Bin (never deleted outright)
 export async function afterClean(results) {
   const gone = (results || []).filter((r) => r.status === 'ok' && r.path).map((r) => r.path);

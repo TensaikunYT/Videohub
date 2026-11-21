@@ -13,7 +13,8 @@ test('the source distribution contains no compiled executable helpers or applica
   function walk(dir, relative = '') {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const name = relative ? relative + '/' + entry.name : entry.name;
-      if ((!relative && LOCAL.has(entry.name)) || entry.isDirectory() && /^examples\/[^/]+\/(?:node_modules|render)$/.test(name)) continue;
+      // desktop/node_modules: Electron for the optional desktop shell, installed only on request (never in git or uploads)
+      if ((!relative && LOCAL.has(entry.name)) || entry.isDirectory() && (/^examples\/[^/]+\/(?:node_modules|render)$/.test(name) || name === 'desktop/node_modules')) continue;
       if (entry.isSymbolicLink() || entry.isDirectory() && /\.app$/i.test(entry.name) || entry.isFile() && EXECUTABLE.test(entry.name)) bad.push(name);
       else if (entry.isDirectory()) walk(path.join(dir, entry.name), name);
     }

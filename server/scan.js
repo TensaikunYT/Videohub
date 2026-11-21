@@ -8,7 +8,7 @@ import { config, DEFAULT_SKIP_FOLDERS } from './config.js';
 import { outputsDir } from './ciktilar-dir.js';
 import { invalidateSource } from './source-revision.js';
 import { readNotes, readMeta, isOpenNote } from './legacy.js';
-import { DATA_DIR, idOf, readJson, writeJson, probe, flushProbeCache, fingerprint, pLimit, shortPath, run, TOOLS, now } from './util.js';
+import { DATA_DIR, timeSlice, idOf, readJson, writeJson, probe, flushProbeCache, fingerprint, pLimit, shortPath, run, TOOLS, now } from './util.js';
 
 const VIDEO = /\.(mp4|mov|webm|mkv)$/i, IMAGE = /\.(jpe?g|png|webp)$/i, AUDIO = /\.(wav|mp3|m4a|flac|aac|ogg)$/i;
 const SKIP_DIRS = new Set(['node_modules', '.git', '.videohub-trash']);
@@ -31,17 +31,18 @@ function category(rel, name) {
 
 // lets the hub answer requests in between: a project with 50k+ files once froze VideoHub for ~20 s
 export const breather = () => new Promise(r => setImmediate(r));
+// one clock for every walk: the scan describes three projects at once, and each must give way when the stretch is used up
+const slice = timeSlice();
 async function walk(dir) {
   const files = []; const stack = [dir]; let n = 0;
   const outs = norm(outputsDir());   // the global outputs folder (hard links of renders): never a project or a duplicate
-  const globalThumb = norm(config().thumbstudio?.globalDir || '');
   while (stack.length) {
     const d = stack.pop(); let ents = [];
     try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
     for (const e of ents) {
-      if (++n >= 300) { n = 0; await breather(); }
+      if (++n >= 300 || slice.due()) { n = 0; await slice.pause(); }
       const p = path.join(d, e.name);
-      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && norm(p) !== outs && (!globalThumb || norm(p) !== globalThumb)) stack.push(p); continue; }
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && norm(p) !== outs) stack.push(p); continue; }
       if (!e.isFile()) continue;
       let st; try { st = fs.statSync(p); } catch { continue; }
       const rel = path.relative(dir, p);
@@ -230,7 +231,6 @@ const EMPTY = { studio: 'no render yet · live preview available', code: 'no vid
 
 function projectsIn(root) {
   const out = []; const rp = root.path;
-  const globalThumb = norm(config().thumbstudio?.globalDir || '');
   // helper folders next to films (config.skipFolders): never projects unless they have their own render script
   const skip = new Set((Array.isArray(config().skipFolders) ? config().skipFolders : DEFAULT_SKIP_FOLDERS).map(s => String(s).toLowerCase()));
   const mk =(p, name, extra = {}) => ({ id: idOf(p + (extra.group ? '#' + extra.group : '')), name, path: p, root: rp, rootType: root.type, ...extra });
@@ -240,7 +240,6 @@ function projectsIn(root) {
   for (const e of ents) {
     if (!e.isDirectory() || SKIP_DIRS.has(e.name) || e.name.startsWith('.') || (root.type === 'container' && e.name.startsWith('_'))) continue;   // _engine, _backup: helpers
     const p = path.join(rp, e.name);
-    if (globalThumb && norm(p) === globalThumb) continue;
     let inner = []; try { inner = fs.readdirSync(p); } catch { continue; }
     if (inner.length === 0) continue;
     if (root.type === 'container' && skip.has(e.name.toLowerCase()) && !inner.some(f => /^render\.(m?js|py)$/.test(f))) continue;
@@ -289,7 +288,7 @@ const keyIn = (rec, p) => rec.whole ? '' : casePath(path.relative(rec.root.path,
 const baseOf = p => JSON.stringify([p.path, p.group, p.groupFiles, p.studio, p.outDir, p.rootType, p.family]);
 function watchRoot(root) {
   const rec = { w: null, root, whole: wholeRoot(root), full: true, all: false, dirty: new Set(), at: new Map() };
-  const skipUnder = [outputsDir(), config().thumbstudio?.globalDir].filter(Boolean).map(d => lc(d) + path.sep);
+  const skipUnder = [outputsDir()].filter(Boolean).map(d => lc(d) + path.sep);
   const onEvent = (ev, name) => {
     if (!name) { rec.all = true; return; }   // the change buffer overflowed: walk the whole root next time
     if (rec.all) return;

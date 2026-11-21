@@ -14,6 +14,14 @@ export const DATA_DIR = process.env.VIDEOHUB_DATA_DIR ? path.resolve(process.env
 export const HOME = dirs.home, DESKTOP = dirs.desktop, DOCUMENTS = dirs.documents, APPDATA = dirs.config, TEMP = dirs.temp;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+// Long synchronous walks (readdirSync / statSync per file) give the event loop back when their current stretch has run
+// for `ms`: counting entries alone let 300 stats (1–3 ms each on Windows with antivirus) hold every request for up to a
+// second while the startup scan ran, and the UI's modules came in one by one behind it.
+export function timeSlice(ms = 12) {
+  let t = performance.now();
+  return { due: () => performance.now() - t >= ms, pause: () => new Promise(r => setImmediate(() => { t = performance.now(); r(); })) };
+}
+
 export const idOf = p => crypto.createHash('sha1').update(pathKey(p)).digest('hex').slice(0, 12);
 export const norm = pathKey;
 // Resolve links for each check: a persistent cache would authorize paths after a junction is retargeted.

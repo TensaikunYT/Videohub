@@ -31,6 +31,7 @@ const save = (p, notes) => writeJson(notesFile(p), notes);
 const subs = new Set();
 export const onNote = fn => { subs.add(fn); return () => subs.delete(fn); };
 const emit = (p, note, extra) => { for (const fn of subs) try { fn({ project: p.id, note, ...extra }); } catch { } };
+export const noteChanged = (p, note, extra) => emit(p, note, extra);   // a change made outside the note routes (channel.js)
 let chain = Promise.resolve();
 let queued = 0;
 export function later(fn) { queued++; const job = chain.then(fn).finally(() => { queued--; }); chain = job.catch(e => console.error('[notes] pictures:', e?.message || e)); return job; }
@@ -194,8 +195,20 @@ export function update(p, id, patch, by = 'user') {
   if (patch.kind !== undefined) patch = { ...patch, kind: noteKind(patch.kind) };
   for (const k of ['text', 'kind', 'layer', 'reply', 'fixedIn', 't', 't2', 'at']) if (patch[k] !== undefined) n[k] = patch[k];
   const st = patch.status ? noteStatus(patch.status) : null;   // legacy (Turkish) words are accepted too
-  if (st && STATUSES.includes(st) && st !== n.status) { n.status = st; n.history.push({ at: now(), status: n.status, by: byWho(by), note: patch.reply || patch.comment || undefined }); }
+  if (st && STATUSES.includes(st) && st !== n.status) {
+    n.status = st; n.history.push({ at: now(), status: n.status, by: byWho(by), note: patch.reply || patch.comment || undefined });
+    if (st === 'open' || st === 'reopened') delete n.sentAt;   // back with the user: "Send to agent" counts it again
+  }
   save(p, notes); return n;
+}
+
+// "Send to agent" (channel.js): these open notes went to the agent's inbox at `at`
+export function markSent(p, ids, at = now()) {
+  const notes = list(p), pick = new Set(ids.map(Number)); let changed = 0;
+  for (const n of notes) if (pick.has(n.id)) { n.sentAt = at; changed++; }
+  if (changed) save(p, notes);
+  for (const n of notes) if (pick.has(n.id)) emit(p, n, { by: 'user' });
+  return changed;
 }
 
 export function remove(p, id) {
@@ -204,11 +217,12 @@ export function remove(p, id) {
   save(p, notes.filter(x => x.id !== +id)); return true;
 }
 
-// notes written before the newest version (all notes when the project has no version yet)
+// notes written before the newest version. A film with no version yet (reviewed only in the live preview) has no
+// "old" notes: listing every note there showed them all as "written before the latest version".
 export function oldNotes(p) {
   const versions = readJson(path.join(vhDir(p), 'versions.json'), []);
   const last = versions.reduce((m, v) => Math.max(m, Date.parse(v.created || 0) || 0), 0);
-  return list(p).filter(n => !last || (Date.parse(n.createdAt || 0) || 0) < last);
+  return last ? list(p).filter(n => (Date.parse(n.createdAt || 0) || 0) < last) : [];
 }
 // many notes at once (after a new version): "approve" marks them approved; "remove" takes them off the list into
 // .videohub/notes-archive.json (text only) and deletes their pictures, like a single note's "Delete" (the pictures are

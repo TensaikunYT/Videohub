@@ -12,7 +12,7 @@ test('Windows runtime uses OS services without compiling interop or changing exe
   const source = read('server/platform.js');
   assert.doesNotMatch(source, /Add-Type\s+-(TypeDefinition|MemberDefinition)|\[DllImport\s*\(|using System|-EncodedCommand|-ExecutionPolicy/i);
   assert.match(source, /SendToRecycleBin/);
-  for (const f of ['server', 'ui', 'scripts', 'templates', 'examples', 'engine-hooks'].flatMap(d => fs.readdirSync(new URL('../' + d, import.meta.url), { recursive: true }).map(n => d + '/' + n)))
+  for (const f of ['server', 'ui', 'scripts', 'templates', 'examples', 'engine-hooks', 'desktop'].flatMap(d => fs.readdirSync(new URL('../' + d, import.meta.url), { recursive: true }).map(n => d + '/' + n.replace(/\\/g, '/'))).filter(f => !/(^|\/)node_modules\//.test(f)))
     if (/\.(js|mjs|ps1)$/.test(f) && !/\.test\.js$/.test(f)) assert.doesNotMatch(read(f), /Add-Type\s+-(TypeDefinition|MemberDefinition)|['"]-(?:EncodedCommand|ExecutionPolicy)['"]|(?:spawn(?:Sync)?|execFile(?:Sync)?|run|detached)\s*\(\s*['"](?:wscript|cscript)(?:\.exe)?['"]/i, f);
 });
 

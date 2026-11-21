@@ -31,3 +31,13 @@ test('pictures outside the notes folder survive remove and bulk, and are not ser
   assert.equal(get(2, 'frame'), 404); assert.equal(get(2, 'annotated'), 404); assert.equal(get(1, 'crop'), 404);
   assert.equal(get(1, 'frame'), 200);
 });
+
+test('old notes: none before the first version, then only notes older than the newest version', async () => {
+  const notes = await import('./notes.js');
+  const film = path.join(root, 'old-film'), vh = path.join(film, '.videohub'), q = { ...p, id: 'notes-old-test', path: film };
+  fs.mkdirSync(vh, { recursive: true });
+  fs.writeFileSync(path.join(vh, 'notes.json'), JSON.stringify([{ ...note(1, {}), createdAt: '2026-01-01T00:00:00.000Z' }, { ...note(2, {}), createdAt: '2026-03-01T00:00:00.000Z' }]));
+  assert.deepEqual(notes.oldNotes(q), []);
+  fs.writeFileSync(path.join(vh, 'versions.json'), JSON.stringify([{ v: 1, created: '2026-02-01T00:00:00.000Z' }]));
+  assert.deepEqual(notes.oldNotes(q).map(n => n.id), [1]);
+});

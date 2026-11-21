@@ -1,6 +1,6 @@
 // Machine-local settings in data/config.json. Created on first run (or by setup: scripts/init-config.mjs), so the same
 // code works on any PC. Every folder VideoHub writes to has a default inside one workspace folder (baseDir: films,
-// outputs, sounds, thumbnails, archive; Documents\VideoHub unless setup chose another) and can be changed in Settings
+// outputs, sounds, archive; Documents\VideoHub unless setup chose another) and can be changed in Settings
 // or in data/config.json. See docs/MIGRATING.md for older installs.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -55,16 +55,8 @@ export function discoverRoots() {
   return roots;
 }
 
-export function defaultThumbstudioDirs(base = baseDir()) {
-  return {
-    globalDir: path.join(base, 'thumbnails'),
-    templatesDir: path.join(base, 'thumbnail-templates'),
-    styleRefsDir: path.join(base, 'thumbnail-styles'),
-  };
-}
-
 // the workspace's sub-folders (setup creates them and a README.txt that says what each is for)
-export const WORKSPACE_FOLDERS = { films: 'films', outputs: 'outputs', sounds: 'sounds', thumbnails: 'thumbnails', archive: 'archive' };
+export const WORKSPACE_FOLDERS = { films: 'films', outputs: 'outputs', sounds: 'sounds', archive: 'archive' };
 // every key but the roots (roots are found once, on the very first run)
 export const DEFAULTS = (base = baseDir()) => ({
   port: 7788,
@@ -79,9 +71,15 @@ export const DEFAULTS = (base = baseDir()) => ({
   snapsMaxAgeDays: 14,
   tempMaxAgeDays: 14,
   bloatWarnRatio: 3,
-  thumbstudio: defaultThumbstudioDirs(base),
   // render.encoder: auto | nvenc | amf | qsv | x264, passed to render scripts as VIDEOHUB_ENCODER (server/encoders.js)
   render: { encoder: 'auto' },
+  // the Now page reads the agents' own session files on this PC (server/activity.js); off = never touched
+  agentActivity: true,
+  // render leftovers (server/leftovers.js): ask about them by itself (a banner, nothing moves without a click), not below
+  // autoCleanMinMB; render chunks of a film not rendered for chunkDays count as leftovers (janitor rule staleChunks)
+  autoCleanPrompt: true,
+  autoCleanMinMB: 500,
+  chunkDays: 7,
 });
 function firstRoots() {
   const films = defaultFilmsDir();
@@ -109,10 +107,13 @@ function normalise(c, port) {
   c.agentName = typeof c.agentName === 'string' && c.agentName.trim() ? c.agentName.trim().slice(0, 40) : 'Claude';
   c.roots = (Array.isArray(c.roots) ? c.roots : []).filter(r => r && typeof r.path === 'string' && r.path)
     .map(r => ({ ...r, type: ['container', 'project', 'media'].includes(r.type) ? r.type : 'container', enabled: r.enabled !== false }));
-  c.thumbstudio = { ...defaultThumbstudioDirs(), ...(c.thumbstudio && typeof c.thumbstudio === 'object' && !Array.isArray(c.thumbstudio) ? c.thumbstudio : {}) };
   c.port = /^\d{1,5}$/.test(String(c.port)) && +c.port > 0 && +c.port < 65536 ? +c.port : port;
   const r = c.render && typeof c.render === 'object' && !Array.isArray(c.render) ? c.render : {};
   c.render = { ...r, encoder: ENCODERS.includes(r.encoder) ? r.encoder : 'auto' };
+  c.agentActivity = c.agentActivity !== false;
+  c.autoCleanPrompt = c.autoCleanPrompt !== false;
+  c.chunkDays = Number.isFinite(+c.chunkDays) && +c.chunkDays >= 1 ? Math.min(365, Math.round(+c.chunkDays)) : 7;
+  c.autoCleanMinMB = Number.isFinite(+c.autoCleanMinMB) && +c.autoCleanMinMB >= 0 ? Math.min(1e6, Math.round(+c.autoCleanMinMB)) : 500;
   return c;
 }
 export function saveConfig(patch) {

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { parseJsonc, integrateAgents, agentPaths, detectAgents, parseAgentOptions, executeAgent } from './agents.mjs';
+import { parseJsonc, integrateAgents, agentPaths, detectAgents, parseAgentOptions, executeAgent, codexEntry, editCodex, CODEX_TOOL_TIMEOUT } from './agents.mjs';
 import { IS_WIN } from '../server/platform.js';
 const hub = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scratch = () => { const home = path.join(hub, '.test-tmp', 'agents-' + randomUUID()); fs.mkdirSync(home, { recursive: true }); return { home, env: { PATH: '', XDG_CONFIG_HOME: path.join(home, '.config') }, hub, find: () => null }; };
@@ -84,4 +84,64 @@ test('Windows agent batch shims preserve special path characters and the supplie
   const env = { ...process.env, HOME: o.home, USERPROFILE: o.home, APPDATA: path.join(o.home, 'AppData'), LOCALAPPDATA: path.join(o.home, 'Local'), XDG_CONFIG_HOME: o.env.XDG_CONFIG_HOME, VIDEOHUB_TRAP: 'SHOULD_NOT_EXPAND', VIDEOHUB_FAKE_MARKER: 'fake-only' };
   const args = ['mcp', 'add', path.join(o.home, '%VIDEOHUB_TRAP% & film!')], r = executeAgent(shim, args, { env }); assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(fs.readFileSync(out, 'utf8')), { args, home: o.home, marker: 'fake-only' });
+});
+
+// ---------- Codex: ~/.codex/config.toml edited as text (fake CODEX_HOME only)
+const codexScratch = () => { const o = scratch(); o.env = { ...o.env, CODEX_HOME: path.join(o.home, '.codex') }; return o; };
+const mcpJs = path.join(hub, 'server', 'mcp.js');
+test('Codex: an absent config gets our table with the longer tool time limit, the skill and the rule, once', async () => {
+  const o = codexScratch(), p = agentPaths('codex', o);
+  const r = await integrateAgents({ ...o, agents: ['codex'] }); assert.deepEqual(r.errors, []); assert.equal(r.agentName, 'Codex');
+  const text = fs.readFileSync(p.config, 'utf8'), e = codexEntry(text);
+  assert.deepEqual(e.args, [mcpJs]); assert.equal(e.command, 'node'); assert.equal(e.timeout, CODEX_TOOL_TIMEOUT);
+  assert.match(fs.readFileSync(path.join(p.skill, 'SKILL.md'), 'utf8'), /description:/); assert.match(fs.readFileSync(p.rule, 'utf8'), /videohub:begin/);
+  await integrateAgents({ ...o, agents: ['codex'] }); assert.equal(fs.readFileSync(p.config, 'utf8'), text);
+  assert.equal([...fs.readFileSync(p.rule, 'utf8').matchAll(/<!-- videohub:begin/g)].length, 1);
+  assert.equal(fs.existsSync(path.join(o.home, '.claude')), false);
+});
+test('Codex: comments, other tables, order and CRLF line endings stay; uninstall removes only our table', async () => {
+  const o = codexScratch(), p = agentPaths('codex', o);
+  const before = '# my settings\r\nmodel = "gpt-x" # keep\r\n\r\n[mcp_servers.other]\r\ncommand = "other"\r\nargs = ["a"]\r\n\r\n# trailing comment\r\n[profiles.fast]\r\nmodel_reasoning_effort = "low"\r\n';
+  write(p.config, before);
+  let r = await integrateAgents({ ...o, agents: ['codex'], globalRule: false }); assert.deepEqual(r.errors, []);
+  const after = fs.readFileSync(p.config, 'utf8');
+  assert.ok(after.startsWith(before.replace(/\r\n$/, '')), 'the old text is untouched'); assert.doesNotMatch(after.replace(/\r\n/g, ''), /\n/, 'only CRLF line endings');
+  assert.equal(fs.readFileSync(p.config + '.videohub-backup', 'utf8'), before);
+  r = await integrateAgents({ ...o, action: 'uninstall', agents: ['codex'], recycle: async a => a.map(x => ({ path: x, ok: true })) }); assert.deepEqual(r.errors, []);
+  assert.equal(fs.readFileSync(p.config, 'utf8').replace(/(\r\n)+$/, ''), before.replace(/(\r\n)+$/, ''));
+});
+test('Codex: a foreign videohub entry (another install, or written as an inline table) is left as it is', async () => {
+  for (const text of ['[mcp_servers.videohub]\ncommand = "node"\nargs = ["/other-install/server/mcp.js"]\n', '[mcp_servers]\nvideohub = { command = "node", args = ["/x/mcp.js"] }\n']) {
+    const o = codexScratch(), p = agentPaths('codex', o); write(p.config, text);
+    const r = await integrateAgents({ ...o, agents: ['codex'] }); assert.deepEqual(r.errors, []);
+    assert.equal(fs.readFileSync(p.config, 'utf8'), text); assert.ok(r.actions.some(a => /another install/.test(a)));
+    assert.equal(fs.existsSync(p.skill), false); assert.equal(fs.existsSync(p.rule), false);
+    const u = await integrateAgents({ ...o, action: 'uninstall', agents: ['codex'] }); assert.deepEqual(u.errors, []); assert.equal(fs.readFileSync(p.config, 'utf8'), text);
+  }
+});
+test('Codex: our entry reached through a junction / symlink is ours: it gets the time limit, keeps its path, and uninstall removes it', async () => {
+  const o = codexScratch(), p = agentPaths('codex', o), link = path.join(o.home, 'Desktop', 'VideoHub');
+  fs.mkdirSync(path.dirname(link), { recursive: true }); fs.symlinkSync(hub, link, IS_WIN ? 'junction' : 'dir');
+  const viaLink = path.join(link, 'server', 'mcp.js'), text = `# keep me\n[mcp_servers.videohub]\ncommand = "node"\nargs = [${JSON.stringify(viaLink)}]\n\n[mcp_servers.videohub.env]\nX = "1"\n\n[tui]\ntheme = "dark"\n`;
+  write(p.config, text);
+  const r = await integrateAgents({ ...o, action: 'refresh', agents: ['codex'] }); assert.deepEqual(r.errors, []);
+  const e = codexEntry(fs.readFileSync(p.config, 'utf8')); assert.deepEqual(e.args, [viaLink]); assert.equal(e.timeout, CODEX_TOOL_TIMEOUT);
+  assert.match(fs.readFileSync(p.config, 'utf8'), /^# keep me\n[\s\S]*\[tui\]\ntheme = "dark"\n$/);
+  const u = await integrateAgents({ ...o, action: 'uninstall', agents: ['codex'] }); assert.deepEqual(u.errors, []);
+  assert.equal(fs.readFileSync(p.config, 'utf8'), '# keep me\n\n[tui]\ntheme = "dark"\n');
+});
+test('Codex: the codex CLI registers when present, then our entry gets the time limit; dry run writes nothing', async () => {
+  const o = codexScratch(), p = agentPaths('codex', o), calls = [];
+  const run = (_f, a) => { calls.push(a); if (a[1] === 'add') write(p.config, `[mcp_servers.videohub]\ncommand = "node"\nargs = [${JSON.stringify(mcpJs)}]\n`); return { status: 0, stdout: a.includes('list') ? 'videohub' : '' }; };
+  const dry = await integrateAgents({ ...o, agents: ['codex'], find: () => 'codex', run, dryRun: true }); assert.deepEqual(dry.errors, []); assert.deepEqual(calls, []); assert.equal(fs.existsSync(p.dir), false);
+  assert.ok(dry.actions.some(a => /would register Codex/.test(a)));
+  const r = await integrateAgents({ ...o, agents: ['codex'], find: () => 'codex', run, globalRule: false }); assert.deepEqual(r.errors, []);
+  assert.deepEqual(calls, [['mcp', 'add', 'videohub', '--', 'node', mcpJs], ['mcp', 'list']]); assert.equal(codexEntry(fs.readFileSync(p.config, 'utf8')).timeout, CODEX_TOOL_TIMEOUT);
+  calls.length = 0; const u = await integrateAgents({ ...o, action: 'uninstall', agents: ['codex'], find: () => 'codex', run: (_f, a) => { calls.push(a); return { status: 0 }; } });
+  assert.deepEqual(u.errors, []); assert.deepEqual(calls, [['mcp', 'remove', 'videohub']]); assert.equal(codexEntry(fs.readFileSync(p.config, 'utf8')).start, -1);
+});
+test('Codex is detected from CODEX_HOME and accepted by the option parser', () => {
+  const o = codexScratch(); fs.mkdirSync(agentPaths('codex', o).dir, { recursive: true });
+  assert.deepEqual(detectAgents(o), ['codex']);
+  assert.equal(editCodex('', mcpJs, 'remove'), null);
 });

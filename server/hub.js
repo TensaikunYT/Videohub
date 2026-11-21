@@ -8,12 +8,15 @@ import { reveal, openUrlWindow, capabilities, findBrowser } from './platform.js'
 import { config, saveConfig, discoverRoots, baseDir } from './config.js';
 import { detectEncoders, LABELS as ENC_LABELS } from './encoders.js';
 import { scan, index, project, rescanProject, thumbnail, onScan, dropProject, hideKey } from './scan.js';
-import { findCandidates, startClean, cleanStatus, onClean, busyProjects, RULES, invalidate, summary, recyclePaths, busyWhy } from './janitor.js';
+import { findCandidates, startClean, startCleanItems, cleanStatus, onClean, busyProjects, RULES, invalidate, summary, recyclePaths, busyWhy, configure as configureJanitor, PROMPT_RULES } from './janitor.js';
+import { createLeftovers, AFTER_RENDER_MS, EVERY_MS } from './leftovers.js';
+import { createFinish, RULES as FINISH_RULES } from './finish.js';
 import { guardState, guardHistory, guardCommand, snippRenders, guardSettings, saveGuardSettings, ensureGuard, quitGuard, guardExe } from './guard.js';
 import { HUB_DIR, DATA_DIR, TOOLS, isInside, readJson, writeJson, shortPath } from './util.js';
 import { readMeta, normalizeMeta } from './legacy.js';
 import * as example from './example.js';
 import * as notesApi from './notes.js';
+import * as channel from './channel.js';
 import * as jobs from './jobs.js';
 import * as media from './media.js';
 import * as live from './live.js';
@@ -29,7 +32,11 @@ import * as tweaksApi from './tweaks.js';
 import { openFile } from './open-file.js';
 import { transcript } from './transcript.js';
 import { ramHogs } from './ramhogs.js';
-import * as thumbstudio from './thumbstudio/store.js';
+import { createActivityReader, openCodeSupport, WINDOW_MS } from './activity.js';
+import { listFilmFiles, changedRule, resolveInFilm } from './film-files.js';
+import { createSkills, SKILL_AGENTS, bareName, skillRoots } from './skills.js';
+import { createSkillUsage } from './skill-usage.js';
+import { nowRenders } from '../ui/render-status.js';
 
 const UI = path.join(HUB_DIR, 'ui');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.json': 'application/json', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.aac': 'audio/aac', '.flac': 'audio/flac' };
@@ -59,6 +66,36 @@ jobs.onJob(ev => { if (ev.type === 'approval') { outputsApi.notifyWindows('A ren
 jobs.onJob(ev => { broadcast('job', ev); if (ev.type === 'running' && !GUARD_OFF) ensureGuard().catch(() => { }); });   // a render always runs protected
 setInterval(() => { if (clients.size) broadcast('renders', rendersPayload(false)); }, 2000);
 
+// ---------- Now: agent sessions read from their own files (server/activity.js) + the render queue.
+// Polled every 3 s only while a VideoHub window listens; never while "Show agent activity" is off.
+const activity = createActivityReader({ films: () => index().projects, enabled: () => config().agentActivity !== false });
+let activitySig = '', activityAt = 0;
+function activityPayload() {
+  const on = config().agentActivity !== false, now = Date.now();
+  const renders = nowRenders({ guard: guardState(), jobs: jobs.list() }, now);
+  // an agent waiting in hub_wait looks "working" in its own files (a tool call is open): it is waiting for you
+  const waits = channel.waitingAll();
+  const sessions = on ? activity.sessions().map(s => s.film && waits[s.film.id] && s.state === 'working' && !s.helpers ? { ...s, state: 'waiting', hubWait: true } : s) : [];
+  return { enabled: on, ready: activityAt > 0, at: now, windowHours: WINDOW_MS / 3600e3, sessions, waits, renders, unsupported: [openCodeSupport()] };
+}
+// the startup project scan competes with the first read for the event loop: let it finish first (at most 20 s).
+// (The cleanup scan that follows walks %TEMP% in synchronous stretches of at most ~12 ms: see timeSlice in util.js.)
+const scanSettled = () => !index().scanning ? Promise.resolve() : new Promise(res => { const t = setTimeout(done, 20e3); const off = onScan(ev => { if (ev.phase === 'done' || ev.phase === 'error') done(); }); function done() { clearTimeout(t); off(); res(); } });
+async function refreshActivity() {
+  await scanSettled();
+  await activity.poll(); activityAt = Date.now();
+  const p = activityPayload();
+  // ticking times (elapsed, render progress) do not count as a change; the page counts them itself
+  const sig = JSON.stringify([p.enabled, p.ready, Object.keys(p.waits).sort(), p.sessions.map(({ elapsedSec, estimate, ...x }) => [x, estimate ? Math.round(estimate.remainingSec / 60) : null]), p.renders.map(r => [r.key, r.state])]);
+  if (sig !== activitySig) { activitySig = sig; broadcast('activity', p); }
+  return p;
+}
+let activityBusy = false;
+setInterval(() => {
+  if (!clients.size || activityBusy) return;
+  activityBusy = true; refreshActivity().catch(e => console.error('activity:', e.message)).finally(() => { activityBusy = false; });
+}, 3000).unref();
+
 function rendersPayload(withHistory = true) {
   const guard = guardState(), list = jobs.list();
   // programs holding RAM: looked up (one PowerShell call, cached 30 s) only while a render runs or waits, or the page opens
@@ -71,8 +108,7 @@ const send = (res, code, body, type = 'application/json; charset=utf-8') => { re
 const readBody = req => new Promise((resolve, reject) => { const bufs = []; let n = 0; req.on('data', b => { n += b.length; if (n > 50 << 20) { reject(new Error('too large')); req.destroy(); } else bufs.push(b); }); req.on('end', () => { const t = Buffer.concat(bufs).toString('utf8'); try { resolve(t ? JSON.parse(t) : {}); } catch { resolve({}); } }); req.on('error', reject); });
 // files we are willing to serve: inside a root, the archive, or a project's .videohub folder
 function allowedFile(p) {
-  const ts = config().thumbstudio || {};
-  const roots = config().roots.map(r => r.path).concat([config().archiveDir, media.PROXY, ts.globalDir, ts.templatesDir, ts.styleRefsDir].filter(Boolean));
+  const roots = config().roots.map(r => r.path).concat([config().archiveDir, media.PROXY].filter(Boolean));
   return roots.some(r => isInside(p, r));
 }
 function serveFile(req, res, file) {
@@ -235,15 +271,117 @@ route('POST', '/api/open', async (req) => {
 });
 // "Open folder": the project folder in Explorer, or (file) the folder of one of its videos with that file selected.
 // Only folders inside a configured root (or the archive); test hubs (VIDEOHUB_NO_WINDOW) answer without opening.
+// The Files tab sends { rel }: a file or folder given relative to the film; it must resolve inside the film (or its out/
+// folder) after links are followed, and it is shown selected in its folder.
 route('POST', '/api/project/:id/open-folder', async (req, url, { id }) => {
   const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 });
   const b = await readBody(req);
   const o = b.file ? p.outputs.find(x => x.rel === b.file || x.path === b.file) : null;
   if (b.file && !o) throw Object.assign(new Error('This project has no such video'), { code: 404 });
-  const target = o ? o.path : (p.groupFiles ? path.dirname(p.outputs[0]?.path || p.path) : p.path);
+  const inner = b.rel != null ? resolveInFilm(p, b.rel) : null;
+  if (b.rel != null && (!inner || !(isInside(inner, p.path) || (p.outDir && isInside(inner, p.outDir))))) throw Object.assign(new Error('Only files inside this film can be shown'), { code: 403 });
+  const target = o ? o.path : inner || (p.groupFiles ? path.dirname(p.outputs[0]?.path || p.path) : p.path);
   if (!allowedFile(target) || !fs.existsSync(target)) throw Object.assign(new Error('This folder cannot be opened (outside VideoHub\'s folders, or missing)'), { code: 403 });
-  if (!process.env.VIDEOHUB_NO_WINDOW) await reveal(target, { select: !!o });
-  return { ok: true, path: target, select: !!o };
+  const select = !!o || !!inner;
+  if (!process.env.VIDEOHUB_NO_WINDOW) await reveal(target, { select });
+  return { ok: true, path: target, select };
+});
+// ---------- a film's Files tab: its files grouped, sizes, "changed recently", and janitor's leftovers for it.
+// The walk is async and yields; a second request within a few seconds shares the same answer.
+const filesCache = new Map();
+// janitor's list, waited for at most 1.5 s; while it is being counted again (it is kept for a minute and walking %TEMP%
+// can take a while) the last list from the past 10 minutes answers: its ids stay valid, the cleanup run checks each item
+let lastCands = null;
+async function candidatesSoon() {
+  const fresh = await Promise.race([findCandidates().then(list => { lastCands = { at: Date.now(), list }; return list; }).catch(() => []), new Promise(r => setTimeout(() => r(null), 1500))]);
+  return fresh || (lastCands && Date.now() - lastCands.at < 10 * 60e3 ? lastCands.list : null);
+}
+route('GET', '/api/project/:id/files', async (req, url, { id }) => {
+  const p = project(id); if (!p) throw Object.assign(new Error('Project not found'), { code: 404 });
+  const hit = filesCache.get(id);
+  if (hit && (hit.pending || Date.now() - hit.at < 5000) && !url.searchParams.get('fresh')) return hit.pending || hit.value;
+  const pending = (async () => {
+    // janitor's list for this film; the page asks again while it is being prepared
+    const cand = await candidatesSoon();
+    const sessions = config().agentActivity !== false ? activity.sessions().filter(x => x.film?.id === id) : [];
+    const RANK = { working: 0, waiting: 1, idle: 2 };
+    const session = sessions.sort((a, b) => (RANK[a.state] ?? 3) - (RANK[b.state] ?? 3) || (b.lastActivityAt || 0) - (a.lastActivityAt || 0))[0] || null;
+    const rule = changedRule(session);
+    const versions = readJson(path.join(p.path, '.videohub', 'versions.json'), []);
+    const r = await listFilmFiles(p, { candidates: cand ? cand.filter(c => c.project === id) : null, since: rule.since, versions: Array.isArray(versions) ? versions : [] });
+    return { id, title: p.title || p.name, path: p.path, label: shortPath(p.path), group: !!p.group, changedRule: rule, busy: busyProjects().find(b => b.project === id)?.reason || null, ...r };
+  })();
+  filesCache.set(id, { pending });
+  try { const value = await pending; filesCache.set(id, { at: Date.now(), value }); return value; }
+  catch (e) { filesCache.delete(id); throw e; }
+});
+// ---------- Skills: the agents' skill folders (read-only) and which films used each skill (a background index of the
+// agents' transcripts in data/skill-usage.json; never built on a request path, never while "Show agent activity" is off)
+const skills = createSkills();
+const skillUsage = createSkillUsage({ file: path.join(DATA_DIR, 'skill-usage.json'), enabled: () => config().agentActivity !== false,
+  busy: () => jobs.busy() || (guardState().renders || []).length > 0, onDone: r => { if (r.files) broadcast('skills', { at: r.at }); } });
+const usageRun = opts => { skillUsage.run(opts).catch(e => console.error('skill usage:', e.message)); };
+// Startup stays light (both used to start within 25 s and slowed the first minutes): the Skills page loads the list and
+// brings the index up to date itself (GET /api/skills). In the background the list is warmed a minute after the startup
+// scan; the index only takes in new bytes every 5 minutes while a window listens, and its very first build (gigabytes
+// of transcripts on a busy PC) waits for the Skills page or 15 minutes of uptime, then reads slowly.
+const STARTED = Date.now();
+setTimeout(() => { scanSettled().then(() => skills.all()).catch(() => { }); }, 60e3).unref();
+setInterval(() => {
+  if (!clients.size || config().agentActivity === false) return;
+  skillUsage.load().then(() => { const st = skillUsage.stats(); if (st.ready) usageRun(); else if (Date.now() - STARTED > 15 * 60e3) usageRun({ pauseMs: 40 }); }).catch(() => { });
+}, 5 * 60e3).unref();
+function skillUsageOf(name) {
+  const st = skillUsage.stats(), on = config().agentActivity !== false;
+  if (!on || !st.ready) return null;
+  const a = skillUsage.aggregate(index().projects, String(index().at || '')).get(String(name).toLowerCase());
+  return a ? { last: a.last, uses: a.uses, sessions: a.sessions, outside: a.outside, filmsCount: a.films.length, films: a.films.slice(0, 40) } : { last: 0, uses: 0, sessions: 0, outside: 0, filmsCount: 0, films: [] };
+}
+// sessions working or waiting now that loaded a skill (server/activity.js)
+function skillsInUse() {
+  const by = new Map();
+  if (config().agentActivity === false) return by;
+  for (const x of activity.sessions()) {
+    if (x.state !== 'working' && x.state !== 'waiting') continue;
+    for (const k of x.skills || []) { const n = bareName(k).toLowerCase(); (by.get(n) || by.set(n, []).get(n)).push({ agent: x.agent, agentName: x.agentName, title: x.title, state: x.state, film: x.film ? { id: x.film.id, title: x.film.title } : null }); }
+  }
+  return by;
+}
+const skillsUsageState = () => { const st = skillUsage.stats(); return { enabled: config().agentActivity !== false, ready: st.ready, running: st.running, done: st.done || 0, total: st.total || 0, lastRun: st.lastRun }; };
+function skillParams(agent, name) {
+  let n; try { n = decodeURIComponent(name); } catch { n = null; }
+  if (!SKILL_AGENTS[agent] || !n || n.length > 200) throw Object.assign(new Error('No such skill'), { code: 404 });
+  return n;
+}
+async function skillOf(agent, name) {
+  const s = await skills.find(agent, skillParams(agent, name));
+  if (!s) throw Object.assign(new Error('No such skill'), { code: 404 });
+  return s;
+}
+route('GET', '/api/skills', async () => {
+  await skillUsage.load();   // the saved index answers at once; new sessions are added by the run below
+  const st = skillUsage.stats();
+  if (config().agentActivity !== false && !st.running && (!st.lastRun || Date.now() - st.lastRun.at > 60e3)) usageRun();   // in the background
+  const c = await skills.all(), inUse = skillsInUse();
+  return { at: c.at, buildMs: c.ms, roots: c.roots.map(r => ({ ...r, label: SKILL_AGENTS[r.agent], short: shortPath(r.dir) })), usage: skillsUsageState(),
+    skills: skills.rows(c).map(r => ({ ...r, usage: skillUsageOf(r.name), inUse: inUse.get(r.name.toLowerCase()) || [] })) };
+});
+route('GET', '/api/skills/:agent/:name', async (req, url, { agent, name }) => {
+  await skillUsage.load();
+  const s = await skillOf(agent, name);
+  const c = await skills.all(), row = skills.rows(c).find(r => r.name.toLowerCase() === s.name.toLowerCase());
+  const t = await skills.tree(s);
+  return { name: s.name, agent: s.agent, label: SKILL_AGENTS[s.agent], dir: s.dir, short: shortPath(s.dir), where: s.where, description: s.description, version: s.version,
+    files: s.files, size: s.size, copies: row?.agents || [], differs: !!row?.differs, tree: t.entries, treeCapped: t.capped,
+    usage: skillUsageOf(s.name), usageState: skillsUsageState(), inUse: skillsInUse().get(s.name.toLowerCase()) || [] };
+});
+route('GET', '/api/skills/:agent/:name/file', async (req, url, { agent, name }) => skills.file(await skillOf(agent, name), url.searchParams.get('path') || ''));
+// "Open folder" / "Open in editor" (SKILL.md with its default app): the path is the server's own, never the client's
+route('POST', '/api/skills/:agent/:name/open', async (req, url, { agent, name }) => {
+  const s = await skillOf(agent, name), { what } = await readBody(req);
+  if (what === 'folder') return openFile(s.dir, 'folder');
+  if (what === 'editor') return openFile(await skills.resolve(s, 'SKILL.md'), 'text');
+  throw Object.assign(new Error('unknown action'), { code: 400 });
 });
 // ---------- removing a project from the Projects page
 // "Remove from list": hidden (config.hiddenProjects), no file touched, back from Settings → Hidden projects
@@ -301,16 +439,55 @@ route('POST', '/api/perf', async (req) => {
   return { ok: true };
 });
 route('GET', '/api/disk/clean', () => cleanStatus() || { state: 'none' });
-onClean(st => { broadcast('clean', st); if (st.state === 'done') { ciktilar.afterClean(st.results).catch(() => { }); scan().catch(() => { }); } });
+// ---------- render leftovers: VideoHub looks by itself and asks (server/leftovers.js; the banner is ui/leftovers.js).
+// Nothing moves before the user clicks "Clean now" (or cleans from the Cleanup page after "Review").
+configureJanitor({ linkGoes: ciktilar.linkGoes, skillDirs: () => skillRoots().map(r => r.dir) });   // honest freed sizes, never-list
+const sizeText = b => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : Math.round(b / 1048576) + ' MB';
+const leftovers = createLeftovers({
+  candidates: fresh => findCandidates(!!fresh), rules: PROMPT_RULES, startClean, config, readJson, writeJson, file: path.join(DATA_DIR, 'leftover-prompt.json'),
+  busy: () => jobs.busy() ? 'a render is running or queued' : (guardState().renders || []).length ? 'a render is running' : cleanStatus()?.state === 'running' ? 'a cleanup is running' : index().scanning ? 'a scan is running' : null,
+  onChange: st => broadcast('leftovers', st),
+  // no VideoHub window open: a desktop notification once per set (it only informs; the banner waits for the next window)
+  notify: pr => { if (!clients.size) outputsApi.notifyWindows(`Render leftovers: ${sizeText(pr.freed)} in ${pr.projects} project${pr.projects === 1 ? '' : 's'}`, 'Open VideoHub to review them. Nothing is removed until you click.'); },
+});
+const lookForLeftovers = why => { leftovers.check(why).catch(e => console.error('leftovers:', e.message)); };
+// after the first scan settled (not in the startup rush: the cleanup list is warmed right after it, this only reads it)
+let firstLook = false;
+onScan(ev => { if (ev.phase !== 'done') return; if (!firstLook) { firstLook = true; setTimeout(() => lookForLeftovers('start'), 20e3).unref(); } else setTimeout(() => leftovers.recheck().catch(() => { }), 1000).unref(); });
+jobs.onJob(ev => { if (ev.type === 'done') setTimeout(() => lookForLeftovers('render'), AFTER_RENDER_MS).unref(); });
+setInterval(() => lookForLeftovers('interval'), EVERY_MS).unref();
+route('GET', '/api/leftovers', (req, url) => url.searchParams.get('summary') ? leftovers.peek() : leftovers.state());
+route('POST', '/api/leftovers/check', () => leftovers.check('manual', { fresh: true }));
+route('POST', '/api/leftovers/later', async (req) => { const { key } = await readBody(req); return leftovers.later(key); });
+route('POST', '/api/leftovers/clean', async (req) => { const { key } = await readBody(req); return leftovers.clean(key); });
+onClean(st => { broadcast('clean', st); if (st.state === 'done') { finish.invalidate(); finish.afterRun(st).catch(() => { }); ciktilar.afterClean(st.results).catch(() => { }); scan().catch(() => { }); } });
+// ---------- "Finish film": what a finished film no longer needs (server/finish.js), reviewed in a dialog, then one cleanup run
+const finish = createFinish({
+  projects: () => index().projects, project, busyWhy, roots: () => config().roots.map(r => r.path), skillDirs: () => skillRoots().map(r => r.dir),
+  linkGoes: ciktilar.linkGoes, startCleanItems,
+  setStatus: async (id, status) => { const p = project(id); const file = projectMetaPath(p); writeJson(file, normalizeMeta({ ...readMeta(file, {}), status, updated: new Date().toISOString() })); await rescanProject(id); },
+  onList: () => broadcast('finish-list', {}),
+});
+onScan(ev => { if (ev.type === 'project') finish.invalidate(ev.id); });   // (otherwise a changed film is told by its signature)
+route('GET', '/api/project/:id/finish', async (req, url, { id }) => ({ rules: FINISH_RULES, archiveDir: config().archiveDir, ...(await finish.classify(id, { fresh: !!url.searchParams.get('fresh') })) }));
+route('POST', '/api/project/:id/finish', async (req, url, { id }) => { const b = await readBody(req); return finish.start([{ id, ids: b.ids, optional: b.optional }]); });
+route('GET', '/api/finish', () => ({ rules: FINISH_RULES, ...finish.list() }));
+route('POST', '/api/finish', async (req) => { const b = await readBody(req); if (!Array.isArray(b.films) || !b.films.length) throw Object.assign(new Error('No films chosen'), { code: 400 }); return finish.start(b.films); });
 // after every scan: each project's newest final in the outputs folder (the first scan fills it)
 onScan(ev => { if (ev.phase === 'done') try { ciktilar.sync(); } catch (e) { console.error('ciktilar sync:', e.message); } });
+// what agents and renders are doing now; a cold first read answers after at most 1.5 s and the rest follows as SSE 'activity'
+route('GET', '/api/activity', async () => {
+  if (Date.now() - activityAt > 3000) await Promise.race([refreshActivity(), new Promise(r => setTimeout(r, 1500))]).catch(() => { });
+  return { ...activityPayload(), reader: activity.stats() };
+});
 route('GET', '/api/config', () => ({ ...config(), workspace: baseDir(), capabilities: capabilities(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations() }));
 example.routes(route, readBody, () => scan());
-route('POST', '/api/config', async (req) => { const body = await readBody(req); const c = saveConfig(body); scan().catch(() => { }); return c; });
+route('POST', '/api/config', async (req) => { const body = await readBody(req); const c = saveConfig(body); scan().catch(() => { }); if ('agentActivity' in body) refreshActivity().catch(() => { });
+  if (['autoCleanPrompt', 'chunkDays', 'autoCleanMinMB'].some(k => k in body)) scanSettled().then(() => new Promise(r => setTimeout(r, 1500))).then(() => lookForLeftovers('settings'));   // the banner follows the switch
+  return c; });
 // render encoders this PC can use (one tiny test encode each, cached in data/encoders.json; ?refresh=1 probes again)
 route('GET', '/api/encoders', async (req, url) => ({ ...(await detectEncoders({ ffmpeg: TOOLS.ffmpeg, cacheFile: path.join(DATA_DIR, 'encoders.json'), refresh: url.searchParams.get('refresh') === '1' })), chosen: config().render?.encoder || 'auto', labels: ENC_LABELS }));
 notesApi.routes(route, readBody);
-thumbstudio.routes(route, readBody);
 sound.routes(route, project);
 outputsApi.routes(route, readBody);
 ciktilar.routes(route);
@@ -322,7 +499,9 @@ jobs.routes(route, readBody);
 media.routes(route, allowedFile);
 media.onProxy(ev => broadcast('proxy', ev));
 notesApi.onNote(ev => broadcast('note', ev));
-thumbstudio.onStore(ev => broadcast('thumbstudio', ev));
+// the agent channel (server/channel.js): plan, questions, "Send to agent" and hub_wait's long-polls
+channel.routes(route, readBody, { project, fileFor: p => live.liveCapable(p) ? '~live' : (p.latest || null), fps: p => p.render?.fps || null });
+channel.onChannel(ev => { broadcast('channel', ev); if (ev.what === 'wait' && clients.size) refreshActivity().catch(() => { }); });
 setTimeout(() => { try { notesApi.resumePending(index().projects); } catch (e) { console.error('[notes] resume:', e.message); } }, 8000);
 
 // the narration's text with timings (timeline row, captions)
@@ -388,7 +567,7 @@ route('POST', '/api/guard/temp', async (req) => {
 });
 checkGuardTemp(); setInterval(checkGuardTemp, 60e3).unref();
 
-// ---------- run only while used: no VideoHub window, no render, no queued work for 2 min → RenderGuard and the hub close.
+// ---------- run only while used: no VideoHub window, no agent waiting in hub_wait, no render, no queued work for 2 min → RenderGuard and the hub close.
 // Claude's hub_* tools start the hub again when needed; a render job starts RenderGuard again.
 // "Start with Windows" on = the user wants them always running, so nothing closes.
 const IDLE_MS = (+process.env.VIDEOHUB_IDLE_SEC || 120) * 1000;
@@ -400,7 +579,7 @@ async function alwaysOn() {
 }
 setInterval(async () => {
   const g = guardState();
-  if (clients.size || jobs.busy() || cleanStatus()?.state === 'running' || notesApi.busyPictures() || media.makingCopies() || index().scanning || (!GUARD_OFF && g.running && (g.renders || []).length)) { lastUse = Date.now(); return; }
+  if (clients.size || channel.waitCount() || jobs.busy() || cleanStatus()?.state === 'running' || notesApi.busyPictures() || media.makingCopies() || index().scanning || (!GUARD_OFF && g.running && (g.renders || []).length)) { lastUse = Date.now(); return; }
   if (Date.now() - lastUse < IDLE_MS || await alwaysOn()) return;
   console.log('VideoHub: not in use, closing together with the render protection.');
   if (!GUARD_OFF) await quitGuard().catch(() => { });

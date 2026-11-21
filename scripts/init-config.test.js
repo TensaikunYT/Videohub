@@ -23,10 +23,11 @@ test('a new install: workspace folders, README, config with baseDir, the chosen 
   const found = () => [{ path: old, type: 'container', enabled: false }, { path: other, type: 'media', enabled: false }];
   const r = initConfig({ dataDir: data, workspace: ws, watch: [old], encoder: 'amf', discover: found, hubDir });
   assert.equal(r.wrote, true);
-  for (const f of ['films', 'outputs', 'sounds', 'thumbnails', 'archive']) assert.ok(fs.statSync(path.join(ws, f)).isDirectory(), f);
+  for (const f of ['films', 'outputs', 'sounds', 'archive']) assert.ok(fs.statSync(path.join(ws, f)).isDirectory(), f);
+  assert.equal(fs.existsSync(path.join(ws, 'thumbnails')), false);
   assert.match(fs.readFileSync(path.join(ws, 'README.txt'), 'utf8'), /outputs\s+every finished render/);
   const c = JSON.parse(fs.readFileSync(path.join(data, 'config.json'), 'utf8'));
-  assert.equal(c.baseDir, ws); assert.equal(c.outputsDir, path.join(ws, 'outputs')); assert.equal(c.thumbstudio.globalDir, path.join(ws, 'thumbnails'));
+  assert.equal(c.baseDir, ws); assert.equal(c.outputsDir, path.join(ws, 'outputs')); assert.equal(c.thumbstudio, undefined);
   assert.equal(c.render.encoder, 'amf');
   assert.deepEqual(c.roots.map(x => [x.path, x.enabled]), [[path.join(ws, 'films'), true], [old, true], [other, false]]);
 });

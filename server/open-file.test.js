@@ -41,6 +41,15 @@ test('"file" opens only media; programs and shortcuts can only be shown in their
   const pic = path.join(dir, 'Frame.JPG'); fs.writeFileSync(pic, 'x');
   try { assert.equal(openPlan(pic).how, 'file'); } finally { fs.unlinkSync(pic); }
 });
+test('"text" opens only Markdown and text files', () => {
+  const md = path.join(dir, 'SKILL.md'), js = path.join(dir, 'run.js');
+  fs.writeFileSync(md, '# x'); fs.writeFileSync(js, 'x');
+  try {
+    assert.equal(openPlan(md, 'text').how, 'text'); assert.equal(openPlan(md, 'text').select, false);
+    assert.throws(() => openPlan(js, 'text'), e => e.code === 400);
+    assert.throws(() => openPlan(dir, 'text'), e => e.code === 400);
+  } finally { fs.unlinkSync(md); fs.unlinkSync(js); }
+});
 test('test hubs validate paths without opening system applications', async () => {
   const previous = process.env.VIDEOHUB_NO_WINDOW;
   process.env.VIDEOHUB_NO_WINDOW = '1';

@@ -4,8 +4,10 @@
 import { z } from 'zod';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { HUB_DIR, DATA_DIR, readJson } from './util.js';
+import { summaryText } from './finish.js';
 import { NOTE_STATUSES, NOTE_STATUS_ALIASES, PROJECT_STATUSES, PROJECT_STATUS_ALIASES, noteStatus, projectStatus, isOpenNote, normalizeNote } from '../ui/values.js';
 
 // renders and versions made through these tools are labelled "Claude"; the tools never look at which chat called them
@@ -21,12 +23,42 @@ async function ensureHub() {
   for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 500)); if (await ping()) return; }
   throw new Error('Could not start the VideoHub server (' + BASE + ').');
 }
-async function call(method, p, body, timeoutMs = 120e3) {
+async function call(method, p, body, timeoutMs = 120e3, signal = null) {
   await ensureHub();
-  const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
+  const r = await fetch(BASE + p, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
+}
+
+// which agent runs these tools (mcp.js tells after the MCP handshake; the CLI leaves it empty)
+let CLIENT = null;
+export function setClient(info) { CLIENT = info && typeof info.name === 'string' ? info : null; }
+const clientKind = (c = CLIENT) => !c ? 'cli' : /claude/i.test(c.name) ? 'claude' : /codex/i.test(c.name) ? 'codex' : /opencode/i.test(c.name) ? 'opencode' : 'other';
+const CLIENT_LABEL = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
+
+// How long one hub_wait call may block (docs/AGENT-WAIT.md has the measurements). The client stops a tool call at its
+// own limit, so the wait ends well before it: Claude Code has no practical limit unless MCP_TOOL_TIMEOUT (ms) is set;
+// Codex stops at tool_timeout_sec (documented 60 s; our [mcp_servers.videohub] entry sets 600); OpenCode documents a
+// 12-hour mcp.timeout.execution (not measured); unknown clients get a short safe default; the CLI stays under an agent
+// shell's usual 2-minute command limit.
+export const WAIT_CAP = 540;
+export function codexToolTimeout(env = process.env) {
+  try {
+    const home = env.CODEX_HOME || path.join(env.USERPROFILE || env.HOME || os.homedir(), '.codex');   // Codex passes MCP servers a filtered environment
+    const text = fs.readFileSync(path.join(home, 'config.toml'), 'utf8');
+    const m = /^\s*\[mcp_servers\.(?:videohub|"videohub")\][^\n]*\n([\s\S]*?)(?=^\s*\[|$(?![\s\S]))/m.exec(text);
+    const t = m && /^\s*tool_timeout_sec\s*=\s*([\d.]+)/m.exec(m[1]);
+    return t ? +t[1] : null;
+  } catch { return null; }
+}
+export function waitDefault(kind = clientKind(), env = process.env, codexLimit = () => codexToolTimeout(env)) {
+  const under = limitSec => Math.max(20, Math.min(WAIT_CAP, Math.floor(limitSec - Math.max(10, limitSec * 0.1))));
+  if (kind === 'claude') return +env.MCP_TOOL_TIMEOUT > 0 ? under(+env.MCP_TOOL_TIMEOUT / 1000) : WAIT_CAP;
+  if (kind === 'codex') return under(codexLimit() || 60);
+  if (kind === 'opencode') return WAIT_CAP;
+  if (kind === 'cli') return 100;
+  return 45;
 }
 
 const TC = s => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(2).padStart(5, '0')}`; };
@@ -37,22 +69,46 @@ async function resolve(projectArg) {
   if (Array.isArray(p.notes)) p.notes.forEach(normalizeNote);
   return p;
 }
+const clock = iso => { const d = new Date(iso); return Number.isFinite(+d) ? d.toTimeString().slice(0, 5) : ''; };
+// one note as the agent reads it: time, frames, chunks, text, narration and the paths of its pictures
+function noteLines(notes) {
+  const lines = [];
+  for (const n of notes) {
+    const fr = n.frames || (n.t2 != null && n.fps ? [Math.floor(n.t * n.fps + 1e-6), Math.floor(n.t2 * n.fps + 1e-6)] : null);
+    lines.push(`#${n.id} [${n.status === 'reopened' ? 'STILL THERE (the previous fix did not work)' : n.status}] ${TC(n.t)}${n.t2 != null ? '–' + TC(n.t2) : ''}  ${fr ? `RANGE frames ${fr[0]}–${fr[1]}${n.frame != null && n.frame !== fr[0] ? ` (drawing on frame ${n.frame})` : ''}` : `frame ${n.frame ?? '?'}`}${n.chunks ? `  chunks ${n.chunks.join(',')}` : ''}  ${n.kind}${n.layer ? '  layer: ' + n.layer : ''}  ${n.file === '~live' ? 'LIVE PREVIEW (no render — fix the code, do not render)' : 'file: ' + (n.file || '?')}${n.sentAt ? `  (sent with the button at ${clock(n.sentAt)})` : ''}`);
+    if (n.text) lines.push(`   "${n.text}"`);
+    if (n.say) lines.push(`   narration at that moment: «${n.say}»`);
+    if (n.images?.crop) lines.push(`   close-up: ${n.images.crop}`);
+    if (n.images?.annotated) lines.push(`   full frame + drawing: ${n.images.annotated}`);
+    else if (n.images?.frame) lines.push(`   frame: ${n.images.frame}`);
+    if (n.images?.start) lines.push(`   first frame of the range: ${n.images.start}`);
+    if (n.images?.end) lines.push(`   last frame of the range: ${n.images.end}`);
+    if (n.reply) lines.push(`   your previous reply: ${n.reply}`);
+  }
+  return lines;
+}
+function noteAdvice(notes) {
+  const out = [], liveN = notes.filter(n => n.file === '~live').length;
+  if (liveN) out.push('', `LIVE PREVIEW notes (${liveN}): fix the code, do NOT render — the user's open preview reloads itself when the code changes and shows the fix at once. Then for each note hub_note_update(status:"fixed", reply:"what you did, 1 sentence"). The user asks for the render at the end.`);
+  if (liveN < notes.length) out.push('', 'Notes on a rendered video: after fixing, mark each with hub_note_update(status:"fixed", reply:"what you did, 1 sentence"). Render only when the user asks; then hub_render({mode:"partial", notes:[...]}) re-renders just those chunks. Do not re-review the whole film yourself — the user checks the changed ranges in VideoHub.');
+  return out;
+}
+// what hub_wait got from the hub, as text the agent can act on
+export function inboxText(p, items) {
+  const lines = [`From the user in VideoHub ("${p.title}", ${p.path}):`], notes = [];
+  for (const it of items) {
+    if (it.type === 'notes') { lines.push('', `${it.notes.length} note${it.notes.length === 1 ? '' : 's'} sent with "Send to agent":`, ...noteLines(it.notes)); notes.push(...it.notes); }
+    else if (it.type === 'scene-note') { lines.push('', `A note on scene ${it.n} "${it.title}" (plan v${it.v}); the scene is now "change requested":`, ...noteLines(it.notes)); notes.push(...it.notes); }
+    else if (it.type === 'answer') lines.push('', `Answer to your question ${it.q} ("${it.question}"): ${it.label != null ? `"${it.label}"` : '(no option picked)'}${it.text ? ` — in their words: "${it.text}"` : ''}${it.changed ? ' (they changed an earlier answer)' : ''}`);
+    else if (it.type === 'plan-approved') lines.push('', `The user APPROVED plan v${it.v} (${it.scenes} scene${it.scenes === 1 ? '' : 's'}, ${TC(it.seconds || 0)}). Build it now; mark built scenes with hub_plan({built:[…]}) and show the film with hub_live.`);
+    else if (it.type === 'scene-approved') lines.push('', `The user approved scene ${it.n} "${it.title}" (plan v${it.v}). Leave it as it is.`);
+  }
+  if (notes.length) lines.push(...noteAdvice(notes));
+  lines.push('', 'When you have acted on all of this, call hub_wait again (do not end your turn while the user is reviewing in VideoHub). Render only when the user asks.');
+  return lines.join('\n');
+}
 const FAM = { A: 'chunked (partial re-renders available)', B: 'worker parts', C: 'segments', studio: '3D studio scene', otomasyon: 'text-to-video pipeline', snipp: 'Snipp', media: 'video folder', code: 'code (no chunked render script)', other: 'other' };
 const isOpen = n => isOpenNote({ status: noteStatus(n.status) });
-
-// a thumbnail by project + id, or by its id alone (then the hub searches every project)
-async function thumbLoc(a) {
-  if (!a.id) throw new Error('id is required (the thumbnail id, e.g. 20261104-k3f9)');
-  if (a.project && a.project !== '_') {
-    const p = await resolve(a.project);
-    const list = await call('GET', '/api/thumbstudio/list?project=' + encodeURIComponent(p.id));
-    const t = (list || []).find(x => x.id === a.id);
-    if (!t) throw new Error(`Project "${p.title}" has no thumbnail ${a.id}.`);
-    return { pid: p.id, dir: t.dir };
-  }
-  const t = await call('GET', '/api/thumbstudio/find/' + encodeURIComponent(a.id));
-  return { pid: t.pid, dir: t.dir };
-}
 
 export const TOOLS = {
   hub_live: {
@@ -70,7 +126,7 @@ export const TOOLS = {
       return [
         `Live preview ready: "${p.title}" · ${li.page} · ${li.fps} fps · ${TC(li.dur)} (length from: ${li.durFrom}) · sound: ${li.audioName || 'none'}`,
         how === 'window' ? 'The open VideoHub window switched to this film.' : how === 'opened' ? 'A VideoHub window opened.' : '',
-        'Now STOP, do not render. Tell the user (in their language): watch it in VideoHub, leave notes on the frames, then press "Send to agent" and paste the message here. Get the notes with hub_notes, fix the code (the preview reloads itself), mark each with hub_note_update. Render with hub_render only when the user asks for a render.',
+        'Do not render. Tell the user in one sentence (in their language): watch it in VideoHub, leave notes on the frames and press "Send to agent". Then call hub_wait instead of ending your turn: it returns their notes, answers and approvals. Fix the code (the preview reloads itself), mark each note with hub_note_update, call hub_wait again. Render with hub_render only when the user asks for a render. (If the user pastes a "VideoHub: N notes" message into the chat instead, get them with hub_notes.)',
         li.durFrom === 'default' ? 'The film length is unknown (60 s assumed): save it with hub_project({set:{render:{env:{DUR:"…"}}}}).' : '',
       ].filter(Boolean).join('\n');
     },
@@ -86,7 +142,7 @@ export const TOOLS = {
         `Workspace: ${c.workspace}`,
         films ? `New films go in: ${films}\\<film-name>  (one folder per film; copy templates\\new-film from the VideoHub folder)` : 'No films folder is set: ask the user to add one in VideoHub > Settings > Folders.',
         `Finished renders are collected in: ${c.outputsDir}  (VideoHub links every render there by day; do not write there)`,
-        `Sounds: ${c.soundLibDir}  ·  Thumbnails: ${c.thumbstudio?.globalDir}  ·  Archive: ${c.archiveDir}`,
+        `Sounds: ${c.soundLibDir}  ·  Archive: ${c.archiveDir}`,
         roots.length > 1 ? 'Other watched folders: ' + roots.filter(r => r.path !== films).map(r => `${r.path} (${r.type})`).join(', ') : '',
         'Keep each film self-contained in its own folder (code, audio, render/); never put one film\'s files into another film\'s folder.',
       ].filter(Boolean).join('\n');
@@ -128,22 +184,80 @@ export const TOOLS = {
       const notes = (p.notes || []).filter(n => st === 'all' || (st === 'open' ? isOpen(n) : n.status === st)).sort((x, y) => x.t - y.t);
       if (!notes.length) return `No ${st === 'open' ? 'open ' : ''}notes on "${p.title}".`;
       if (a.take !== false) for (const n of notes) if (isOpen(n)) await call('POST', `/api/project/${p.id}/note/${n.id}`, { status: 'claude', by: 'claude' });
-      const lines = [`"${p.title}" (${p.path}) — ${notes.length} note${notes.length === 1 ? '' : 's'}:`];
-      for (const n of notes) {
-        const fr = n.frames || (n.t2 != null && n.fps ? [Math.floor(n.t * n.fps + 1e-6), Math.floor(n.t2 * n.fps + 1e-6)] : null);
-        lines.push(`#${n.id} [${n.status === 'reopened' ? 'STILL THERE (the previous fix did not work)' : n.status}] ${TC(n.t)}${n.t2 != null ? '–' + TC(n.t2) : ''}  ${fr ? `RANGE frames ${fr[0]}–${fr[1]}${n.frame != null && n.frame !== fr[0] ? ` (drawing on frame ${n.frame})` : ''}` : `frame ${n.frame ?? '?'}`}${n.chunks ? `  chunks ${n.chunks.join(',')}` : ''}  ${n.kind}${n.layer ? '  layer: ' + n.layer : ''}  ${n.file === '~live' ? 'LIVE PREVIEW (no render — fix the code, do not render)' : 'file: ' + (n.file || '?')}`);
-        if (n.text) lines.push(`   "${n.text}"`);
-        if (n.say) lines.push(`   narration at that moment: «${n.say}»`);
-        if (n.images?.crop) lines.push(`   close-up: ${n.images.crop}`);
-        if (n.images?.annotated) lines.push(`   full frame + drawing: ${n.images.annotated}`);
-        if (n.images?.start) lines.push(`   first frame of the range: ${n.images.start}`);
-        if (n.images?.end) lines.push(`   last frame of the range: ${n.images.end}`);
-        if (n.reply) lines.push(`   your previous reply: ${n.reply}`);
-      }
-      const liveN = notes.filter(n => n.file === '~live').length;
-      if (liveN) lines.push('', `LIVE PREVIEW notes (${liveN}): fix the code, do NOT render — the user's open preview reloads itself when the code changes and shows the fix at once. Then for each note hub_note_update(status:"fixed", reply:"what you did, 1 sentence"). The user asks for the render at the end.`);
-      if (liveN < notes.length) lines.push('', 'Notes on a rendered video: after fixing, mark each with hub_note_update(status:"fixed", reply:"what you did, 1 sentence"). Render only when the user asks; then hub_render({mode:"partial", notes:[...]}) re-renders just those chunks. Do not re-review the whole film yourself — the user checks the changed ranges in VideoHub.');
+      const sent = notes.filter(n => n.sentAt && isOpen(n)).length;
+      const lines = [`"${p.title}" (${p.path}) — ${notes.length} note${notes.length === 1 ? '' : 's'}${sent ? ` (${sent} sent to you with VideoHub's "Send to agent" button)` : ''}:`];
+      lines.push(...noteLines(notes), ...noteAdvice(notes));
       return lines.join('\n');
+    },
+  },
+
+  hub_plan: {
+    description: 'ONLY when the user asks to see or approve a plan before you build (never on your own initiative; by default just build): write the film\'s plan as scene cards. VideoHub shows it on the film\'s Plan tab, where the user approves the plan, approves scenes or leaves a note on a scene. Each call with `scenes` saves a new plan version (earlier ones are kept) and resets the approvals. After writing it, call hub_wait and build once the plan is approved. Later, `built` (scene numbers, no `scenes`) marks scenes as built so the user can watch and approve them.',
+    schema: {
+      project: z.string().optional().describe('Project folder, name or id. Default: the working folder.'),
+      summary: z.string().optional().describe('One or two sentences: what the film is and how it looks'),
+      scenes: z.array(z.object({ title: z.string(), seconds: z.number().describe('Length of the scene in seconds'), narration: z.string().describe('What is said (or shown, when there is no voice) in this scene'), note: z.string().optional().describe('Optional: how it will look, open choices') })).optional().describe('All scenes in order (a new plan version)'),
+      built: z.array(z.number()).optional().describe('Scene numbers (1 = first) that are built and can be watched in the live preview'),
+      open: z.boolean().optional().describe('false = do not switch the VideoHub window to the Plan tab'),
+    },
+    run: async a => {
+      const p = await resolve(a.project);
+      if (!a.scenes?.length && !a.built?.length) throw new Error('Give scenes (a new plan) or built (scene numbers that are built).');
+      const r = await call('POST', `/api/project/${p.id}/plan`, a.scenes?.length ? { summary: a.summary, scenes: a.scenes } : { built: a.built });
+      const total = r.scenes.reduce((s, x) => s + x.seconds, 0);
+      if (!a.scenes?.length) {
+        const ready = r.scenes.filter(x => x.state === 'ready').map(x => x.n), ok = r.scenes.filter(x => x.state === 'approved').map(x => x.n);
+        return `Plan v${r.v}: scenes ${a.built.join(', ')} marked as built.${ready.length ? ` Ready for the user to check: ${ready.join(', ')}.` : ''}${ok.length ? ` Approved: ${ok.join(', ')}.` : ''} Show the film with hub_live if it is not open, then call hub_wait.`;
+      }
+      let how = 'none';
+      if (a.open !== false) how = (await call('POST', '/api/show', { hash: `#/plan/${p.id}` }).catch(() => ({}))).how || 'none';
+      return [
+        `Plan v${r.v} saved for "${p.title}": ${r.scenes.length} scene${r.scenes.length === 1 ? '' : 's'}, ${TC(total)}.${how === 'window' ? ' The open VideoHub window shows it on the Plan tab.' : how === 'opened' ? ' A VideoHub window opened on the Plan tab.' : ''}`,
+        'Tell the user in one sentence (in their language) that the plan is on the film\'s Plan tab in VideoHub, then call hub_wait. Build only after the plan is approved; if notes on scenes come back, change the plan with hub_plan (a new version) and wait again.',
+      ].join('\n');
+    },
+  },
+
+  hub_ask: {
+    description: 'Ask the user a question in VideoHub instead of in the chat, for choices that are easier to answer by looking or clicking (a look, a colour, which of two takes, yes / no). It shows as a card in the agent drawer with clickable options (an option may carry a picture from the film folder) and room for a short answer. Returns the question id at once; the answer comes back through hub_wait.',
+    schema: {
+      project: z.string().optional().describe('Project folder, name or id. Default: the working folder.'),
+      question: z.string().describe('The question, short and plain'),
+      options: z.array(z.object({ label: z.string(), detail: z.string().optional().describe('One short line under the label'), image: z.string().optional().describe('A picture for this option: a .png/.jpg/.webp path inside the film folder (relative to it, or absolute)') })).optional().describe('2 to 8 choices; leave out for a free-text question'),
+      recommended: z.string().optional().describe('The label of the option you recommend (or its number, 1 = first)'),
+    },
+    run: async a => {
+      const p = await resolve(a.project);
+      const q = await call('POST', `/api/project/${p.id}/questions`, { question: a.question, options: a.options || [], recommended: a.recommended });
+      return `Question ${q.id} is shown in VideoHub (agent drawer of "${p.title}")${q.options.length ? ` with ${q.options.length} options${q.options.some(o => o.image) ? ' (with pictures)' : ''}` : ''}. Do not ask it again in the chat: call hub_wait to get the answer.`;
+    },
+  },
+
+  hub_wait: {
+    description: 'Wait for the user in VideoHub instead of ending your turn: returns as soon as they send notes ("Send to agent"), answer a question (hub_ask), approve the plan or a scene, or leave a note on a scene (hub_plan) — with note ids, timecodes and frame-picture paths, like hub_notes. Each thing comes back once. If nothing comes within `seconds`, it says so: then call it again. Use it after hub_live, hub_plan and hub_ask, and after fixing notes.',
+    schema: {
+      project: z.string().optional().describe('Project folder, name or id. Default: the working folder.'),
+      seconds: z.number().optional().describe('How long to wait at most (default: safely under this agent\'s tool time limit)'),
+    },
+    run: async (a, extra = {}) => {
+      const p = await resolve(a.project);
+      const kind = clientKind(), total = Math.max(5, Math.min(WAIT_CAP, +a.seconds || waitDefault(kind)));
+      const end = Date.now() + total * 1000, agent = CLIENT_LABEL[kind] || BY_AGENT.title;
+      const tok = extra._meta?.progressToken;
+      let ticks = 0;
+      const progress = tok != null && extra.sendNotification ? setInterval(() => {
+        extra.sendNotification({ method: 'notifications/progress', params: { progressToken: tok, progress: ++ticks, message: 'Waiting for the user in VideoHub…' } }).catch(() => { });
+      }, 20e3) : null;
+      try {
+        // one HTTP long-poll at most 100 s (fetch gives up on a response without headers after 300 s), as many as fit
+        while (Date.now() < end - 1000) {
+          if (extra.signal?.aborted) return 'Cancelled.';
+          const secs = Math.max(1, Math.min(100, Math.round((end - Date.now()) / 1000)));
+          const r = await call('GET', `/api/project/${p.id}/wait?seconds=${secs}&agent=${encodeURIComponent(agent)}`, null, (secs + 30) * 1000, extra.signal || null);
+          if (r.items?.length) return inboxText(p, r.items);
+        }
+        return 'Nothing from the user yet; call hub_wait again.';
+      } finally { if (progress) clearInterval(progress); }
     },
   },
 
@@ -202,6 +316,19 @@ export const TOOLS = {
     run: async a => { const p = await resolve(a.project); const r = await call('POST', `/api/project/${p.id}/version`, { ...a, session: BY_AGENT }); return `Registered: v${r.v} ${r.file}`; },
   },
 
+  hub_finish: {
+    description: 'When a film is finished: what "Finish film" would tidy in its folder (render leftovers, copies of the newest video, check pictures and test folders to the Recycle Bin; older versions to the archive; stems, node_modules and image sequences only if the user ticks them). dryRun (default) returns the list as text. dryRun:false opens the Finish film dialog in VideoHub for the user to review and confirm; it never removes anything itself.',
+    schema: { project: z.string().optional().describe('Project folder, name or id. Default: the working folder.'), dryRun: z.boolean().optional().describe('true (default): only the list. false: open the dialog in VideoHub; the user decides.') },
+    run: async a => {
+      const p = await resolve(a.project);
+      const c = await call('GET', `/api/project/${p.id}/finish?fresh=1`, null, 300e3);
+      const text = summaryText(p.title || p.name, c, GB);
+      if (a.dryRun !== false || c.refused) return text + (c.refused ? '' : '\n\nNothing was moved. To tidy, call hub_finish({dryRun:false}): it opens the dialog in VideoHub, where the user reviews and confirms.');
+      const how = (await call('POST', '/api/show', { hash: `#/files/${p.id}/finish` }).catch(() => ({}))).how || 'none';
+      return text + `\n\n${how === 'none' ? 'Open VideoHub: the film’s Files tab has a "Finish film…" button.' : 'The Finish film dialog is open in VideoHub.'} Nothing was moved: the user reviews the list there and presses "Finish and tidy". Tell them that in one sentence (in their language); never delete these files yourself.`;
+    },
+  },
+
   hub_cleanup: {
     description: 'List the files of this project that can safely be removed (a list only; the user decides on VideoHub\'s Disk page).',
     schema: { project: z.string().optional() },
@@ -209,132 +336,6 @@ export const TOOLS = {
       const p = await resolve(a.project); const d = await call('GET', `/api/project/${p.id}`);
       if (!d.cleanup.length) return 'Nothing to clean up.';
       return [`"${p.title}" — ${GB(d.cleanup.reduce((s, c) => s + c.size, 0))} can be cleaned up:`, ...d.cleanup.map(c => `- ${GB(c.size)} ${c.path} — ${c.reason}`), 'Tell the user to approve it on VideoHub\'s Disk page (Recycle Bin / archive). Never delete these yourself.'].join('\n');
-    },
-  },
-
-  hub_thumbs: {
-    description: 'List the thumbnails of a project or of the shared area: id, title, status, number of variants and folder.',
-    schema: {
-      project: z.string().optional().describe('Project folder, name or id. Empty: every thumbnail (projects + shared).'),
-    },
-    run: async a => {
-      let pId = null;
-      if (a.project && a.project !== '_') {
-        const p = await resolve(a.project);
-        pId = p.id;
-      } else if (a.project === '_') {
-        pId = '_';
-      }
-      const list = await call('GET', '/api/thumbstudio/list' + (pId ? '?project=' + encodeURIComponent(pId) : ''));
-      if (!list || !list.length) return 'No thumbnails found.';
-      const lines = [`${list.length} thumbnail${list.length === 1 ? '' : 's'}:`, ''];
-      for (const t of list) {
-        lines.push(`- [${t.id}] "${t.title}" (${t.format}) · Status: ${t.status} · Variants: ${t.variantCount || 0} · Project: ${t.projectName || 'Shared'}\n  Folder: ${t.dir}`);
-      }
-      return lines.join('\n');
-    },
-  },
-
-  hub_thumb_brief: {
-    description: 'The thumbnail brief for the agent in one text: goal, camera, light, style, the layers in words, an English prompt draft, references (role and full paths), the paths of layout.png / sketch.png / depth.png and open variant notes. Includes what to do.',
-    schema: {
-      project: z.string().optional().describe('Project folder, name or id. For a shared thumbnail "_" or leave empty.'),
-      id: z.string().describe('Thumbnail id (e.g. 20261104-k3f9)'),
-    },
-    run: async a => {
-      const { pid: pId } = await thumbLoc(a);
-      const brief = await call('GET', `/api/thumbstudio/${pId}/${a.id}`);
-      const folder = (await thumbLoc(a)).dir;
-
-      const layoutPath = path.join(folder, 'layout.png');
-      const sketchPath = path.join(folder, 'sketch.png');
-      const depthPath = path.join(folder, 'depth.png');
-      const hasLayout = fs.existsSync(layoutPath);
-      const hasSketch = fs.existsSync(sketchPath);
-
-      // open notes on the variants
-      const openNotes = [];
-      for (const v of brief.variants || []) {
-        for (const n of v.notes || []) {
-          if (noteStatus(n.status) === 'open') openNotes.push({ vid: v.id, ...n });
-        }
-      }
-
-      const { generatePrompt } = await import('./thumbstudio/prompt.js');
-      const gp = generatePrompt(brief), prompt = gp.prompt, summary = gp.summary || gp.summaryTr;
-      const mark = f => fs.existsSync(f) ? '✓ (exists)' : '✗ (not exported yet)';
-
-      const parts = [
-        `=== VIDEOHUB THUMBNAIL BRIEF: "${brief.title || 'Untitled'}" (${brief.format || '16:9'}) ===`,
-        `Id: ${brief.id}`,
-        `Folder: ${folder}`,
-        '',
-        summary,
-        '',
-        '--- Pictures ---',
-        `- layout.png: ${layoutPath} ${mark(layoutPath)}`,
-        `- sketch.png: ${sketchPath} ${mark(sketchPath)}`,
-        `- depth.png: ${depthPath} ${mark(depthPath)}`,
-      ];
-
-      if (openNotes.length > 0) {
-        parts.push('\n--- Open variant notes (fix requests) ---');
-        for (const n of openNotes) {
-          const loc = n.x !== undefined ? (n.y < 0.38 ? 'top' : n.y > 0.62 ? 'bottom' : 'middle') + ' ' + (n.x < 0.38 ? 'left' : n.x > 0.62 ? 'right' : 'centre') : '';
-          parts.push(`- Variant ${n.vid} [note #${n.id}]: "${n.text}" (${loc})`);
-        }
-      }
-
-      const refs = (brief.refs || []).filter(r => r.file);
-      if (refs.length) {
-        parts.push('\n--- Reference files (full paths) ---');
-        for (const r of refs) parts.push(`- [${r.role}] ${path.join(folder, r.file)}${r.note ? ' — ' + r.note : ''}`);
-      }
-      if ((brief.variants || []).length) {
-        parts.push('\n--- Variants ---');
-        for (const v of brief.variants) parts.push(`- ${v.id}${v.id === brief.chosen ? ' (CHOSEN)' : ''}: ${path.join(folder, v.file)} · ${v.by}${v.parent ? ' · fix of ' + v.parent : ''}`);
-      }
-      parts.push('\n--- English image prompt draft ---');
-      parts.push(prompt);
-
-      parts.push('\n--- What to do ---');
-      if (!hasLayout) {
-        parts.push('NOTE: layout.png has not been exported yet. Ask the user to press "💬 Send to agent" (or Ctrl+S) in VideoHub\'s editor; do not generate anything until then.');
-      } else {
-        parts.push('1. Open `sketch.png` and `layout.png` with Read and study the composition.' + (hasSketch ? '' : ' (sketch.png is missing: use layout.png.)'));
-        if (openNotes.length > 0) {
-          parts.push(`2. There are open variant notes: take variant ${openNotes[0].vid} as the reference together with layout.png and change only what the notes ask for.`);
-        } else {
-          parts.push('2. Generate the image with whatever image tool you have; the first reference image must be ' + layoutPath + '.');
-        }
-        parts.push('3. Register the result with `hub_thumb_variant({id:"' + a.id + '", file:"<path of the generated file>"' + (openNotes.length ? ', parent:"' + openNotes[0].vid + '", fixes:[' + openNotes.filter(n => n.vid === openNotes[0].vid).map(n => n.id).join(',') + ']' : '') + '})`.');
-        parts.push('4. Do NOT draw the title text into the image (text policy: overlay; the user adds the text in VideoHub).');
-      }
-
-      return parts.join('\n');
-    },
-  },
-
-  hub_thumb_variant: {
-    description: 'Register an image made by the agent or another tool as a VideoHub thumbnail variant. The file is copied into variants/ and shows up in the open editor at once.',
-    schema: {
-      project: z.string().optional().describe('Project folder or id. Shared: "_" or leave empty.'),
-      id: z.string().describe('Thumbnail id'),
-      file: z.string().describe('Full path of the generated image'),
-      prompt: z.string().optional().describe('The English prompt used'),
-      parent: z.string().optional().describe('The variant id this fixes (e.g. v1_2)'),
-      fixes: z.array(z.number()).optional().describe('Ids of the variant notes this answers (e.g. [1, 2])'),
-    },
-    run: async a => {
-      const { pid: pId } = await thumbLoc(a);
-      const res = await call('POST', `/api/thumbstudio/${pId}/${a.id}/variant`, {
-        file: a.file,
-        prompt: a.prompt,
-        parent: a.parent,
-        fixes: a.fixes,
-        by: 'claude',
-      });
-      return `Variant saved: ${res.variant.id} (${res.variant.file})\nIf the editor is open it shows up at once. Tell the user to look at it in VideoHub → Thumbnail.`;
     },
   },
 };

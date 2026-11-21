@@ -2,14 +2,15 @@
 // deletions go to the Recycle Bin, old versions are moved to the archive folder. Nothing is hard-deleted.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import { recycleStream } from './platform.js';
+import { recycleStream, IS_WIN } from './platform.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import { index } from './scan.js';
 import * as jobs from './jobs.js';
 import { guardState } from './guard.js';
-import { DATA_DIR, TEMP, fingerprint, processAlive, shortPath, now, isInside, norm } from './util.js';
+import { sameContent, isVersioned, freedBytes, refusal } from './finish.js';
+import { DATA_DIR, TEMP, timeSlice, fingerprint, processAlive, shortPath, now, isInside, norm } from './util.js';
 
 const DONE = new Set(['approved', 'published', 'archived', 'done']);
 // Presets for "Clean render leftovers in all projects" (each candidate carries one):
@@ -22,30 +23,39 @@ const QA_DAYS = 3;
 const QA_DIRS = ['snaps', 'qa', 'shots', 'sheets', 'lookdev', 'previews', 'bench', 'compare'];
 const MEDIA = /\.(png|jpe?g|webp|bmp|gif|mp4|mov|webm|mkv|avi)$/i;
 const LOG = path.join(DATA_DIR, 'janitor-log.jsonl');
+// what the hub plugs in: linkGoes(file) (ciktilar.js: the file's only other hard link is its outputs-folder link, which
+// the cleanup sends along) and skillDirs() (agent skills folders, never tidied). Defaults: no link goes, no skills folder.
+let hooks = { linkGoes: () => false, skillDirs: () => [] };
+export const configure = o => { hooks = { ...hooks, ...o }; };
+const freedOf = (size, nlink, file) => freedBytes(size, nlink, file, f => { try { return !!hooks.linkGoes(f); } catch { return false; } });
+// the render leftovers VideoHub asks about by itself (server/leftovers.js, the banner's "Clean now"): intermediates and
+// copies that are never needed again. QA pictures, old versions and note pictures stay on the Cleanup page only.
+export const PROMPT_RULES = new Set(['silent', 'renderCopy', 'oldChunks', 'leftover', 'staleChunks']);
 
 // yields every 300 entries so the hub keeps answering while big folders are measured
 const breather = () => new Promise(r => setImmediate(r));
+// freed: the part that really comes back (files whose data no other hard link keeps)
 async function dirSize(dir) {
-  let total = 0, newest = 0, n = 0; const stack = [dir];
+  let total = 0, newest = 0, n = 0, freed = 0; const stack = [dir], slice = timeSlice();
   while (stack.length) {
     const d = stack.pop(); let ents = [];
     try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
     for (const e of ents) {
-      if (++n >= 300) { n = 0; await breather(); }
+      if (++n >= 300 || slice.due()) { n = 0; await slice.pause(); }
       const p = path.join(d, e.name);
       if (e.isDirectory()) stack.push(p);
-      else { try { const st = fs.statSync(p); total += st.size; newest = Math.max(newest, st.mtimeMs); } catch { } }
+      else { try { const st = fs.statSync(p); total += st.size; freed += freedOf(st.size, st.nlink, p); newest = Math.max(newest, st.mtimeMs); } catch { } }
     }
   }
-  return { size: total, newest };
+  return { size: total, newest, freed };
 }
 // pictures and clips in a QA folder: the whole folder when it holds nothing else; otherwise its media-only
 // sub-folders as one item each plus the loose media files (a qa folder may also keep .py/.json check scripts)
 async function mediaIn(dir) {
-  const r = { size: 0, newest: 0, onlyMedia: true, files: [] }; let n = 0;
+  const r = { size: 0, newest: 0, onlyMedia: true, files: [] }; let n = 0; const slice = timeSlice();
   const ents = await (async () => { try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; } })();
   for (const e of ents) {
-    if (++n >= 300) { n = 0; await breather(); }
+    if (++n >= 300 || slice.due()) { n = 0; await slice.pause(); }
     const p = path.join(dir, e.name);
     if (e.isDirectory()) {
       const sub = await mediaIn(p); r.size += sub.size; r.newest = Math.max(r.newest, sub.newest);
@@ -89,24 +99,53 @@ export async function findCandidates(force = false) {
   if (!inflight) inflight = computeCandidates().then(list => { cache = { at: Date.now(), list }; return list; }).finally(() => { inflight = null; });
   return inflight;
 }
+// the honest freed size of one file (its hard links counted); a folder's comes from dirSize
+function fileFreed(f, size) { try { const st = fs.lstatSync(f); return freedOf(st.size, st.nlink, f); } catch { return size; } }
+
+// a render script's own copy of the film: film_final.mp4 / film_preview.mp4 at the film root, when a version in the same
+// folder (<name>_vN.mp4, written by the queue afterwards) has the same content. The version stays; a hard link of it
+// frees nothing and is left alone. "Same content", the never-list and the space it frees are Finish film's (finish.js).
+const SCRIPT_COPY = /^film_(final|preview)\.mp4$/i;
+async function renderCopies(p) {
+  const out = [];
+  if (refusal(p, { roots: config().roots.map(r => r.path), skillDirs: hooks.skillDirs() })) return out;
+  const here = o => norm(path.dirname(o.path)) === norm(p.path);
+  const ino = st => st.dev + ':' + st.ino;
+  for (const o of p.outputs || []) {
+    if (!SCRIPT_COPY.test(o.name) || !here(o)) continue;
+    let st; try { st = fs.lstatSync(o.path, { bigint: true }); } catch { continue; }
+    if (!st.isFile()) continue;   // a link to another place is never removed
+    for (const v of (p.outputs || []).filter(v => v !== o && here(v) && isVersioned(v.name)).sort((a, b) => b.mtime - a.mtime)) {
+      let vs; try { vs = fs.statSync(v.path, { bigint: true }); } catch { continue; }
+      if (vs.size !== st.size || ino(vs) === ino(st)) continue;   // another size, or the same file under two names
+      if (!(await sameContent({ path: o.path, size: Number(st.size) }, { path: v.path, size: Number(vs.size) }))) continue;
+      const size = Number(st.size);
+      out.push({ rule: 'renderCopy', preset: 'safe', project: p.id, projectName: p.name, path: o.path, size, freed: freedOf(size, Number(st.nlink), o.path), action: 'recycle', copyOf: v.path,
+        reason: `Copy made by the render script; the same film stays as "${v.name}" (same size, same content at the start, middle and end).` });
+      break;
+    }
+  }
+  return out;
+}
+
 async function computeCandidates() {
   const cfg = config(), out = [];
-  const globalThumb = norm(cfg.thumbstudio?.globalDir || '');
-  const isThumbnailItem = targetPath => {
-    const res = norm(targetPath);
-    if (globalThumb && (res === globalThumb || res.startsWith(globalThumb + path.sep))) return true;
-    if (res.includes(path.sep + '.videohub' + path.sep + 'thumbnails') || res.includes('/.videohub/thumbnails')) return true;
-    return false;
-  };
-  const paths = new Set(), skipped = [];
+  const paths = new Set(), kept = new Set(), skipped = [];
   const add = c => {
-    if (isThumbnailItem(c.path)) return;
     const p = c.project && index().projects.find(p => p.id === c.project);
     const keep = p ? (p.outputs || []).filter(o => o.rel === p.latest || o.role === 'final' || o.role === 'web').map(o => o.path) : [];
     if (p && c.action === 'archive' && p.outputs.some(o => o.rel === p.latest && norm(o.path) === norm(c.path))) return;
-    if (c.action !== 'archive' && keep.some(f => c.dir ? isInside(f, c.path) : norm(f) === norm(c.path))) return;
-    const k = norm(c.path); if (paths.has(k) || !exists(c.path)) return;   // a silent render is also a byte duplicate: list it once
-    paths.add(k); out.push({ id: cid(c.action + norm(c.path)), checked: true, ...c });
+    // a render script's copy of the film (copyOf: the version with the same content, which stays) is a 'final' itself
+    if (c.copyOf && !exists(c.copyOf)) return;
+    if (c.action !== 'archive' && !c.copyOf && keep.some(f => c.dir ? isInside(f, c.path) : norm(f) === norm(c.path))) return;
+    const k = norm(c.path);
+    if (kept.has(k)) return;   // the version a copy was compared with never goes (not as an old version, not as a duplicate)
+    if (paths.has(k)) {   // a silent render is also a byte duplicate: list it once
+      if (!c.copyOf) return;
+      out.splice(out.findIndex(x => norm(x.path) === k), 1);   // the copy replaces an earlier entry (an old version: baseName makes film_final and film_v2 one film)
+    } else if (!exists(c.path)) return;
+    if (c.copyOf) { const kk = norm(c.copyOf); kept.add(kk); paths.delete(kk); for (let i = out.length - 1; i >= 0; i--) if (norm(out[i].path) === kk) out.splice(i, 1); }
+    paths.add(k); out.push({ id: cid(c.action + norm(c.path)), checked: true, ...c, ...(c.freed == null && !c.dir && !c.files ? { freed: fileFreed(c.path, c.size) } : {}) });
   };
   for (const p of index().projects) {
     await breather();
@@ -116,13 +155,18 @@ async function computeCandidates() {
     // 1. silent renders whose picture is already inside a voiced file
     for (const o of p.outputs) if (o.role === 'silent' && o.coveredBy && p.outputs.some(v => v.rel === o.coveredBy && v.audio && exists(v.path)) && !isBusy)
       add({ rule: 'silent', preset: 'safe', project: p.id, projectName: p.name, path: o.path, size: o.size, action: 'recycle', reason: `Silent intermediate render; the same video is in "${o.coveredBy}" with audio.` });
+    // 1b. the render script's own copy of the film (film_final.mp4): the queue's version of it stays
+    const copies = isBusy ? [] : await renderCopies(p);
+    for (const c of copies) add(c);
     // 7. previews older than the newest final
     const newestFinal = Math.max(0, ...p.outputs.filter(o => o.role === 'final').map(o => o.mtime));
     const inQa = f => QA_DIRS.some(d => isInside(f, path.join(p.path, d))) || isInside(f, path.join(p.path, 'render', 'preview'));   // handled with their folder
     for (const o of p.outputs) if (o.role === 'preview' && newestFinal && o.mtime < newestFinal && !inQa(o.path))
       add({ rule: 'preview', preset: 'safe', project: p.id, projectName: p.name, path: o.path, size: o.size, action: 'recycle', reason: 'Preview; a final render was made afterward.' });
     // 6. older versions of the same film -> archive (newest final and newest web stay)
-    const voiced = p.outputs.filter(o => (o.role === 'final' || o.role === 'web') && !o.dupOf);
+    // (a script copy is not a version; the version it copies counts even though the scan marked it as the duplicate)
+    const isCopy = o => copies.some(c => norm(c.path) === norm(o.path)), copied = o => copies.some(c => norm(c.copyOf) === norm(o.path));
+    const voiced = p.outputs.filter(o => (o.role === 'final' || o.role === 'web') && (!o.dupOf || copied(o)) && !isCopy(o));
     const films = new Map();
     for (const o of voiced) { const b = baseName(o.name); if (!films.has(b)) films.set(b, []); films.get(b).push(o); }
     for (const [, vs] of films) {
@@ -145,17 +189,17 @@ async function computeCandidates() {
         const full = path.join(r, e.name);
         // parts replaced by partial renders and backups of earlier renders: the film is made from render\chunks
         if (e.isDirectory() && /^chunks_(v\d|prev)/i.test(e.name)) {
-          const st = await dirSize(full); if (st.size) add({ rule: 'oldChunks', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, dir: true, action: 'recycle', reason: /^chunks_prev/i.test(e.name) ? 'Backup chunks from the previous render.' : 'Old chunks replaced by a partial render; the film uses render\\chunks.' });
+          const st = await dirSize(full); if (st.size) add({ rule: 'oldChunks', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, freed: st.freed, dir: true, action: 'recycle', reason: /^chunks_prev/i.test(e.name) ? 'Backup chunks from the previous render.' : 'Old chunks replaced by a partial render; the film uses render\\chunks.' });
         }
         if (e.isDirectory() && /^(tmp|profiles)$/i.test(e.name)) {
-          const st = await dirSize(full); if (st.size) add({ rule: 'leftover', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, dir: true, action: 'recycle', reason: e.name.toLowerCase() === 'profiles' ? 'Chrome profiles from the render (recreated for each render).' : 'Temporary render files.' });
+          const st = await dirSize(full); if (st.size) add({ rule: 'leftover', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, freed: st.freed, dir: true, action: 'recycle', reason: e.name.toLowerCase() === 'profiles' ? 'Chrome profiles from the render (recreated for each render).' : 'Temporary render files.' });
         }
         if (e.isFile() && /\.tmp\.mp4$/i.test(e.name)) { let st; try { st = fs.statSync(full); } catch { continue; } add({ rule: 'leftover', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, action: 'recycle', reason: 'Unfinished render chunk.' }); }
       }
     }
     for (const d of ['profiles', 'tmp_profiles']) {   // Chrome profiles some render.js put next to the code
       const full = path.join(p.path, d); if (!exists(full) || !exists(path.join(full, 'w0')) && !exists(path.join(full, 'Default'))) continue;
-      const st = await dirSize(full); if (st.size) add({ rule: 'leftover', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, dir: true, action: 'recycle', reason: 'Chrome profiles from the render (recreated for each render).' });
+      const st = await dirSize(full); if (st.size) add({ rule: 'leftover', preset: 'safe', project: p.id, projectName: p.name, path: full, size: st.size, freed: st.freed, dir: true, action: 'recycle', reason: 'Chrome profiles from the render (recreated for each render).' });
     }
     // 4. QA / lookdev / preview pictures and clips: only media files go, scripts stay
     for (const d of QA_DIRS) {
@@ -193,8 +237,18 @@ async function computeCandidates() {
       for (const d of [path.join('render', 'chunks'), path.join('render', 'preview')]) {
         const full = path.join(p.outDir || p.path, d); if (!exists(full)) continue;
         const s = await dirSize(full); if (s.size < 20 << 20) continue;
-        add({ rule: 'chunks', preset: 'deep', project: p.id, projectName: p.name, path: full, size: s.size, dir: true, action: 'recycle', checked: !p.statusAuto,
+        add({ rule: 'chunks', preset: 'deep', project: p.id, projectName: p.name, path: full, size: s.size, freed: s.freed, dir: true, action: 'recycle', checked: !p.statusAuto,
           reason: `Render chunks of a finished film (status: ${p.status}${p.statusAuto ? ', automatic' : ''}). Partial re-rendering will no longer be possible.` });
+      }
+    } else if (newestFinal) {
+      // 5b. chunks of a film nobody rendered for chunkDays (even one in review): once the film was made from them they are
+      // only a second copy of it. The film stays and a full render still works; a partial re-render no longer does.
+      const full = path.join(p.outDir || p.path, 'render', 'chunks'), days = Math.max(1, +cfg.chunkDays || 7);
+      if (exists(full)) {
+        const s = await dirSize(full);
+        if (s.size >= 20 << 20 && Date.now() - s.newest > days * 864e5 && newestFinal >= s.newest - 600e3)
+          add({ rule: 'staleChunks', preset: 'deep', project: p.id, projectName: p.name, path: full, size: s.size, freed: s.freed, dir: true, action: 'recycle',
+            reason: `Render chunks; no render for ${days}+ days and the film was made from them. A partial re-render will no longer be possible; a full render still works.` });
       }
     }
   }
@@ -207,7 +261,7 @@ async function computeCandidates() {
     let stale = false;
     if (m) stale = !processAlive(+m[1]);
     else if (/^puppeteer_dev_chrome_profile-/.test(e.name)) { try { stale = Date.now() - fs.statSync(full).mtimeMs > 3600e3; } catch { } }
-    if (stale) { const s = await dirSize(full); add({ rule: 'tempProfile', preset: 'safe', project: null, projectName: '%TEMP%', path: full, size: s.size, dir: true, action: 'recycle', reason: 'Chrome profile left by a render; its process has exited.' }); }
+    if (stale) { const s = await dirSize(full); add({ rule: 'tempProfile', preset: 'safe', project: null, projectName: '%TEMP%', path: full, size: s.size, freed: s.freed, dir: true, action: 'recycle', reason: 'Chrome profile left by a render; its process has exited.' }); }
   }
   // 9. old Claude scratch folders (optional)
   const ct = path.join(TEMP, 'claude');
@@ -217,7 +271,7 @@ async function computeCandidates() {
     for (const s of sess) {
       const full = path.join(ct, pd.name, s.name), st = await dirSize(full);
       if (st.size > 50 << 20 && Date.now() - st.newest > cfg.tempMaxAgeDays * 864e5)
-        add({ rule: 'claudeTemp', preset: null, project: null, projectName: 'Claude temporary files', path: full, size: st.size, dir: true, action: 'recycle', checked: false, reason: `Temporary folder from a Claude session; unused for ${cfg.tempMaxAgeDays} days.` });
+        add({ rule: 'claudeTemp', preset: null, project: null, projectName: 'Claude temporary files', path: full, size: st.size, freed: st.freed, dir: true, action: 'recycle', checked: false, reason: `Temporary folder from a Claude session; unused for ${cfg.tempMaxAgeDays} days.` });
     }
   }
   // 8. byte-identical copies: reported, never pre-selected
@@ -245,6 +299,7 @@ export function summary(cands) {
 export const RULES = {
   silent: 'Silent intermediate renders', preview: 'Old previews', oldVersion: 'Old versions (to archive)', leftover: 'Chrome profiles and temporary files',
   oldChunks: 'Replaced old chunks (chunks_v*, chunks_prev*)', qa: 'QA frames, lookdev and test clips', clip: 'Test clips', noteImages: 'Full-size images from approved notes', chunks: 'Chunks of finished films', tempProfile: 'Temporary Chrome profiles', claudeTemp: 'Old Claude temporary folders', duplicate: 'Duplicate files',
+  renderCopy: 'Copies of the film made by the render script (film_final)', staleChunks: 'Chunks of films not rendered lately',
 };
 
 function logLine(o) { try { fs.appendFileSync(LOG, JSON.stringify({ at: now(), ...o }) + '\n'); } catch { } }
@@ -254,7 +309,7 @@ function logLine(o) { try { fs.appendFileSync(LOG, JSON.stringify({ at: now(), .
 // runs raced through the same list: every other item failed with "not found" and the counts were wrong.
 let job = null; const jobSubs = new Set();
 export const onClean = fn => { jobSubs.add(fn); return () => jobSubs.delete(fn); };
-const pub = () => job && { id: job.id, state: job.state, phase: job.phase, total: job.total, done: job.done, freed: job.freed, current: job.current, startedAt: job.startedAt, finishedAt: job.finishedAt,
+const pub = () => job && { id: job.id, kind: job.kind, films: job.films, state: job.state, phase: job.phase, total: job.total, done: job.done, freed: job.freed, current: job.current, startedAt: job.startedAt, finishedAt: job.finishedAt,
   results: job.state === 'done' ? job.results : undefined, ok: job.results.filter(r => r.status === 'ok').length, failed: job.results.filter(r => r.status === 'error').length, skipped: job.results.filter(r => r.status === 'skipped' || r.status === 'gone').length };
 let lastEmit = 0;
 function emitJob(force) { const t = Date.now(); if (!force && t - lastEmit < 250) return; lastEmit = t; const s = pub(); for (const fn of jobSubs) try { fn(s); } catch { } }
@@ -265,6 +320,7 @@ const units = c => c.files ? c.files.filter(f => isInside(f.path, c.path) && f.p
 async function leftOf(c) { let s = 0; for (const u of units(c)) s += await dirOrFileSize(u.path); return s; }
 const anyLeft = c => units(c).some(u => exists(u.path));
 
+const trashLabel = () => IS_WIN ? 'Recycle Bin' : 'Trash';
 // SHFileOperation error codes (incl. the old DE_* ones) in plain English
 function why(code) {
   if (code === -1) return 'Operation interrupted.';
@@ -302,29 +358,45 @@ export async function recyclePaths(items) {
   return out;
 }
 
-// starts a run with the items the user ticked (ids from the list they saw); answers at once
-export async function startClean(ids) {
+// starts a run with the items the user ticked (ids from the list they saw); answers at once.
+// rules: only items of these rules move, whatever the ids say (the banner's "Clean now": PROMPT_RULES); kind: what the
+// run was (the UI says so); via: logged with the approval in janitor-log.jsonl
+export async function startClean(ids, { rules = null, kind = 'cleanup', via = null } = {}) {
   if (job && job.state !== 'done') throw Object.assign(new Error('A cleanup is already running; wait for it to finish.'), { code: 409 });
   if (!Array.isArray(ids) || !ids.length) throw Object.assign(new Error('Nothing selected'), { code: 400 });
-  job = { id: 'c' + Date.now().toString(36), state: 'running', phase: 'list', total: ids.length, done: 0, freed: 0, current: null, startedAt: now(), finishedAt: null, results: [] };
+  if (via) logLine({ action: 'approved', via, count: ids.length });
+  return begin(ids.length, { kind }, async () => {
+    // the list the user looked at (cached); only when it is gone is it counted again
+    const all = cache?.list || await findCandidates();
+    const want = new Set(ids), pick = all.filter(c => want.has(c.id) && (!rules || rules.has(c.rule)));
+    return { pick, missing: ids.length - pick.length };
+  });
+}
+// a run over a list made elsewhere ("Finish film": server/finish.js classifies the film again right before this),
+// through the same machinery: one run at a time, the same checks, progress and results. kind/films tell the UI what
+// it was; binFallback: a single file the Recycle Bin refuses as too large goes to the archive instead (reversible too)
+export function startCleanItems(cands, { kind = 'finish', films = [], binFallback = true } = {}) {
+  if (job && job.state !== 'done') throw Object.assign(new Error('A cleanup is already running; wait for it to finish.'), { code: 409 });
+  if (!Array.isArray(cands) || !cands.length) throw Object.assign(new Error('Nothing selected'), { code: 400 });
+  return begin(cands.length, { kind, films }, async () => ({ pick: cands.map(c => ({ ...c, binFallback })), missing: 0 }));
+}
+function begin(total, extra, list) {
+  job = { id: 'c' + Date.now().toString(36), kind: extra.kind || 'cleanup', films: extra.films || [], state: 'running', phase: 'list', total, done: 0, freed: 0, current: null, startedAt: now(), finishedAt: null, results: [] };
   emitJob(true);
-  runJob(ids).catch(e => { job.results.push({ path: '', status: 'error', error: String(e.message || e) }); }).finally(() => {
+  list().then(({ pick, missing }) => runJob(pick, missing)).catch(e => { job.results.push({ path: '', status: 'error', error: String(e.message || e) }); }).finally(() => {
     job.state = 'done'; job.current = null; job.finishedAt = now(); emitJob(true);
   });
   return pub();
 }
 
-async function runJob(ids) {
-  // the list the user looked at (cached); only when it is gone is it counted again
-  const all = cache?.list || await findCandidates();
-  const want = new Set(ids), seen = new Set();
-  let pick = all.filter(c => want.has(c.id) && !seen.has(norm(c.path)) && seen.add(norm(c.path)));
+async function runJob(chosen, missing) {
+  const seen = new Set();
+  let pick = chosen.filter(c => !seen.has(norm(c.path)) && seen.add(norm(c.path)));
   // something inside a folder that is going anyway goes with it
-  const dirs = pick.filter(c => c.dir).map(c => c.path);
+  const dirs = pick.filter(c => c.dir && !c.files).map(c => c.path);
   pick = pick.filter(c => !dirs.some(d => d !== c.path && isInside(c.path, d)));
-  const missing = ids.length - all.filter(c => want.has(c.id)).length;
   job.total = pick.length; job.phase = 'cleanup'; emitJob(true);
-  const res = (c, status, extra = {}) => { job.results.push({ path: c.path, project: c.projectName, rule: c.rule, size: c.size, status, ...extra }); job.done++; emitJob(); };
+  const res = (c, status, extra = {}) => { job.results.push({ path: c.path, project: c.projectName, projectId: c.project || null, rule: c.rule, size: c.size, status, ...extra }); job.done++; emitJob(); };
   if (missing > 0) job.results.push({ path: '', status: 'gone', error: `${missing} items are no longer in the list (removed by another cleanup or changed).` });
 
   const allowed = [...config().roots.map(r => r.path), TEMP];
@@ -345,15 +417,18 @@ async function runJob(ids) {
     if (code !== 0) codes.set(it.of, codes.get(it.of) || (err ? { text: err } : { code, text: why(code) }));
   });
   for (const c of recycleList) {
-    const rest = await leftOf(c), freed = Math.max(0, c.size - rest), e = codes.get(c);
+    const rest = await leftOf(c), freed = Math.max(0, Math.min(c.freed ?? c.size, c.size - rest)), e = codes.get(c);
     // Windows says "not found" also when a file inside is held open by another program (seen with a locked Chrome profile)
     const err = !e ? null : e.code != null && e.code > 0 && rest ? `Could not delete: a file inside may be open in another program (Windows code ${e.code}). Try again after closing that program.` : e.text;
-    if (!rest) { job.freed += c.size; res(c, 'ok', { freed: c.size }); logLine({ action: 'recycle', path: c.path, ok: true, size: c.size }); }
-    else { job.freed += freed; res(c, 'error', { freed, left: rest, error: (freed ? `Partially removed: ${Math.round(rest / 1048576)} MB left. ` : '') + (err || 'Still on disk.') }); logLine({ action: 'recycle', path: c.path, ok: false, error: err, left: rest }); }
+    // too large for the Recycle Bin: a single file goes to the archive instead (copied, verified, then removed)
+    if (rest && e?.code === -2 && c.binFallback && !c.dir && !c.files) { archiveList.push({ ...c, binFallbackUsed: true }); continue; }
+    const freedNow = c.freed ?? c.size;
+    if (!rest) { job.freed += freedNow; res(c, 'ok', { freed: freedNow }); logLine({ action: 'recycle', path: c.path, ok: true, size: c.size }); }
+    else { job.freed += freed; res(c, 'error', { freed, left: rest, error: (freed ? `Partially removed: ${Math.round(rest / 1048576)} MB left. ` : '') + (e?.code === -2 && (c.dir || c.files) ? `Too large for the ${trashLabel()} as one folder (${Math.round(c.size / 1048576)} MB); left untouched to avoid permanent deletion. Empty or enlarge the ${trashLabel()} and try again.` : err || 'Still on disk.') }); logLine({ action: 'recycle', path: c.path, ok: false, error: err, left: rest }); }
   }
   for (const c of archiveList) {
     job.current = c.path; emitJob(true);
-    try { const to = await archiveOne(c); job.freed += c.size; res(c, 'ok', { freed: c.size, to }); }
+    try { const to = await archiveOne(c); const f = c.freed ?? c.size; job.freed += f; res(c, 'ok', { freed: f, to, ...(c.binFallbackUsed ? { note: 'Too large for the Recycle Bin: moved to the archive instead.' } : {}) }); }
     catch (e) { res(c, 'error', { error: String(e.message || e) }); logLine({ action: 'archive', from: c.path, ok: false, error: String(e.message || e) }); }
   }
   // the list on screen comes back at once: drop what is gone instead of measuring everything again

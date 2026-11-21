@@ -15,10 +15,10 @@ const STALE = 5 * 60e3;
 const keyOf = p => p.id || p.path;
 export function invalidateSource(p) { const k = keyOf(p); cache.delete(k); gens.set(k, (gens.get(k) || 0) + 1); }
 export function watchSource(p, on = true) { on ? watched.add(keyOf(p)) : watched.delete(keyOf(p)); }
-// the walk, as a generator that pauses every 300 entries (the background refresh yields there, the sync path runs through)
+// the walk, as a generator that pauses every 300 entries or 12 ms (the background refresh yields there, the sync path runs through)
 function* collect(p) {
   const roots = [p.path, ...(p.studio ? [path.join(p.studio, 'engine')] : [])];
-  const parts = []; let stamp = 0, count = 0, n = 0;
+  const parts = []; let stamp = 0, count = 0, n = 0, t = performance.now();
   const add = f => { try { const st = fs.statSync(f); if (!st.isFile()) return; parts.push(f + ':' + st.size + ':' + st.mtimeMs); stamp = Math.max(stamp, st.mtimeMs); } catch {} };
   for (const root of roots) {
     count = 0;
@@ -28,7 +28,7 @@ function* collect(p) {
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
       for (const e of entries) {
         if (++count > 4000) break;
-        if (++n % 300 === 0) yield;
+        if (++n % 300 === 0 || (n % 16 === 0 && performance.now() - t >= 12)) { yield; t = performance.now(); }
         if (e.isSymbolicLink()) continue;
         const f = path.join(dir, e.name);
         if (e.isDirectory()) { if (!skip.test(e.name)) stack.push(f); }

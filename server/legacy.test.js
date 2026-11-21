@@ -3,8 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readNotes, readMeta, noteStatus, noteKind, projectStatus, thumbStatus, thumbNoteStatus, byWho, isOpenNote, NOTE_STATUSES, PROJECT_STATUSES } from './legacy.js';
-import { normalizeBrief } from './thumbstudio/schema.js';
+import { readNotes, readMeta, noteStatus, noteKind, projectStatus, byWho, isOpenNote, NOTE_STATUSES, PROJECT_STATUSES } from './legacy.js';
 
 const dir = path.resolve('.test-tmp', 'legacy-' + process.pid);
 fs.mkdirSync(dir, { recursive: true });
@@ -24,16 +23,13 @@ test('legacy note statuses, kinds and authors map to English', () => {
   assert.equal(noteStatus('something-else'), 'something-else');      // unknown values are not touched
 });
 
-test('legacy project and thumbnail statuses map to English', () => {
+test('legacy project statuses map to English', () => {
   assert.equal(projectStatus(tr('yap\\u0131m')), 'in-progress');
   assert.equal(projectStatus('inceleme'), 'review');
   assert.equal(projectStatus(tr('yay\\u0131nland\\u0131')), 'published');
   assert.equal(projectStatus(tr('tamamland\\u0131')), 'done');
   assert.equal(projectStatus(tr('ar\\u015fiv')), 'archived');
   for (const s of PROJECT_STATUSES) assert.equal(projectStatus(s), s);
-  assert.equal(thumbStatus('taslak'), 'draft');
-  assert.equal(thumbStatus(tr('se\\u00e7ildi')), 'chosen');
-  assert.equal(thumbNoteStatus(tr('d\\u00fczeltildi')), 'fixed');
 });
 
 test('an old notes.json and project.json are read with English values', () => {
@@ -54,14 +50,6 @@ test('an old notes.json and project.json are read with English values', () => {
   assert.equal(meta.render.env.DUR, '12');
   assert.deepEqual(readNotes(path.join(dir, 'missing.json')), []);
   assert.deepEqual(readMeta(path.join(dir, 'missing.json')), {});
-});
-
-test('an old thumbnail brief is read with English statuses and font ids', () => {
-  const b = normalizeBrief({ id: '20261104-abcd', status: tr('\\u00fcretiliyor'), layers: [{ type: 'text', content: 'HI', font: tr('youtube-kal\\u0131n') }],
-    variants: [{ id: 'v1_1', file: 'variants/v1_1.png', notes: [{ id: 1, status: tr('a\\u00e7\\u0131k') }, { id: 2, status: tr('d\\u00fczeltildi') }] }] });
-  assert.equal(b.status, 'generating');
-  assert.deepEqual(b.variants[0].notes.map(n => n.status), ['open', 'fixed']);
-  assert.equal(b.layers.find(l => l.type === 'text').font, 'youtube-bold');
 });
 
 test.after(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { } });

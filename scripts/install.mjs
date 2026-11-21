@@ -45,7 +45,7 @@ function copyTree(from, to, { exclusive = false, skip = () => false } = {}) {
     else if (e.isFile()) { if (stat(dst)?.isSymbolicLink()) throw new Error('Refusing to replace a symbolic link: ' + dst); fs.copyFileSync(src, dst, exclusive ? fs.constants.COPYFILE_EXCL : 0); fs.chmodSync(dst, fs.statSync(src).mode); }
   }
 }
-const ITEMS = ['server', 'ui', 'templates', 'skill', 'claude', 'examples', 'engine-hooks', 'docs', 'scripts', 'CLAUDE.md', 'AGENTS.md', 'README.md', 'LICENSE', 'SETUP.cmd', 'UPDATE.cmd', 'UNINSTALL.cmd', 'update.ps1', 'setup.ps1', 'uninstall.ps1', 'open.cmd', 'setup.sh', 'update.sh', 'uninstall.sh', 'open.sh', 'package.json', 'package-lock.json'];
+const ITEMS = ['server', 'ui', 'templates', 'skill', 'claude', 'examples', 'engine-hooks', 'desktop', 'docs', 'scripts', 'CLAUDE.md', 'AGENTS.md', 'README.md', 'LICENSE', 'SETUP.cmd', 'UPDATE.cmd', 'UNINSTALL.cmd', 'update.ps1', 'setup.ps1', 'uninstall.ps1', 'open.cmd', 'setup.sh', 'update.sh', 'uninstall.sh', 'open.sh', 'package.json', 'package-lock.json'];
 const casePath = (value, platform) => platform.casePath ? platform.casePath(value) : platform.IS_WIN ? String(value).toLowerCase() : String(value);
 export function validateUpdatePaths(source, target, { platform = platformDefault, realpath = fs.realpathSync } = {}) {
   const sourceReal = realpath(source), targetReal = realpath(target), src = casePath(sourceReal, platform), dst = casePath(targetReal, platform);
@@ -188,7 +188,7 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
     say('VideoHub is available at ' + base);
   };
   try {
-    if (options.help) { log('Usage: ./setup.sh [--dry-run] [--yes] [--workspace PATH] [--agents claude,opencode] [--watch-found yes|no] [--gpu-encoder yes|no] [--global-rule yes|no] [--shortcut yes|no] [--startup yes|no] [--example yes|no]\n./update.sh [--target PATH] [--dry-run]\n./uninstall.sh [--dry-run]\n./open.sh [--server]'); return { actions, warnings }; }
+    if (options.help) { log('Usage: ./setup.sh [--dry-run] [--yes] [--workspace PATH] [--agents claude,codex,opencode] [--watch-found yes|no] [--gpu-encoder yes|no] [--global-rule yes|no] [--shortcut yes|no] [--startup yes|no] [--example yes|no]\n./update.sh [--target PATH] [--dry-run]\n./uninstall.sh [--dry-run]\n./open.sh [--server]'); return { actions, warnings }; }
     if (options.action === 'validate-update') { const result = validateUpdatePaths(options.source || hub, options.target || hub, { platform }); if (result.same) throw new Error('Source and target refer to the same folder; nothing to update'); say('source and target are separate folders'); return { actions, warnings }; }
     if (options.action === 'stop') { await stopInstall(path.resolve(options.target || hub)); return { actions, warnings }; }
     if (options.action === 'autostart') {
@@ -211,9 +211,9 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
       if (!chosen?.length) {
         const found = detectAgents({ home, env });
         if (found.length === 1 || quiet) chosen = found.length ? found : ['claude'];
-        else { const a = (await question('Which agents? claude, opencode, or claude,opencode [' + (found.join(',') || 'claude') + '] ')).trim(); chosen = (a || found.join(',') || 'claude').split(',').map(s => s.trim()); }
+        else { const a = (await question('Which agents? claude, codex, opencode, or several separated by commas [' + (found.join(',') || 'claude') + '] ')).trim(); chosen = (a || found.join(',') || 'claude').split(',').map(s => s.trim()); }
       }
-      if (chosen.some(a => !['claude', 'opencode'].includes(a))) throw new Error('--agents must contain claude and/or opencode'); answers.agents = chosen;
+      if (chosen.some(a => !['claude', 'codex', 'opencode'].includes(a))) throw new Error('--agents must contain claude, codex and/or opencode'); answers.agents = chosen;
       let workspace = st.workspace || options.workspace;
       if (!workspace && !quiet) workspace = (await question('Where should your video work live? [' + st.defaultWorkspace + '] ')).trim();
       workspace ||= st.defaultWorkspace;
@@ -283,12 +283,12 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
       if (!dry) for (const name of ITEMS) {
         const src = path.join(hub, name), dst = path.join(target, name); if (!fs.existsSync(src)) continue;
         if (fs.lstatSync(src).isSymbolicLink()) continue;
-        if (fs.existsSync(dst)) { if (fs.lstatSync(dst).isSymbolicLink()) throw new Error('Update target contains a symbolic link: ' + dst); if (fs.statSync(dst).isDirectory()) copyTree(dst, path.join(backup, name)); else { fs.mkdirSync(path.dirname(path.join(backup, name)), { recursive: true }); fs.copyFileSync(dst, path.join(backup, name)); } }
+        if (fs.existsSync(dst)) { if (fs.lstatSync(dst).isSymbolicLink()) throw new Error('Update target contains a symbolic link: ' + dst); if (fs.statSync(dst).isDirectory()) copyTree(dst, path.join(backup, name), { skip: n => n === 'node_modules' }); else { fs.mkdirSync(path.dirname(path.join(backup, name)), { recursive: true }); fs.copyFileSync(dst, path.join(backup, name)); } }
         if (fs.statSync(src).isDirectory()) copyTree(src, dst, { skip: skipCode }); else { fs.copyFileSync(src, dst); fs.chmodSync(dst, fs.statSync(src).mode); }
       }
       const lockAfter = fs.existsSync(path.join(target, 'package-lock.json')) ? fs.readFileSync(path.join(target, 'package-lock.json'), 'utf8') : null;
       packageInstall(target, lockBefore !== lockAfter);
-      if (!options['no-skill']) { const integration = await agents({ action: 'refresh', agents: ['claude', 'opencode'], hub: target, home, env, dryRun: dry }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e); }
+      if (!options['no-skill']) { const integration = await agents({ action: 'refresh', agents: ['claude', 'codex', 'opencode'], hub: target, home, env, dryRun: dry }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e); }
       if (platform.IS_WIN) {
         const installed = platformForInstall(target), shortcut = await installed.getShortcut(); let legacyLaunchersSafe = referencesClear(shortcut, target);
         if (shortcut.error) warn(shortcut.error);
@@ -300,7 +300,7 @@ export async function runInstaller(options, { hub = ROOT, platform = platformDef
       log('Update complete. Open VideoHub with its existing launcher and restart your agent session.'); return { actions, warnings };
     }
     await stopInstall(hub);
-    const integration = await agents({ action: 'uninstall', agents: ['claude', 'opencode'], hub, home, env, dryRun: dry, recycle: platform.trash }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e);
+    const integration = await agents({ action: 'uninstall', agents: ['claude', 'codex', 'opencode'], hub, home, env, dryRun: dry, recycle: platform.trash }); for (const s of integration.actions) log(s); for (const e of integration.errors) warn(e);
     let startup = false, startupCleanupSafe = true;
     try { if (platform.IS_WIN) { const info = await startupDetails(platform, hub); startup = info.owned; startupCleanupSafe = referencesClear(info, hub); if (info.error) warn(info.error); } else startup = await platform.getAutostart(); } catch (e) { startupCleanupSafe = false; warn(e.message); }
     // A macOS LaunchAgent may be installed but unloaded; setAutostart also removes that owned plist.
