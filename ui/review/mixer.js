@@ -12,6 +12,7 @@
 import { h, api, toast } from '../app.js';
 import { createHistory } from './history.js';
 import { soundEnv, applyOps, opsToward, clipPlan } from './soundenv.js';
+import { icon, ic } from '../icons.js';
 
 const KEY = { vo: 'vo', music: 'music', sfx: 'sfx', mix: 'all' };   // row id → tweaks.json sound field
 const STEM = ['vo', 'music', 'sfx'];
@@ -254,7 +255,7 @@ export function createMixer({ media, projectId, live, dur, range, clips, clipUrl
     view(c, paint); return c;
   }
   function msBtn(id, which) {
-    const b = h('button', { class: 'tl2-ms', onclick: (e) => { e.stopPropagation(); toggle(which === 'M' ? ms.mute : ms.solo, id); } }, which === 'M' ? '🔇' : '🎧');
+    const b = h('button', { class: 'tl2-ms', onclick: (e) => { e.stopPropagation(); toggle(which === 'M' ? ms.mute : ms.solo, id); } }, which === 'M' ? 'M' : 'S');
     view(b, () => {
       const ok = canListen(id), on = which === 'M' ? ms.mute.has(id) : ms.solo.has(id);
       b.disabled = !ok; b.classList.toggle(which === 'M' ? 'off' : 'on', ok && on);
@@ -310,13 +311,13 @@ export function createMixer({ media, projectId, live, dur, range, clips, clipUrl
     const key = JSON.stringify([!!r && r.map((x) => x.toFixed(2)), ok, ducks(), duckSel]);
     if (key === duckKey) return; duckKey = key;
     const lvlOut = h('span', { class: 'tl2-lval' }, Math.round(duckLevel * 100) + '%');
-    const kids = [h('div', { class: 'mx-head' }, h('b', { class: 'mx-title' }, '🎵 Film music'))];
+    const kids = [h('div', { class: 'mx-head' }, h('b', { class: 'mx-title' }, ic('music', 'Film music')))];
     if (!ok) kids.push(h('div', { class: 'dim' }, 'This film has no separate music channel'));
     else {
       kids.push(h('div', { class: 'tl2-lrow' },
-        h('button', { class: 'ghost', disabled: !r, title: 'Lower the film music in the selected range (voice and effects stay the same)', onclick: () => addDuck(duckLevel) }, '↘ Lower in range'),
+        h('button', { class: 'ghost', disabled: !r, title: 'Lower the film music in the selected range (voice and effects stay the same)', onclick: () => addDuck(duckLevel) }, ic('lower', 'Lower in range')),
         h('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(duckLevel * 100), title: 'Reduced level', oninput: (e) => { duckLevel = +e.target.value / 100; lvlOut.textContent = e.target.value + '%'; } }), lvlOut,
-        h('button', { class: 'ghost', disabled: !r, title: 'Remove the film music in the selected range', onclick: () => addDuck(0) }, '🔇 Remove in range'),
+        h('button', { class: 'ghost', disabled: !r, title: 'Remove the film music in the selected range', onclick: () => addDuck(0) }, ic('mute', 'Remove in range')),
         h('label', { class: 'se-f', title: 'Fade duration at the start and end of the reduction' }, 'Fade',
           h('input', { type: 'number', min: 0.1, max: 3, step: 0.1, value: duckFade, style: { width: '56px' }, onchange: (e) => { const v = +e.target.value; if (Number.isFinite(v)) duckFade = Math.max(0.1, Math.min(3, v)); } }), h('span', { class: 'dim' }, 's'))));
       if (!r) kids.push(h('div', { class: 'dim' }, 'Select a range with I / O first'));
@@ -330,7 +331,7 @@ export function createMixer({ media, projectId, live, dur, range, clips, clipUrl
           h('label', { class: 'se-f' }, 'Music', h('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(sel.music * 100), oninput: (e) => { out.textContent = e.target.value + '%'; }, onchange: (e) => setDuck(sel.shot, { music: +e.target.value / 100 }) }), out),
           h('label', { class: 'se-f' }, 'Fade', h('input', { type: 'number', min: 0.1, max: 3, step: 0.1, value: sel.fade ?? 0.12, style: { width: '56px' }, onchange: (e) => { const v = +e.target.value; if (Number.isFinite(v)) setDuck(sel.shot, { fade: Math.max(0.1, Math.min(3, v)) }); } }), h('span', { class: 'dim' }, 's')),
           h('span', { class: 'dim' }, 'Drag the edges on the timeline'),
-          h('button', { class: 'ghost danger', onclick: () => removeDuck(sel.shot) }, '🗑 Delete')));
+          h('button', { class: 'ghost danger', onclick: () => removeDuck(sel.shot) }, ic('trash', 'Delete'))));
       }
     }
     duckEl.replaceChildren(...kids);
@@ -338,7 +339,7 @@ export function createMixer({ media, projectId, live, dur, range, clips, clipUrl
 
   // ---- the Channels section (Sounds tab)
   const rowsEl = h('div', { class: 'mx-rows' }), actsEl = h('div', { class: 'tl2-lrow mx-acts' }), abEl = h('span', { class: 'segs mx-ab' }), pillEl = h('div', { class: 'mx-pill', hidden: true });
-  const headEl = h('div', { class: 'mx-head' }, h('b', { class: 'mx-title' }, '🎚 Sound channels'), abEl);
+  const headEl = h('div', { class: 'mx-head' }, h('b', { class: 'mx-title' }, ic('sliders', 'Sound channels')), abEl);
   el.append(headEl, pillEl, rowsEl, actsEl);
   function paintRows() {
     rowsEl.innerHTML = ''; views.forEach((v) => { if (!v.node.isConnected) views.delete(v); });
@@ -352,7 +353,7 @@ export function createMixer({ media, projectId, live, dur, range, clips, clipUrl
     const m = mode(), r = range(), canBuild = ['stems', 'all', 'studio'].includes(m), busy = !!applyQueue?.busy(), dirty = !!(applyQueue?.dirty() || pend.size || inflight);
     headEl.title = APPROX[m] || APPROX.other; headEl.querySelector('.mx-title').title = headEl.title;
     abEl.replaceChildren(...(engineOk() ? [['ch', 'Channels', 'Listen to channels (levels, M/S and added sounds update instantly)'], ['built', 'Built audio', 'Listen to the built film audio (used for rendering)']].map(([k, t, tip]) =>
-      h('button', { class: 'seg' + ((k === 'ch') === active ? ' on' : '') + (ab === k ? ' pin' : ''), title: tip + (ab === k ? ' · pinned; click again: automatic' : ' · click to pin'), onclick: () => { ab = ab === k ? null : k; update(); } }, t + (ab === k ? ' 📌' : ''))) : []));
+      h('button', { class: 'seg' + ((k === 'ch') === active ? ' on' : '') + (ab === k ? ' pin' : ''), title: tip + (ab === k ? ' · pinned; click again: automatic' : ' · click to pin'), onclick: () => { ab = ab === k ? null : k; update(); } }, t, ab === k ? icon('pin', { cls: 'pinned' }) : null)) : []));
     const pill = active && !live ? 'Playing current channels (instead of this video’s own audio)' : ms.solo.size ? 'Solo on: listening only; does not affect the render' : '';
     pillEl.hidden = !pill; pillEl.textContent = pill;
     const any = layers.some((l) => KEY[l.id]) || canBuild;
@@ -362,11 +363,11 @@ export function createMixer({ media, projectId, live, dur, range, clips, clipUrl
         h('option', { value: 'range', selected: scope === 'range', disabled: !r }, r ? `Selected range (${r[0].toFixed(1)}–${r[1].toFixed(1)} s)` : 'Selected range (select with I / O first)')) : null,
       mixerDirty() ? h('button', { class: 'ghost', title: 'Restore channel levels to the built film mix', onclick: () => revert() }, 'Undo') : null,
       msOn() ? h('button', { class: 'ghost', title: 'Turn off all mute and solo controls', onclick: () => { ms.mute.clear(); ms.solo.clear(); saveMS(); update(); } }, 'Clear M/S') : null,
-      savable('music') && layer('music') ? (() => { const off = (entry(list(), '*')?.music ?? 1) < 0.004; return h('button', { class: 'ghost', title: off ? 'Bring back the film music' : 'Remove all film music (voice and effects stay; original audio is backed up)', onclick: () => musicOut(!off) }, off ? '🎵 Bring back music' : '🔇 Remove music'); })() : null,
+      savable('music') && layer('music') ? (() => { const off = (entry(list(), '*')?.music ?? 1) < 0.004; return h('button', { class: 'ghost', title: off ? 'Bring back the film music' : 'Remove all film music (voice and effects stay; original audio is backed up)', onclick: () => musicOut(!off) }, off ? ic('music', 'Bring back music') : ic('mute', 'Remove music')); })() : null,
       cues ? h('span', { class: 'dim' }, `${cues.length} effect markers`) : null,
       list().length ? h('span', { class: 'dim' }, `${list().length} sound settings in the film`) : null,
       !['stems', 'studio'].includes(m) && layers.length ? h('span', { class: 'dim' }, 'In this film, channel levels affect listening only and cannot be applied separately.') : null,
-      canBuild ? h('button', { class: dirty ? 'primary' : 'ghost', disabled: busy, title: 'Apply levels, added sounds and reductions to the film audio (the original is backed up); the preview and next render use this audio', onclick: () => buildNow() }, m === 'studio' ? '💾 Apply to film (a few minutes)' : '💾 Apply to film') : null,
+      canBuild ? h('button', { class: dirty ? 'primary' : 'ghost', disabled: busy, title: 'Apply levels, added sounds and reductions to the film audio (the original is backed up); the preview and next render use this audio', onclick: () => buildNow() }, ic('save', m === 'studio' ? 'Apply to film (a few minutes)' : 'Apply to film')) : null,
       status?.() || null,
     ].filter(Boolean));
   }

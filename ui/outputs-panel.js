@@ -1,5 +1,6 @@
 // Recent render files, shared by the home page and the full history page.
 import { h, api, toast, AGO, DUR, GB, onHubEvent } from './app.js';
+import { icon, ic } from './icons.js';
 
 const MODE = { full: 'Full film', partial: 'Partial render', preview: 'Preview', final: 'Final', web: 'Web copy', manual: 'Saved manually', command: 'Custom render' };
 const SRC = { kuyruk: 'VideoHub queue', sohbet: 'Saved by chat', tarama: 'Found in folder', RenderGuard: 'Outside VideoHub' };
@@ -25,11 +26,11 @@ export function outputActions(it, { compact = false, seen = async it => {
     actions.append(b);
   };
   if (it.file && it.exists) {
-    button('▶ Open video', async () => {
+    button(ic('play', 'Open video'), async () => {
       await api('/api/open', { method: 'POST', body: { path: it.file, how: 'file' } });
       await seen(it);
     }, 'primary');
-    button('Show in folder', () => api('/api/open', { method: 'POST', body: { path: it.file, how: 'folder' } }));
+    button(ic('reveal', 'Show in folder'), () => api('/api/open', { method: 'POST', body: { path: it.file, how: 'folder' } }));
     if (!compact && it.projectId && it.rel) button('Review in VideoHub', () => {
       location.hash = '#/review/' + it.projectId + '/' + encodeURIComponent(it.rel);
     }, 'ghost');
@@ -56,14 +57,14 @@ export function outputsPanel({ compact = false } = {}) {
   } }, 'Mark all as watched');
   const more = h('button', { hidden: true, onclick: () => { visible += 30; draw(); } }, 'Show more');
   // the global outputs folder: every render as a hard link (the same file, no extra space)
-  const cikBtn = h('button', { class: 'ghost', title: 'Folder containing all renders', onclick: () => api('/api/ciktilar/open', { method: 'POST' }).catch(e => toast(e.message, true)) }, '📂 Outputs folder');
+  const cikBtn = h('button', { class: 'ghost', title: 'Folder containing all renders', onclick: () => api('/api/ciktilar/open', { method: 'POST' }).catch(e => toast(e.message, true)) }, ic('folder', 'Outputs folder'));
   const cikInfo = () => api('/api/ciktilar').then(c => {
     cikBtn.title = c.dir + '\nEvery render appears here automatically. Hard link: the same file, with no extra space used; deleting one leaves the other intact.';
-    cikBtn.textContent = `📂 Outputs folder · ${c.count} videos · extra space ${c.extra < 1048576 ? '~0 MB' : GB(c.extra)}`;
+    cikBtn.replaceChildren(...ic('folder', `Outputs folder · ${c.count} videos · extra space ${c.extra < 1048576 ? '~0 MB' : GB(c.extra)}`));
   }).catch(() => { });
-  if (compact) el.append(h('div', { class: 'row recent-heading' }, h('h2', {}, 'Recent renders'), h('span', { class: 'spacer' }), cikBtn, h('a', { href: '#/outputs' }, 'View all →')));
+  if (compact) el.append(h('div', { class: 'row recent-heading' }, h('h2', {}, 'Recent renders'), h('span', { class: 'spacer' }), cikBtn, h('a', { class: 'btn ghost sm', href: '#/outputs' }, 'View all', icon('chevr'))));
   else el.append(h('div', { class: 'filters output-filters' }, search, select, cikBtn, h('span', { class: 'spacer' }), seenButton,
-    h('button', { onclick: () => refresh(true) }, 'Refresh')), count);
+    h('button', { onclick: () => refresh(true) }, ic('refresh', 'Refresh'))), count);
   el.append(list, more);
   list.append(h('div', { class: 'empty' }, 'Loading recent renders…'));
   async function seen(it) {
@@ -74,7 +75,7 @@ export function outputsPanel({ compact = false } = {}) {
     const ready = it.state === 'done' && it.file && it.exists;
     const label = it.state === 'cancelled' ? 'Cancelled' : it.state !== 'done' ? 'Failed' : !it.file ? 'Output not found' : !it.exists ? 'File moved or deleted' : it.isNew ? 'New' : 'Done';
     return h('article', { class: 'output-card' + (it.isNew ? ' isnew' : ''), 'data-output-key': it.key },
-      h('div', { class: 'output-icon', 'aria-hidden': 'true' }, ready ? '▶' : it.state === 'done' ? '—' : '!'),
+      h('div', { class: 'output-icon' + (ready ? ' ok' : ''), 'aria-hidden': 'true' }, icon(ready ? 'play' : it.state === 'done' ? 'minus' : 'warn')),
       h('div', { class: 'output-body' },
         h('div', { class: 'row output-title' }, h('b', {}, it.projectName || 'Untitled project'),
           it.version ? h('span', { class: 'dim' }, 'v' + it.version) : null,

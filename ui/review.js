@@ -20,6 +20,9 @@ import { createTransport, createShuttle } from './review/transport.js';
 import { createApplyQueue } from './review/applyqueue.js';
 import { createLibrary } from './review/library.js';
 import { installTips } from './review/tips.js';
+import { icon, ic } from './icons.js';
+import { shellFilm, filmChannel, onFilmChannel, openAgentDrawer } from './shell.js';
+import { waitLine } from './channel-view.js';
 
 const ICON = {
   cursor: '<path d="M5 3l13 7.5-5.5 1.5-2.5 5.5z"/>',
@@ -54,8 +57,9 @@ const HELP = [
 export async function reviewPage(page, id, relArg = '') {
   const [rel0, qs] = String(relArg).split('?');
   const params = new URLSearchParams(qs || '');
-  const focusNote = +(params.get('n') || 0), autoPlay = params.get('play') === '1';
+  const focusNote = +(params.get('n') || 0), autoPlay = params.get('play') === '1', startAt = params.get('t') != null && Number.isFinite(+params.get('t')) ? +params.get('t') : null;   // t: the Plan tab's "Watch in Review"
   const p = await api('/api/project/' + id + '?lite=1');
+  shellFilm(p, { tab: 'review', live: rel0 === '~live' });   // the top bar knows the film even when it cannot play
   const vids = p.outputs.filter(o => o.ok !== false);
   const liveMode = rel0 === '~live';
   let liveInfo = null;
@@ -122,7 +126,7 @@ export async function reviewPage(page, id, relArg = '') {
     const busy = applyQueue.busy(), want = soundMode === 'studio' && applyQueue.dirty(), note = !busy && !want ? mixer?.note() || '' : '';
     const key = `${busy}|${want}|${note}`; if (key === cornerKey) return; cornerKey = key;   // the mixer notifies often
     for (const [host, short] of [[stCorner, true], [stSounds, null], [stClip, false]]) {
-      host.replaceChildren(...(busy ? [h('span', { class: 'accent' }, 'Building sound…')] : want && short != null ? [h('button', { class: 'primary', title: 'Apply sound changes to the film using the 3D studio engine (takes a few minutes); the preview and next render will use the new sound', onclick: () => applyQueue.applyNow().catch(() => { }) }, short ? '💾 Apply to film' : '💾 Apply to film (a few minutes)')] : []));
+      host.replaceChildren(...(busy ? [h('span', { class: 'accent' }, 'Building sound…')] : want && short != null ? [h('button', { class: 'primary', title: 'Apply sound changes to the film using the 3D studio engine (takes a few minutes); the preview and next render will use the new sound', onclick: () => applyQueue.applyNow().catch(() => { }) }, ic('save', short ? 'Apply to film' : 'Apply to film (a few minutes)'))] : []));
     }
     // the corner: the build, else a listening note (solo on / the channels play over a rendered video)
     if (note) stCorner.replaceChildren(h('span', { class: 'tl2-cnote', title: note }, note));
@@ -139,8 +143,7 @@ export async function reviewPage(page, id, relArg = '') {
   const quickEmpty = d => !!d && d.quick && !d.useRange && !(d.text || '').trim() && d.shapes.every(s => s.type === 'pin');   // a point with a range survives moving to its edges
 
   // ---------- layout
-  const backA = h('a', { href: '#/', class: 'muted', title: 'Projects' }, '← ' + p.title);
-  const infoBtn = h('button', { class: 'ghost', title: 'Project page: videos, disk, notes list, render history', onclick: () => { location.hash = '#/p/' + id; } }, 'ℹ Project');
+  // the film, its Review tab, "Film details" and Render live in the app's top bar (shellFilm below); this row is the editor's own
   const fileSel = h('select', { onchange: e => { location.hash = `#/review/${id}/${encodeURIComponent(e.target.value)}`; } }, liveMode ? h('option', { value: '~live', selected: true }, '● Live preview (from code, no render)') : null, vids.map(o => h('option', { value: o.rel, selected: o === cur }, `${o.rel} · ${DUR(o.dur)} · ${AGO(o.mtime)}`)));
   // the live preview is always one pick away in the file menu (watching a render, the newer code was hard to find)
   if (!liveMode) api(`/api/project/${id}/live?probe=1`).then(li => { if (li?.ok) fileSel.prepend(h('option', { value: '~live' }, '● Live preview (from code, no render)')); }).catch(() => { });   // live in the file menu
@@ -149,31 +152,27 @@ export async function reviewPage(page, id, relArg = '') {
   const modeSeg = h('span', { class: 'segs', hidden: true }, modeBtns);
   const changedBtn = h('button', { hidden: true, onclick: () => playChanged() }, 'Watch only the changes');
   const proxyPill = h('span', { class: 'pill', title: 'Lightweight review copy for smooth frame stepping' }, '…');
-  const helpBtn = h('button', { class: 'ghost', title: 'How to use, all keyboard shortcuts (?)', onclick: () => toggleHelp() }, '❔ Help');
-  const folderBtn = h('button', { class: 'ghost', title: 'Open project folder in the file manager: ' + p.path, onclick: () => openFolder(id) }, '📂 Folder');
+  const helpBtn = h('button', { class: 'ghost', title: 'How to use, all keyboard shortcuts (?)', onclick: () => toggleHelp() }, ic('help', 'Help'));
+  const folderBtn = h('button', { class: 'ghost', title: 'Open project folder in the file manager: ' + p.path, onclick: () => openFolder(id) }, ic('folder', 'Folder'));
   const liveRefreshBtn = liveMode ? h('button', { class: 'ghost', title: 'Find the current page again and reload the code', onclick: async () => {
     try { const fresh = await api('/api/project/' + id + '/live'); if (fresh.ok) liveSrc.reload(fresh); else toast(fresh.reason, true); }
     catch (e) { toast(e.message, true); }
-  } }, '↻ Reload') : null;
-  const fileBtn = liveMode ? null : h('button', { class: 'ghost', title: 'Open the current video folder with the file selected', onclick: () => openFolder(id, cur.rel) }, '📄 Show file');
+  } }, ic('refresh', 'Reload')) : null;
+  const fileBtn = liveMode ? null : h('button', { class: 'ghost', title: 'Open the current video folder with the file selected', onclick: () => openFolder(id, cur.rel) }, ic('reveal', 'Show file'));
   // live preview: the user starts the render when they are happy with it (full film, or only the parts of fixed notes)
   // also on a video (a film opened on its video used to have no button); projects with no render script get told why on click
   const renderBtn = createRenderButton(p, { notes: () => notes });
-  const thumbBtn = h('button', { class: 'ghost', title: 'Start a thumbnail from this frame: use it as a trace underlay and composition reference in Thumbnail Studio', onclick: () => frameToThumbnail() }, '🖼 Thumbnail');
-  // ☰ shows the hub sidebar over the page (in the editor it is an icon strip)
-  const peek = on => { appEl?.classList.toggle('side-peek', on ?? !appEl.classList.contains('side-peek')); };
-  const menuBtn = h('button', { class: 'ghost rv2-menu', title: 'Menu', onclick: () => peek() }, '☰');
-  const onPeekOutside = e => { if (appEl?.classList.contains('side-peek') && !e.target.closest?.('.side') && !menuBtn.contains(e.target)) peek(false); };
-  document.addEventListener('pointerdown', onPeekOutside, true);
-  const moreBtn = h('button', { class: 'ghost rv2-more', title: 'More buttons', hidden: true }, '⋯');
-  backA.classList.add('rv2-back');
+  const moreBtn = h('button', { class: 'ghost rv2-more', title: 'More buttons', hidden: true }, icon('more'));
   // one row: when it does not fit, the lowest data-pri goes into ⋯ first (9 = always stays)
   const pri = (n, el) => { if (el) el.dataset.pri = n; return el; };
-  pri(9, menuBtn); pri(9, backA); pri(9, fileSel); pri(9, renderBtn?.el); pri(9, helpBtn);
-  pri(6, liveRefreshBtn); pri(5, cmpSel); pri(5, modeSeg); pri(4, changedBtn); pri(3, thumbBtn);
-  pri(2, folderBtn); pri(2, infoBtn); pri(2, fileBtn); pri(1, proxyPill);
+  pri(9, fileSel); pri(9, helpBtn);
+  pri(6, liveRefreshBtn); pri(5, cmpSel); pri(5, modeSeg); pri(4, changedBtn);
+  pri(2, folderBtn); pri(2, fileBtn); pri(1, proxyPill);
   const edLabel = pri(3, h('span', { class: 'rv2-glabel', hidden: !liveMode }, 'Edit'));
-  const top = h('div', { class: 'rv2-top' }, menuBtn, backA, fileSel, cmpSel, modeSeg, changedBtn, h('span', { class: 'spacer' }), edLabel, thumbBtn, liveRefreshBtn, folderBtn, infoBtn, fileBtn, proxyPill, helpBtn, moreBtn, renderBtn?.el);
+  const edAnchor = liveRefreshBtn || folderBtn;   // the editors' buttons go between "Edit" and this one
+  const top = h('div', { class: 'rv2-top' }, fileSel, cmpSel, modeSeg, changedBtn, h('span', { class: 'spacer' }), edLabel, liveRefreshBtn, folderBtn, fileBtn, proxyPill, helpBtn, moreBtn);
+  shellFilm(p, { tab: 'review', live: liveMode, actions: [renderBtn?.el],
+    meta: [liveMode ? null : cur.rel, cur.dur ? DUR(cur.dur) : null, cur.w ? `${cur.w}×${cur.h}` : null, p.notesOpen ? p.notesOpen + (p.notesOpen === 1 ? ' open note' : ' open notes') : null] });
 
   // tools
   const toolBtns = {};
@@ -226,20 +225,20 @@ export async function reviewPage(page, id, relArg = '') {
   const frameA = h('div', { class: 'frame' }, liveSrc ? liveSrc.el : videoA, videoB, diffCv, beforeImg, ov, wipeHandle, tagA, tagB, beforeTag);
   // move the camera / objects right in the live picture (pages with window.VH_EDIT), saved to tweaks.json
   // each editor's panel goes into its own side-panel tab (added on open, removed on close), unscaled by the picture zoom
-  const edHost = (tid, label) => {
+  const edHost = (tid, label, ico) => {
     const el = h('div', { class: 'rv2-edit' });
-    return { panelHost: el, onOpen: () => side?.add({ id: tid, label, el }, { select: true }), onClose: () => { side?.remove(tid); dropTags(tid); } };
+    return { panelHost: el, onOpen: () => side?.add({ id: tid, label, icon: ico, el }, { select: true }), onClose: () => { side?.remove(tid); dropTags(tid); } };
   };
   const keysActive = () => area !== 'timeline';   // the timeline's Delete / arrows / Esc are not the editors' then
-  const sceneEd = liveSrc ? createSceneEditor({ src: liveSrc, projectId: id, frame: frameA, ...edHost('scene', '✏️ Scene'), history: { push: () => pushTag('scene'), undone: () => dropLastTag('scene') }, keysActive, applyNow: () => applyQueue.applyNow(), onSoundSaved: r => { mixer?.setStored(r.sound); applyQueue.request('levels'); } }) : null;
-  if (sceneEd) top.insertBefore(pri(7, sceneEd.el), thumbBtn);
+  const sceneEd = liveSrc ? createSceneEditor({ src: liveSrc, projectId: id, frame: frameA, ...edHost('scene', 'Scene', 'pen'), history: { push: () => pushTag('scene'), undone: () => dropLastTag('scene') }, keysActive, applyNow: () => applyQueue.applyNow(), onSoundSaved: r => { mixer?.setStored(r.sound); applyQueue.request('levels'); } }) : null;
+  if (sceneEd) top.insertBefore(pri(7, sceneEd.el), edAnchor);
   if (sceneEd) sceneEd.el.classList.add('rv2-ed');
   // 2D layers (pages with window.VH2D: added pictures / texts / shapes, characters moved / scaled / hidden)
-  const edit2d = liveSrc ? createEdit2d({ src: liveSrc, projectId: id, frame: frameA, ...edHost('2d', '🧩 2D'), range: () => rangeOk() ? rangeSec() : null, scenes: () => timeline.scenes(), time: () => liveSrc.displayedTime ?? 0, dur: () => dur(), history: { push: () => pushTag('2d'), undone: () => dropLastTag('2d') }, keysActive }) : null;
-  if (edit2d) { top.insertBefore(pri(7, edit2d.el), thumbBtn); edit2d.el.classList.add('rv2-ed'); }
+  const edit2d = liveSrc ? createEdit2d({ src: liveSrc, projectId: id, frame: frameA, ...edHost('2d', '2D', 'layers'), range: () => rangeOk() ? rangeSec() : null, scenes: () => timeline.scenes(), time: () => liveSrc.displayedTime ?? 0, dur: () => dur(), history: { push: () => pushTag('2d'), undone: () => dropLastTag('2d') }, keysActive }) : null;
+  if (edit2d) { top.insertBefore(pri(7, edit2d.el), edAnchor); edit2d.el.classList.add('rv2-ed'); }
   // frame-by-frame automatic check in the open preview (no render, no tokens)
-  const scanner = liveSrc ? createAutoScan({ src: liveSrc, projectId: id, frame: frameA, ...edHost('scan', '🔍 Scan'), reloadNotes: () => notesPanel.reload() }) : null;
-  if (scanner) { top.insertBefore(pri(7, scanner.el), thumbBtn); scanner.el.classList.add('rv2-ed', 'rv2-ed-last'); }
+  const scanner = liveSrc ? createAutoScan({ src: liveSrc, projectId: id, frame: frameA, ...edHost('scan', 'Scan', 'scan'), reloadNotes: () => notesPanel.reload() }) : null;
+  if (scanner) { top.insertBefore(pri(7, scanner.el), edAnchor); scanner.el.classList.add('rv2-ed', 'rv2-ed-last'); }
   const capBar = h('div', { class: 'capbar', hidden: true });
   const frameB = h('div', { class: 'frame', hidden: true });
   const zoomBox = h('div', { class: 'zoombox' }, frameA, frameB);
@@ -250,7 +249,7 @@ export async function reviewPage(page, id, relArg = '') {
   const quick = h('div', { class: 'quick', hidden: true }, quickHead, quickText, h('div', { class: 'qf' }, 'Enter save · Shift+Enter new line · Esc close'));
   view.append(quick);
   const tipChip = (k, t) => h('span', { class: 'tchip' }, h('kbd', {}, k), t);
-  const tipBar = h('div', { class: 'rv2-tip', hidden: true }, h('b', {}, 'Tip'), tipChip('👆', 'Click the video → type your note'), tipChip('Space', 'play / pause'), tipChip('← →', 'frame by frame'), tipChip('J K L', 'rewind · stop · fast forward'), tipChip('?', 'all shortcuts'), h('button', { class: 'ghost', onclick: () => { tipBar.hidden = true; try { localStorage.setItem('vh-tip2', '1'); } catch { } } }, 'Got it ✓'));
+  const tipBar = h('div', { class: 'rv2-tip', hidden: true }, h('b', {}, 'Tip'), tipChip(icon('hand'), 'Click the video → type your note'), tipChip('Space', 'play / pause'), tipChip('← →', 'frame by frame'), tipChip('J K L', 'rewind · stop · fast forward'), tipChip('?', 'all shortcuts'), h('button', { class: 'ghost', onclick: () => { tipBar.hidden = true; try { localStorage.setItem('vh-tip2', '1'); } catch { } } }, ic('check', 'Got it')));
   try { tipBar.hidden = !!localStorage.getItem('vh-tip2'); } catch { }
 
   // timeline (built before the transport: the transport's zoom controls drive the timeline's view)
@@ -292,17 +291,27 @@ export async function reviewPage(page, id, relArg = '') {
   // side panel: Notes / Sounds / Clip; `Send to ${agentName()}` sits under the panes, visible on every tab
   const soundsHost = h('div', { class: 'rv2-sounds' }), clipHost = h('div', { class: 'rv2-clip' });
   const nfoot = notesPanel.el.querySelector('.rv2-nfoot');
-  side = createSidePanel({ tabs: [{ id: 'notes', label: '📝 Notes', el: notesPanel.el }, { id: 'sounds', label: '🎵 Sounds', el: soundsHost }, { id: 'clip', label: '🎚 Selected sound', el: clipHost }], foot: nfoot });
+  side = createSidePanel({ tabs: [{ id: 'notes', label: 'Notes', icon: 'note', el: notesPanel.el }, { id: 'sounds', label: 'Sounds', icon: 'music', el: soundsHost }, { id: 'clip', label: 'Selected sound', icon: 'sliders', el: clipHost }], foot: nfoot });
   const showNotes = () => side.show('notes');   // a hidden pane can neither take focus nor scroll
   const helpBox = h('div', { class: 'rv2-help', hidden: true, onclick: () => toggleHelp(false) }, h('div', { class: 'panel', onclick: e => e.stopPropagation() }, h('h2', { style: { marginTop: 0 } }, 'Keyboard shortcuts'), h('div', { class: 'kv' }, HELP.flatMap(([k, d]) => [h('div', { class: 'k mono' }, k), h('div', {}, d)]))));
   const tourBar = h('div', { class: 'tourbar', hidden: true });
   view.append(capBar);
-  const center = h('div', { class: 'rv2-center' }, tipBar, tourBar, view, transport.el);
+  // one slim line while the agent waits for you in hub_wait, or a question of its is open (the drawer answers it)
+  const waitBar = h('div', { class: 'wait-line', hidden: true, role: 'status' });
+  const drawWait = chan => {
+    const w = waitLine(chan, agentName()), was = !waitBar.hidden;
+    waitBar.hidden = !w;
+    if (w) waitBar.replaceChildren(icon('hand'), h('span', {}, h('b', {}, w.lead), ' ', w.text + '.'), h('span', { class: 'spacer' }),
+      h('button', { class: 'sm', onclick: () => openAgentDrawer() }, icon(w.questions ? 'help' : 'spark', { cls: 'il' }), w.button));
+    if (was !== !waitBar.hidden) dispatchEvent(new Event('resize'));
+  };
+  const offChan = onFilmChannel(drawWait); drawWait(filmChannel());
+  const center = h('div', { class: 'rv2-center' }, waitBar, tipBar, tourBar, view, transport.el);
   const dock = h('div', { class: 'rv2-dock' }, timeline.el);
   // splitters: the dock's height (the picture keeps ≥ 180 px) and the side panel's width
   const dockMax = () => {
     const cs = getComputedStyle(rv2), padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0), gap = parseFloat(cs.rowGap) || 0;
-    const cg = parseFloat(getComputedStyle(center).rowGap) || 0, extras = [tipBar, tourBar, transport.el].filter(e => !e.hidden);
+    const cg = parseFloat(getComputedStyle(center).rowGap) || 0, extras = [waitBar, tipBar, tourBar, transport.el].filter(e => !e.hidden);
     return rv2.clientHeight - padY - top.offsetHeight - 6 - gap * 3 - extras.reduce((s, e) => s + e.offsetHeight + cg, 0) - 180;
   };
   const dockSplit = createSplitter({ root: rv2, cssVar: '--dock-h', axis: 'y', key: 'vh-dock-h', def: () => Math.max(200, Math.min(420, Math.round(innerHeight * 0.38))), min: 120, max: dockMax });
@@ -415,7 +424,7 @@ export async function reviewPage(page, id, relArg = '') {
     if (S.resumeAt != null) { seek(S.resumeAt); if (S.resumePlay) videoA.play().catch(() => { }); S.resumeAt = null; return; }
     const n = notes.find(x => x.id === focusNote);
     if (params.get('tour') === '1' && !tour) { startTour(); return; }
-    if (n) { seek(n.at ?? n.t); selectNote(n.id); } else if (autoPlay) videoA.play().catch(() => { });
+    if (n) { seek(n.at ?? n.t); selectNote(n.id); } else if (startAt != null) { seek(startAt); if (autoPlay) videoA.play().catch(() => { }); } else if (autoPlay) videoA.play().catch(() => { });
   });
 
   // ---------- loop
@@ -854,10 +863,10 @@ export async function reviewPage(page, id, relArg = '') {
       h('span', { class: 'tnote' }, h('b', {}, `#${n.id} `), n.text || '(no text)', n.reply ? h('span', { class: 'treply' }, ` · ${agentName()}: ` + n.reply) : null),
       h('span', { class: 'spacer' }),
       h('button', { class: 'bbtn', title: 'Switch between the frame when the note was written and the current frame (B)', onclick: () => showBefore(!S.before) }, 'Before ⇄ After'),
-      h('button', { class: 'primary', title: 'Fixed (Y)', onclick: () => verdict('approved') }, '✓ Approve'),
+      h('button', { class: 'primary', title: 'Fixed (Y)', onclick: () => verdict('approved') }, ic('check', 'Approve')),
       h('button', { class: 'danger', onclick: () => { again.hidden = false; again.focus(); } }, 'Still there…'), again,
-      h('button', { class: 'ghost', title: 'Previous', onclick: () => { if (tour.i > 0) { tour.i--; showTour(); } } }, '◀'),
-      h('button', { class: 'ghost', title: 'Skip', onclick: () => next() }, '▶'),
+      h('button', { class: 'ghost', title: 'Previous', onclick: () => { if (tour.i > 0) { tour.i--; showTour(); } } }, icon('chevl')),
+      h('button', { class: 'ghost', title: 'Skip', onclick: () => next() }, icon('chevr')),
       h('button', { class: 'ghost', onclick: () => endTour() }, 'Finish'));
     tourBar.hidden = false;
   }
@@ -956,29 +965,6 @@ export async function reviewPage(page, id, relArg = '') {
     if (liveSrc) { const url = liveSrc.capture((S.frame + 0.5) / fps(), cur.w || 1920); if (!url) return toast('Could not capture frame', true); const a = h('a', { href: url, download: `${(p.title || p.name).replace(/[\\/:*?"<>|]/g, '')}_canli_kare${S.frame}.jpg` }); document.body.append(a); a.click(); a.remove(); return; }
     const r = await fetch(`/api/media/frame?p=${encodeURIComponent(cur.path)}&n=${S.frame}`); if (!r.ok) { toast('Could not capture frame', true); return; }
     const url = URL.createObjectURL(await r.blob()); const a = h('a', { href: url, download: `${cur.name.replace(/\.[^.]+$/, '')}_kare${S.frame}.png` }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }
-  // "🖼 Thumbnail": a new thumbnail for this project whose tracing underlay and composition reference is the current frame
-  async function frameToThumbnail() {
-    try {
-      let data;
-      if (liveSrc) data = liveSrc.capture((S.frame + 0.5) / fps(), 1920);
-      else {
-        const r = await fetch(`/api/media/frame?p=${encodeURIComponent(cur.path)}&n=${S.frame}`); if (!r.ok) throw new Error('could not capture frame');
-        const blob = await r.blob();
-        data = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
-      }
-      if (!data) throw new Error('could not capture frame');
-      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = data; });
-      const format = img.naturalHeight > img.naturalWidth ? '9:16' : '16:9';
-      const t = await api('/api/thumbstudio/new', { method: 'POST', body: { project: p.id, title: (p.title || p.name) + ' · frame ' + S.frame, format } });
-      const base = `/api/thumbstudio/${t.pid}/${t.tid}`;
-      const name = `kare_${S.frame}.${data.startsWith('data:image/png') ? 'png' : 'jpg'}`;
-      const tr = await api(base + '/ref', { method: 'POST', body: { name, data, trace: true } });
-      await api(base + '/ref', { method: 'POST', body: { name, data, role: 'composition', note: 'frame from the film (' + S.frame + ')' } });
-      const b = await api(base);
-      await api(base, { method: 'PUT', body: { ...b, layers: [{ id: 'L1', type: 'trace', name: 'Trace underlay: frame ' + S.frame, file: tr.file, opacity: 0.5, locked: true, x: 0, y: 0, w: 1, h: 1, depth: 100 }] } });
-      location.hash = `#/thumbstudio/${t.pid}/${t.tid}`;
-    } catch (e) { toast('Could not start thumbnail: ' + e.message, true); }
   }
   function fullscreen() { if (document.fullscreenElement) document.exitFullscreen(); else rv2.requestFullscreen().catch(() => { }); }   // the whole editor: timeline and side panel stay
   function toggleHelp(on) { helpBox.hidden = on === undefined ? !helpBox.hidden : !on; }
@@ -1080,13 +1066,13 @@ export async function reviewPage(page, id, relArg = '') {
   return () => {
     document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKeyUp); document.removeEventListener('fullscreenchange', layout);
     document.removeEventListener('dragover', dropGuard); document.removeEventListener('drop', dropGuard); library.destroy();
-    document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('pointerdown', onPeekOutside, true); document.removeEventListener('pointerdown', onAreaDown, true); applyQueue.destroy();
+    document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('pointerdown', onAreaDown, true); applyQueue.destroy();
     if (document.fullscreenElement === rv2) document.exitFullscreen().catch(() => { });
     if (toastEl && toastEl.parentNode !== document.body) document.body.append(toastEl);
     shuttle.stop({ pause: false }); transport.destroy();
     ro2.disconnect(); cancelAnimationFrame(clampRaf); topFit.destroy(); dockSplit.destroy(); sideSplit.destroy(); styleMenu?.close(); side.destroy();
     appEl?.classList.remove('app-editor', 'side-peek'); mainEl?.classList.remove('main-editor');
-    offTips(); ro.disconnect(); timeline.destroy(); clearInterval(diffTimer); offProxy(); offLive(); offNote(); renderBtn?.destroy(); sceneEd?.destroy(); scanner?.destroy(); mixer?.destroy(); mixer = null; soundEd?.destroy(); soundEd = null; edit2d?.destroy(); liveCover?.destroy(); liveSrc?.destroy();
+    offTips(); offChan(); notesPanel.destroy(); ro.disconnect(); timeline.destroy(); clearInterval(diffTimer); offProxy(); offLive(); offNote(); renderBtn?.destroy(); sceneEd?.destroy(); scanner?.destroy(); mixer?.destroy(); mixer = null; soundEd?.destroy(); soundEd = null; edit2d?.destroy(); liveCover?.destroy(); liveSrc?.destroy();
     videoA.pause(); videoA.removeAttribute('src'); videoA.load(); videoB.pause(); videoB.removeAttribute('src'); videoB.load();
     page.classList.remove('page-wide', 'page-editor');
   };

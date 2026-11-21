@@ -1,6 +1,9 @@
 import { agentName } from '../agent.js';
 // Notes panel: the draft note being written, the list of notes, edits, statuses, `send to ${agentName()}`.
 import { h, api, toast, confirmBox, pill, TC, AGO } from '../app.js';
+import { icon, ic } from '../icons.js';
+import { filmChannel, onFilmChannel, refreshChannel } from '../shell.js';
+import { sentState, unsentNotes, agentWaiting } from '../channel-view.js';
 
 // Element.append prints null/false as text; this skips them like h() does.
 const put = (el, ...kids) => { for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c); return el; };
@@ -14,12 +17,15 @@ export function createNotesPanel(ctx) {
   const composerBox = h('div', {}), list = h('div', { class: 'rv2-list' });
   const draftsBox = h('div', { class: 'rv2-drafts', hidden: true });
   const sendBtn = h('button', { class: 'primary', onclick: send });
+  // under the button: where sent notes are (straight to a waiting agent, or queued) and the old copy-paste fallback
+  const sendHint = h('div', { class: 'rv2-sendhint' });
   const tourBtn = h('button', { class: 'tourbtn', hidden: true, title: `Review ${agentName()}\'s fixes one by one: before/after, approve or mark as still there`, onclick: () => ctx.startTour() });
   // notes written before the newest version, cleared in one go (approve all, or take them off the list into the archive)
   const oldBar = h('div', { class: 'rv2-oldbar', hidden: true });
   const el = h('div', { class: 'rv2-notes' },
     h('div', { class: 'rv2-nhead' }, h('b', {}, 'Notes'), tourBtn, h('span', { class: 'spacer' }), filterSel),
-    h('div', { class: 'rv2-nfoot' }, sendBtn), oldBar, draftsBox, composerBox, list);
+    h('div', { class: 'rv2-nfoot' }, sendBtn, sendHint), oldBar, draftsBox, composerBox, list);
+  const offChan = onFilmChannel(() => drawHint());
   // pictures the user opened (a card is rebuilt when its note changes; keep it open)
   const openImg = new Set();
   // notes written before the newest version: asked from the hub when the list is loaded or changed in bulk,
@@ -36,8 +42,8 @@ export function createNotesPanel(ctx) {
     oldBar.hidden = !oldIds.length; oldBar.innerHTML = '';
     if (!oldIds.length) return;
     put(oldBar, h('span', {}, `Old notes: ${oldIds.length}`, h('span', { class: 'dim' }, ' · written before the latest version')), h('span', { class: 'spacer' }),
-      unapproved ? h('button', { onclick: () => bulk('approve') }, `✓ Approve all (${unapproved})`) : null,
-      h('button', { class: 'danger', onclick: () => bulk('remove') }, '🗑 Remove all'));
+      unapproved ? h('button', { onclick: () => bulk('approve') }, ic('check', `Approve all (${unapproved})`)) : null,
+      h('button', { class: 'danger', onclick: () => bulk('remove') }, ic('trash', 'Remove all')));
   }
   async function bulk(action) {
     const ids = oldIds.slice();
@@ -153,20 +159,21 @@ export function createNotesPanel(ctx) {
       return cardEl;
     }
     put(cardEl, 
-      h('div', { class: 'hd' }, h('b', { class: 'mono' }, '#' + n.id), h('span', { class: 'mono' }, TC(n.t) + (n.t2 != null ? '–' + TC(n.t2) : '')), h('span', {}, n.kind + (n.layer ? ' · ' + n.layer : '')), h('span', { class: 'spacer' }), pill(n.status, STATUS_LABEL[n.status] || n.status)),
+      h('div', { class: 'hd' }, h('b', { class: 'mono' }, '#' + n.id), h('span', { class: 'mono' }, TC(n.t) + (n.t2 != null ? '–' + TC(n.t2) : '')), h('span', {}, n.kind + (n.layer ? ' · ' + n.layer : '')), h('span', { class: 'spacer' }),
+        (st => { if (!st) return pill(n.status, STATUS_LABEL[n.status] || n.status); const e = pill(st.cls, st.label, st.cls === 'queued' ? 'send' : null); if (st.title) e.title = st.title; return e; })(sentState(n, agentName()))),
       n.text ? h('div', { class: 'tx' }, n.text) : null,
       n.say ? h('div', { class: 'say', title: 'Narration at the time of the note' }, '«' + n.say + '»') : null,
       framesOf(n, ctx.fps()) ? h('div', { class: 'rline' }, (([a, b]) => `range: frame ${a} → ${b} · ${((b - a + 1) / (n.fps || ctx.fps())).toFixed(2)} s`)(framesOf(n, ctx.fps())),
-        h('button', { class: 'ghost', onclick: e => { e.stopPropagation(); ctx.playRange(n); } }, '▶ play')) : null,
+        h('button', { class: 'ghost', onclick: e => { e.stopPropagation(); ctx.playRange(n); } }, ic('play', 'play'))) : null,
       n.images?.crop || n.images?.annotated ? h('div', {
         class: 'nimg' + (openImg.has(n.id) ? ' open' : ''), title: 'Expand / collapse frame image',
         onclick: e => { e.stopPropagation(); const o = e.currentTarget.classList.toggle('open'); o ? openImg.add(n.id) : openImg.delete(n.id); }
-      }, h('img', { src: `/api/project/${ctx.projectId}/noteimg/${n.id}/${n.images.crop ? 'crop' : 'annotated'}?v=${n.imgV || 0}`, loading: 'lazy' }), h('span', { class: 'nimg-lab' }, '🖼 frame image'))
+      }, h('img', { src: `/api/project/${ctx.projectId}/noteimg/${n.id}/${n.images.crop ? 'crop' : 'annotated'}?v=${n.imgV || 0}`, loading: 'lazy' }), h('span', { class: 'nimg-lab' }, ic('image', 'frame image')))
         : n.pending && n.drawing?.length ? h('div', { class: 'dim', style: { fontSize: '11.5px' } }, 'preparing frame image…') : null,
       other ? h('div', { class: 'dim', style: { fontSize: '12px' } }, n.file === '~live' ? 'in live preview (no render)' : `on "${n.file}"`) : null,
       n.reply ? h('div', { class: 'reply' }, h('b', {}, `${agentName()}: `), n.reply, n.fixedIn ? h('span', { class: 'dim' }, ` (${n.fixedIn})`) : null) : null,
       h('div', { class: 'acts', onclick: e => e.stopPropagation() },
-        n.status === 'fixed' ? [h('button', { onclick: () => setStatus(n, 'approved') }, '✓ Approve'), h('button', { class: 'danger', onclick: () => setStatus(n, 'reopened') }, 'Still there')] : null,
+        n.status === 'fixed' ? [h('button', { onclick: () => setStatus(n, 'approved') }, ic('check', 'Approve')), h('button', { class: 'danger', onclick: () => setStatus(n, 'reopened') }, 'Still there')] : null,
         n.status === 'approved' ? h('button', { onclick: () => setStatus(n, 'reopened') }, 'Reopen') : null,
         n.local ? h('span', { class: 'dim', style: { fontSize: '11.5px' } }, 'saving…') : ['open', 'reopened'].includes(n.status) ? [h('button', { class: 'ghost', onclick: () => { editing = n.id; render(); } }, 'Edit'),
           h('button', { class: 'ghost danger', onclick: async () => { if (await confirmBox(`Delete note #${n.id}?`, h('p', {}, n.text), 'Delete')) { await api(`/api/project/${ctx.projectId}/note/${n.id}/delete`, { method: 'POST' }); ctx.removeNote(n.id); } } }, 'Delete')] : null,
@@ -177,7 +184,7 @@ export function createNotesPanel(ctx) {
   // took ~25 ms and re-requested their pictures); the card being edited is never rebuilt under the user's typing
   const cache = new Map();
   let firstShownId = null;
-  const sigOf = n => JSON.stringify([n.local, n.status, n.text, n.kind, n.t, n.t2, n.frames, n.say, n.reply, n.fixedIn, n.imgV, n.pending, n.images?.crop || n.images?.annotated || null,
+  const sigOf = n => JSON.stringify([n.local, n.status, n.sentAt, n.text, n.kind, n.t, n.t2, n.frames, n.say, n.reply, n.fixedIn, n.imgV, n.pending, n.images?.crop || n.images?.annotated || null,
     n.id === ctx.selected(), n.file === ctx.file(), editing === n.id, Math.floor(Date.now() / 60000)]);
   function render() {
     renderDrafts();
@@ -196,16 +203,46 @@ export function createNotesPanel(ctx) {
     if (!shown.length) list.replaceChildren(h('div', { class: 'empty', style: { padding: '18px' } }, notes.length ? 'No notes match this filter.' : 'No notes yet. Click a problem area in the video to place a marker, write your note, then press Enter. Use the tools on the left to draw.'));
     else if (els.length !== list.children.length || els.some((e, i) => list.children[i] !== e)) list.replaceChildren(...els);
     if (topChanged) list.scrollTop = 0;
-    const open = notes.filter(n => ['open', 'reopened'].includes(n.status)).length;
-    sendBtn.textContent = `Send to ${agentName()} (${open})`; sendBtn.disabled = !open; ctx.onCount?.(open);
+    const open = notes.filter(n => ['open', 'reopened'].includes(n.status)).length, unsent = unsentNotes(notes).length;
+    const sendText = `Send to ${agentName()} (${unsent})`;
+    if (sendBtn.dataset.label !== sendText) { sendBtn.dataset.label = sendText; sendBtn.replaceChildren(...ic('send', sendText)); }
+    sendBtn.disabled = !unsent; ctx.onCount?.(open);
+    drawHint();
     const fixed = notes.filter(n => n.status === 'fixed').length;
-    tourBtn.hidden = !fixed; tourBtn.textContent = `✓ Check fixes (${fixed})`;
+    tourBtn.hidden = !fixed; tourBtn.replaceChildren(...ic('check', `Check fixes (${fixed})`));
     if (!oldAsked && notes.length) refreshOld(); else drawOld();
   }
+  // "Send to agent": the unsent open notes go to the film's inbox; an agent waiting in hub_wait gets them at once,
+  // otherwise its next hub_wait / hub_notes picks them up
   async function send() {
-    const { text } = await api(`/api/project/${ctx.projectId}/prompt`, { method: 'POST', body: {} });
-    try { await navigator.clipboard.writeText(text); toast('Message copied to the clipboard. Paste it into the project chat.'); }
+    if (sendBtn.disabled) return;
+    sendBtn.disabled = true;
+    try {
+      const r = await api(`/api/project/${ctx.projectId}/notes/send`, { method: 'POST', body: {} });
+      if (!r.count) { toast('Nothing new to send.'); return; }
+      const now = new Date().toISOString();
+      for (const n of ctx.notes()) if (r.ids.includes(n.id) && !n.sentAt) n.sentAt = now;
+      const who = r.waiting?.agent || agentName();
+      toast(r.waiting ? `Sent to ${who}: ${r.count} note${r.count === 1 ? '' : 's'}.` : `${r.count} note${r.count === 1 ? '' : 's'} sent. ${agentName()} gets ${r.count === 1 ? 'it' : 'them'} the next time it checks VideoHub.`);
+      refreshChannel(); ctx.changed();
+    } catch (e) { toast('Could not send: ' + e.message, true); render(); }
+  }
+  // the old way, kept as a fallback: a message to paste into the agent's chat
+  async function copyMessage(ids) {
+    const { text } = await api(`/api/project/${ctx.projectId}/prompt`, { method: 'POST', body: ids?.length ? { ids } : {} });
+    try { await navigator.clipboard.writeText(text); toast('Message copied to the clipboard. Paste it into the agent’s chat.'); }
     catch { await confirmBox('Paste into chat', h('textarea', { style: { width: '100%', minHeight: '90px' } }, text), 'OK'); }
+  }
+  function drawHint() {
+    const notes = ctx.notes(), chan = filmChannel(), waiting = agentWaiting(chan);
+    const queued = notes.filter(n => n.sentAt && ['open', 'reopened'].includes(n.status)), unsent = unsentNotes(notes);
+    const copy = ids => h('a', { href: '#', class: 'copylink', title: 'Copy a short message for the agent’s chat (the old way)', onclick: e => { e.preventDefault(); copyMessage(ids); } }, 'Copy as message');
+    const who = chan?.waiting?.agent || agentName();
+    const kids = waiting ? [h('span', { class: 'live' }, icon('dot'), `${who} is waiting: notes go straight to it.`)]
+      : queued.length ? [h('span', {}, `${queued.length} sent, waiting for ${agentName()} to pick ${queued.length === 1 ? 'it' : 'them'} up · `), copy(queued.map(n => n.id))]
+      : unsent.length ? [h('span', {}, `${agentName()} gets them the next time it checks VideoHub · `), copy(unsent.map(n => n.id))]
+      : [];
+    sendHint.replaceChildren(...kids); sendHint.hidden = !kids.length;
   }
   // scrolls the list only: scrollIntoView also scrolled the page, so picking a note in a narrow window moved the
   // player and timeline away from under the mouse
@@ -217,5 +254,5 @@ export function createNotesPanel(ctx) {
   }
 
   const reload = () => ctx.reloadNotes();
-  return { el, render, renderDrafts, refreshOld, reload, openComposer, updateComposer, closeComposer, scrollTo, focusText: () => comp?.text.focus() };
+  return { el, render, renderDrafts, refreshOld, reload, openComposer, updateComposer, closeComposer, scrollTo, focusText: () => comp?.text.focus(), destroy: () => offChan() };
 }

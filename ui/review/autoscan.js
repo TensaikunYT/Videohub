@@ -4,6 +4,7 @@ import { agentName } from '../agent.js';
 // a mesh, characters sunk into things and 2D labels without depth; every other live page gets the picture checks
 // (black / white frames, flicker, one-frame pops, frozen picture, long holds, hard cuts). Same rules as engine/qa.mjs.
 import { h, api, toast } from '../app.js';
+import { icon, ic } from '../icons.js';
 
 const KIND = {
   lens: ['Camera inside an object', '#ff6b6b'], bones: ['Character embedded / underground', '#ff6b6b'],
@@ -18,7 +19,7 @@ const mad = (a, b) => { let s = 0; for (let i = 0; i < N; i++) s += Math.abs(a[i
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function createAutoScan({ src, projectId, frame, panelHost, onOpen, onClose, reloadNotes }) {
-  const btn = h('button', { hidden: true, title: 'Check the film frame by frame: camera inside objects, embedded characters, flicker, black frames… (no render, no tokens)', onclick: () => shown ? hide() : show() }, '🔍 Scan');
+  const btn = h('button', { hidden: true, title: 'Check the film frame by frame: camera inside objects, embedded characters, flicker, black frames… (no render, no tokens)', onclick: () => shown ? hide() : show() }, ic('scan', 'Scan'));
   const panel = h('div', { class: 'ascan-panel' });
   let shown = false, running = false, stop = false, report = null, prog = null, added = new Set();
   const win = () => { try { return src.win || null; } catch { return null; } };
@@ -148,7 +149,7 @@ export function createAutoScan({ src, projectId, frame, panelHost, onOpen, onClo
   function paint() {
     if (!shown) return;
     panel.innerHTML = '';
-    const head = h('div', { class: 'ascan-head' }, h('b', {}, '🔍 Auto scan'), h('span', { class: 'spacer' }), b('✕', 'Close', () => hide(), 'ghost'));
+    const head = h('div', { class: 'ascan-head' }, h('b', {}, ic('scan', 'Auto scan')), h('span', { class: 'spacer' }), b(icon('x'), 'Close', () => hide(), 'ghost'));
     if (running) { panel.append(head, h('div', { class: 'ascan-run dim' }, 'Scanning…'), bar, h('div', { class: 'ascan-row' }, b('■ Stop', 'Stop scanning here (keep results so far)', () => { stop = true; }, 'danger'))); paintProgress(); return; }
     const qa = typeof win()?.qaFrame === 'function';
     panel.append(head,

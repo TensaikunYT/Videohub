@@ -11,7 +11,7 @@ test('rapid clicks and a late job-list response cannot open duplicate render dia
   const h = (tag, attrs = {}, ...children) => ({ ...attrs, children,
     replaceChildren(...next) { this.children = next; }, classList: { add() {}, remove() {} } });
   const ctx = {
-    h, onHubEvent: () => () => {}, folderButton: () => h('button'), toast() {},
+    h, ic: (name, text) => [{ tag: 'svg' }, text], onHubEvent: () => () => {}, folderButton: () => h('button'), toast() {},
     localStorage: { getItem: () => null },
     confirmBox: () => { dialogs++; return new Promise(resolve => { finishDialog = resolve; }); },
     api: (url, opts) => {
@@ -33,7 +33,7 @@ test('rapid clicks and a late job-list response cannot open duplicate render dia
 test('the render dialog offers a probed VideoToolbox encoder without starting a job on cancellation', async () => {
   let body, queued = 0;
   const h = (tag, attrs = {}, ...children) => ({ tag, ...attrs, children: children.flat(Infinity).filter(x => x != null), replaceChildren(...next) { this.children = next; } });
-  const ctx = { h, onHubEvent: () => () => {}, folderButton: () => h('button'), toast() {}, localStorage: { getItem: () => null },
+  const ctx = { h, ic: (name, text) => [{ tag: 'svg' }, text], onHubEvent: () => () => {}, folderButton: () => h('button'), toast() {}, localStorage: { getItem: () => null },
     api: async (url, opts) => {
       if (url === '/api/jobs') { if (opts) queued++; return []; }
       if (url.endsWith('/recipe')) return { script: 'render.js', env: {} };

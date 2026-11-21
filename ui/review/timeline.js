@@ -9,6 +9,7 @@
 // Ctrl+wheel zooms at the pointer (plain wheel too, over the ruler), Shift+wheel pans, plain wheel scrolls the rows;
 // double-click shows the whole film. The view (zoom/pan/follow) lives in tlview.js; its buttons are in the transport.
 import { h } from '../app.js';
+import { icon } from '../icons.js';
 import { createView } from './tlview.js';
 import { ls } from './dock.js';
 import { buildRows, tickSpec, fmtTick, clipLen, assignLane, findDragSnap, snapEdgeTime, edgeScrollStep } from './tracks.js';
@@ -74,7 +75,7 @@ export function createTimeline(ctx) {
       const name = h('span', { class: 'tl2-hname', title: (r.collapsed ? 'Expand: ' : 'Collapse: ') + r.label }, r.label);
       name.addEventListener('click', () => toggleRow(r.id));
       // an added-sound row: ➕ opens the picker with that kind (rows under 26 px have no buttons)
-      const add = r.kind === 'clips' && clipOps?.pick && r.h >= 26 ? h('button', { class: 'tl2-hadd', title: r.clipKind === 'music' ? 'Add music (at the playhead)' : 'Add sound effect (at the playhead)', onclick: () => clipOps.pick(r.clipKind) }, '➕') : null;
+      const add = r.kind === 'clips' && clipOps?.pick && r.h >= 26 ? h('button', { class: 'tl2-hadd', title: r.clipKind === 'music' ? 'Add music (at the playhead)' : 'Add sound effect (at the playhead)', onclick: () => clipOps.pick(r.clipKind) }, icon('plus')) : null;
       // P3c: M / S / level chip from the mixer (they update themselves); rows under 26 px have none
       const mx = mixer && r.header && r.h >= 26 ? mixer.controls(r.id) : null;
       const hd = h('div', { class: 'tl2-head' + (r.collapsed ? ' coll' : '') + (r.h < 26 ? ' small' : ''), 'data-id': r.id }, name, add || mx ? h('span', { class: 'tl2-hside' }, add, mx) : null);
@@ -404,7 +405,7 @@ export function createTimeline(ctx) {
     ovWin.style.left = (a / d * 100) + '%'; ovWin.style.width = ((b - a) / d * 100) + '%';
     ovHead.style.left = `calc(${Math.max(0, Math.min(100, p))}% - 1px)`;
     if (ovLab.textContent !== label) ovLab.textContent = label;
-    const sp = b - a, ct = V.isZoomed() ? '🔍 ' + (sp < 60 ? sp.toFixed(1) + ' s' : mmss(sp)) : 'whole film';
+    const sp = b - a, ct = V.isZoomed() ? 'zoom · ' + (sp < 60 ? sp.toFixed(1) + ' s' : mmss(sp)) : 'whole film';
     if (cornerTxt.textContent !== ct) cornerTxt.textContent = ct;
   }
 

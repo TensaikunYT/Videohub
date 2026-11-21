@@ -5,6 +5,7 @@
 //   actors  the film's characters (drawn through the engine's actor()): moved, scaled or hidden, in one shot or the film
 // Everything is saved at once to the film's tweaks.json ("items2d", "actors2d"); no code change, no Claude.
 import { h, api, toast, confirmBox } from '../app.js';
+import { icon, ic } from '../icons.js';
 
 const TC = (s) => { s = Math.max(0, +s || 0); const m = Math.floor(s / 60); return `${m}:${(s - m * 60).toFixed(2).padStart(5, '0')}`; };
 const parseTC = (v) => { const m = /^(?:(\d+):)?(\d+(?:[.,]\d+)?)$/.exec(String(v).trim()); return m ? (+(m[1] || 0)) * 60 + +m[2].replace(',', '.') : null; };
@@ -16,7 +17,7 @@ const HS = 9;   // handle size (screen px)
 // took the newest 2D step); keysActive(): false while the timeline
 // is the active area (Delete / arrows / Esc belong to it then)
 export function createEdit2d({ src, projectId, frame, panelHost, onOpen, onClose, range, scenes, time, dur, history, keysActive }) {
-  const btn = h('button', { hidden: true, title: 'Add images, text and shapes to a 2D film; move, resize and hide characters. Preview and render use the same settings (tweaks.json).', onclick: () => (open ? close() : start()) }, '🧩 2D layers');
+  const btn = h('button', { hidden: true, title: 'Add images, text and shapes to a 2D film; move, resize and hide characters. Preview and render use the same settings (tweaks.json).', onclick: () => (open ? close() : start()) }, ic('layers', '2D layers'));
   const cv = h('canvas', { class: 'sedit-cv' }), ov = h('div', { class: 'sedit-ov e2d-ov', tabindex: '-1' }, cv), panel = h('div', { class: 'sedit-panel e2d-panel' });
   let open = false, V = null, sel = null, actSel = null, drag = null, undo = [], pending = null, saveTimer = 0, scope = 'shot', newSpan = 'scene', listAll = false;
   const fileIn = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', hidden: true, onchange: () => { const f = fileIn.files[0]; fileIn.value = ''; if (f) addImage(f); } });
@@ -247,12 +248,12 @@ export function createEdit2d({ src, projectId, frame, panelHost, onOpen, onClose
     if (!open) return;
     panel.innerHTML = ''; panel.append(fileIn);
     const t = now(), vis = visible();
-    panel.append(h('div', { class: 'sedit-head' }, h('b', {}, '🧩 2D layers'), h('span', { class: 'spacer' }),
+    panel.append(h('div', { class: 'sedit-head' }, h('b', {}, ic('layers', '2D layers')), h('span', { class: 'spacer' }),
       h('button', { class: 'ghost', title: 'Undo (Ctrl+Z)', onclick: () => { if (back()) history?.undone?.(); }, disabled: !undo.length }, '↶'),
       h('button', { class: 'ghost', onclick: () => close() }, 'Close')));
     panel.append(h('div', { class: 'sedit-row' },
       h('span', { class: 'dim' }, 'Add:'),
-      h('button', { onclick: () => fileIn.click() }, '🖼 Image'), h('button', { onclick: () => add('text') }, '🔤 Text'),
+      h('button', { onclick: () => fileIn.click() }, ic('image', 'Image')), h('button', { onclick: () => add('text') }, ic('text', 'Text')),
       h('button', { onclick: () => add('rect') }, '▭ Box'), h('button', { onclick: () => add('ellipse') }, '◯ Circle'), h('button', { onclick: () => add('arrow') }, '➜ Arrow')));
     panel.append(h('div', { class: 'sedit-row' }, h('span', { class: 'dim' }, 'Show new layer:'),
       h('select', { onchange: (e) => { newSpan = e.target.value; e.target.blur(); } },
@@ -318,23 +319,23 @@ export function createEdit2d({ src, projectId, frame, panelHost, onOpen, onClose
       h('button', { class: 'ghost', onclick: () => { snap(); it.t0 = 0; it.t1 = null; changed(true); } }, 'entire film')));
     box.append(h('div', { class: 'sedit-row' },
       h('button', { class: 'ghost', title: 'Bring forward', onclick: () => order(it, 1) }, '▲ forward'), h('button', { class: 'ghost', title: 'Send backward', onclick: () => order(it, -1) }, '▼ backward'),
-      h('button', { class: 'ghost', onclick: () => set('hide', !it.hide) }, it.hide ? '👁 show' : '🙈 hide'),
+      h('button', { class: 'ghost', onclick: () => set('hide', !it.hide) }, it.hide ? ic('eye', 'show') : ic('eyeoff', 'hide')),
       h('button', { class: 'ghost', onclick: () => duplicate(it) }, '⧉ duplicate'),
-      h('button', { class: 'ghost danger', onclick: () => remove(it) }, '🗑 delete')));
+      h('button', { class: 'ghost danger', onclick: () => remove(it) }, ic('trash', 'delete'))));
     return box;
   }
   function actorPanel() {
     const a = actors().find((x) => x.key === actSel.key && x.shot === actSel.shot) || actSel, tw = actorTw(a, false);
     const sOut = h('span', { class: 'tl2-lval' }, Math.round((tw.s || 1) * 100) + '%');
     return h('div', { class: 'sedit-sel e2d-props' },
-      h('div', { class: 'sedit-row' }, h('b', {}, '🧍 ' + a.label), h('span', { class: 'dim mono' }, a.key)),
+      h('div', { class: 'sedit-row' }, h('b', {}, ic('person', a.label)), h('span', { class: 'dim mono' }, a.key)),
       h('div', { class: 'sedit-row' }, h('span', { class: 'dim' }, 'Apply change to:'),
         h('select', { onchange: (e) => { scope = e.target.value; e.target.blur(); paint(); } },
           h('option', { value: 'shot', selected: scope === 'shot' }, `This scene (${a.shot || '?'})`), h('option', { value: 'all', selected: scope === 'all' }, 'Entire film'))),
       h('div', { class: 'sedit-row' }, 'Size', h('input', { type: 'range', min: 20, max: 300, value: Math.round((tw.s || 1) * 100), style: { flex: 1 },
         oninput: (e) => { snap(); const t = actorTw(a, true); t.s = +e.target.value / 100; sOut.textContent = e.target.value + '%'; redraw(); }, onchange: () => changed(true) }), sOut),
       h('div', { class: 'sedit-row' },
-        h('button', { class: 'ghost', onclick: () => { snap(); const t = actorTw(a, true); t.hide = !t.hide; changed(true); } }, tw.hide ? '👁 show' : '🙈 hide in this scene'.replace('this scene', scope === 'all' ? 'the film' : 'this scene')),
+        h('button', { class: 'ghost', onclick: () => { snap(); const t = actorTw(a, true); t.hide = !t.hide; changed(true); } }, tw.hide ? ic('eye', 'show') : ic('eyeoff', 'hide in ' + (scope === 'all' ? 'the film' : 'this scene'))),
         h('button', { class: 'ghost', onclick: () => { snap(); const k = `${scope === 'all' ? '*' : a.shot}|${a.key}`; delete actorsTw()[k]; changed(true); } }, '↺ reset')),
       h('div', { class: 'sedit-hint' }, 'Drag = move, wheel = resize, arrows = fine adjustment. Characters are edited through the 2D engine\'s robot drawing; figures drawn manually outside the engine do not appear in the list.'));
   }

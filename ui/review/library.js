@@ -2,6 +2,7 @@
 // and the user's sound folder (config.soundLibDir, default Documents\VideoHub\sounds). Search, ▶ listen (one at a time), "+" adds at the playhead,
 // and every row can be dragged onto the timeline (application/x-vh-sound; timeline.js decides time, row and lane).
 import { h, api, toast } from '../app.js';
+import { icon, ic } from '../icons.js';
 
 const MAX_ROWS = 300;
 
@@ -14,8 +15,8 @@ export function createLibrary({ onAdd, onFile }) {
 
   const search = h('input', { type: 'search', class: 'lib-q', placeholder: 'Search sounds…', oninput: (e) => { q = e.target.value.toLocaleLowerCase('en-US'); draw(); } });
   const tabs = h('span', { class: 'segs' });
-  el.append(h('div', { class: 'mx-head' }, h('b', { class: 'mx-title' }, '📚 Sound library'), tabs),
-    h('div', { class: 'tl2-lrow' }, search, h('button', { class: 'ghost', title: 'Choose one or more sound files from your computer to add at the playhead', onclick: () => onFile?.() }, '📁 Add from file…')),
+  el.append(h('div', { class: 'mx-head' }, h('b', { class: 'mx-title' }, ic('book', 'Sound library')), tabs),
+    h('div', { class: 'tl2-lrow' }, search, h('button', { class: 'ghost', title: 'Choose one or more sound files from your computer to add at the playhead', onclick: () => onFile?.() }, ic('upload', 'Add from file…'))),
     list,
     h('div', { class: 'dim lib-hint' }, 'Drag a sound onto the timeline or click + to add it at the playhead. You can also drag sound files from your file manager.'));
 
@@ -48,7 +49,7 @@ export function createLibrary({ onAdd, onFile }) {
     for (const x of all.slice(0, MAX_ROWS)) {
       if (x.group !== last && tab === 'user') { list.append(h('div', { class: 'se-group' }, x.group || '/')); last = x.group; }
       const row = h('div', { class: 'se-item lib-item', draggable: 'true', title: 'Drag onto the timeline' },
-        h('button', { class: 'ghost', title: playing === x.file ? 'Stop' : 'Listen', onclick: () => listen(x) }, playing === x.file ? '■' : '▶'),
+        h('button', { class: 'ghost', title: playing === x.file ? 'Stop' : 'Listen', onclick: () => listen(x) }, icon(playing === x.file ? 'stop' : 'play')),
         h('span', { class: 'se-name' }, x.name),
         h('span', { class: 'spacer' }),
         h('button', { class: 'ghost', title: 'Add at playhead', onclick: () => onAdd?.(x) }, '+'));

@@ -2,6 +2,7 @@
 // The user moves the camera, an object or a screen item right in the picture, or moves a cut; the change is saved to
 // the scene's tweaks.json at once and every later preview and render draws it. No code change, no Claude, no tokens.
 import { h, api, toast, confirmBox } from '../app.js';
+import { icon, ic } from '../icons.js';
 
 const STEPS = [0.01, 0.1, 1];
 const TC = (s) => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(2).padStart(5, '0')}`; };
@@ -11,7 +12,7 @@ const TC = (s) => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:$
 // keysActive(): false while the timeline is the active area (Delete / arrows / Esc are its keys then);
 // applyNow(): the review page's sound build (one queue for every editor); onSoundSaved(r): its levels were saved
 export function createSceneEditor({ src, projectId, frame, panelHost, onOpen, onClose, history, keysActive, applyNow, onSoundSaved }) {
-  const btn = h('button', { hidden: true, title: 'Adjust the camera, objects, screen text or cuts directly in the picture; no code changes or tokens needed (tweaks.json)', onclick: () => open ? close() : start() }, '✏️ Edit scene');
+  const btn = h('button', { hidden: true, title: 'Adjust the camera, objects, screen text or cuts directly in the picture; no code changes or tokens needed (tweaks.json)', onclick: () => open ? close() : start() }, ic('pen', 'Edit scene'));
   let open = false, E = null, mode = 'cam', sel = null, scope = 'shot', step = 0.1, undo = [], saveTimer = 0, savedAt = 0;
   let items = [], osel = null, cut = null;
   let snd = null, sndShot = null, sndApplied = null, sndBusy = false, sndBase = null;   // sound: what the film's mix allows, the shot on screen, the levels last put in        // screen items of this frame, the selected one; the cut being moved
@@ -259,7 +260,7 @@ export function createSceneEditor({ src, projectId, frame, panelHost, onOpen, on
       if (d.color) out.push(h('div', { class: 'sedit-row' }, h('span', { class: 'sedit-lbl' }, 'Color'), PORTAL.map(([c, l]) => h('button', { class: tr.color === c ? 'on' : '', title: l, style: `background:${c};min-width:28px`, onclick: (e) => { e.stopPropagation(); setTr({ ...tr, color: c }); } }, ''))));
     }
     out.push(h('div', { class: 'sedit-row' },
-      tr ? b('▶ Play transition', 'Replay the transition', () => playTr(tr.dur ?? d.dur)) : null,
+      tr ? b(ic('play', 'Play transition'), 'Replay the transition', () => playTr(tr.dur ?? d.dur)) : null,
       tr ? b('Apply to all cuts', 'Use this transition on every cut in the film', () => trAll()) : null,
       tr ? b('↺ Remove transition', 'Restore the film\'s own transition', () => setTr(null, false), 'danger') : null));
     return out;
@@ -326,7 +327,7 @@ export function createSceneEditor({ src, projectId, frame, panelHost, onOpen, on
         const t = (here.objects || {})[sel.path] || {};
         body.push(h('div', { class: 'sedit-sel' }, h('b', {}, sel.name || (sel.type === 'Mesh' ? 'part' : 'group')), h('span', { class: 'dim' }, ` · level ${sel.chain.length - sel.i}/${sel.chain.length}`), h('span', { class: 'dim' }, ` ${sel.size?.join(' × ') || ''} m`),
             h('div', { class: 'dim mono', title: sel.path }, sel.path)),
-          h('div', { class: 'sedit-row' }, b('⬆ Larger part', 'Select the object containing this part', () => selectLevel(1)), b('⬇ Smaller part', 'Select the part inside it', () => selectLevel(-1))),
+          h('div', { class: 'sedit-row' }, b(ic('up', 'Larger part'), 'Select the object containing this part', () => selectLevel(1)), b(ic('down', 'Smaller part'), 'Select the part inside it', () => selectLevel(-1))),
           h('div', { class: 'sedit-row' },
             b('↑', `${step} m up`, () => change(() => E.nudge(key(), sel.path, [0, step, 0]))),
             b('↓', `${step} m down`, () => change(() => E.nudge(key(), sel.path, [0, -step, 0]))),
@@ -364,14 +365,14 @@ export function createSceneEditor({ src, projectId, frame, panelHost, onOpen, on
               h('input', { type: 'range', min: 0, max: 200, step: 5, value: v, oninput: (ev) => { out.textContent = ev.target.value + '%'; }, onchange: (ev) => setLevel(ch, +ev.target.value / 100) }), out));
           }
           body.push(h('div', { class: 'sedit-row' },
-            b(sndBusy ? 'Building…' : '🔊 Apply and listen', 'Apply levels to the film audio (the original is backed up) and play this scene with sound', () => applySound(), 'primary'),
+            b(sndBusy ? 'Building…' : ic('volume', 'Apply and listen'), 'Apply levels to the film audio (the original is backed up) and play this scene with sound', () => applySound(), 'primary'),
             Object.keys(e).some((k) => ['music', 'sfx', 'vo', 'all'].includes(k)) ? b('↺ Clear this adjustment', 'Remove the audio adjustment for this scene', () => { for (const k of ['music', 'sfx', 'vo', 'all']) touched.add(`${e.shot}|${k}`); change(() => E.soundSet({ shot: e.shot, t0: e.t0, t1: e.t1 })); paint(); }, 'danger') : null),
             dirty ? h('div', { class: 'sedit-warn' }, 'Changes have not been applied to the audio yet: click "Apply and listen".') : null,
             h('div', { class: 'dim' }, `Scenes with audio adjustments: ${(E.get().sound || []).length}`));
         }
     } else {
       body.push(h('div', { class: 'sedit-hint' }, 'Moving a cut keeps audio in place; scenes around the cut speed up or slow down slightly (up to 1.5 s).'),
-        h('div', { class: 'sedit-row' }, b('◀ Previous cut', 'The first scene change before this point', () => goCut(-1)), b('Next cut ▶', 'The first scene change after this point', () => goCut(1))));
+        h('div', { class: 'sedit-row' }, b(ic('chevl', 'Previous cut'), 'The first scene change before this point', () => goCut(-1)), b(['Next cut', icon('chevr')], 'The first scene change after this point', () => goCut(1))));
       if (!cut) body.push(h('div', { class: 'dim' }, 'Find a cut.'));
       else {
         const fr = Math.round(cut.d * fps());
@@ -379,7 +380,7 @@ export function createSceneEditor({ src, projectId, frame, panelHost, onOpen, on
           h('div', { class: 'sedit-row' },
             b('−5 frames', 'Move cut 5 frames earlier', () => moveCut(-5)), b('−1', '1 frame earlier', () => moveCut(-1)),
             b('+1', '1 frame later', () => moveCut(1)), b('+5 frames', 'Move cut 5 frames later', () => moveCut(5)),
-            b('▶ Play', 'Play 3 s starting 1.5 s before the cut (with sound)', () => playCut()),
+            b(ic('play', 'Play'), 'Play 3 s starting 1.5 s before the cut (with sound)', () => playCut()),
             fr ? b('↺', 'Restore the cut\'s original position', () => { change(() => E.cutReset(cut.at)); cut.d = 0; cut.film = cut.at; src.currentTime = cut.film + 0.5 / fps(); paint(); }, 'danger') : null),
           ...trPanel());
       }
@@ -388,8 +389,8 @@ export function createSceneEditor({ src, projectId, frame, panelHost, onOpen, on
     panel.append(
       h('div', { class: 'sedit-head' }, h('b', {}, 'Edit scene'), mode === 'cut' ? h('span', { class: 'dim' }, 'whole film') : scopeSel, h('span', { class: 'spacer' }), b('✕', 'Close (Esc)', () => close(), 'ghost')),
       h('div', { class: 'segs sedit-seg' },
-        [['cam', '🎥 Camera', 'Camera angle'], ['obj', '📦 Object', 'Move / rotate / hide an object'], ['ovl', '🔤 Screen', 'Screen text and drawings: move / enlarge / hide'], ['cut', '✂️ Cut', 'Move a scene cut or choose a transition type'], ['snd', '🔊 Sound', 'Music / effects / voice levels per scene']]
-          .filter(([m]) => (m !== 'ovl' || caps().overlays) && (m !== 'snd' || (caps().sound && E.soundSet))).map(([m, l, t]) => b(l, t, () => setMode(m), 'seg' + (mode === m ? ' on' : '')))),
+        [['cam', 'Camera', 'Camera angle', 'video'], ['obj', 'Object', 'Move / rotate / hide an object', 'box'], ['ovl', 'Screen', 'Screen text and drawings: move / enlarge / hide', 'text'], ['cut', 'Cut', 'Move a scene cut or choose a transition type', 'cut'], ['snd', 'Sound', 'Music / effects / voice levels per scene', 'volume']]
+          .filter(([m]) => (m !== 'ovl' || caps().overlays) && (m !== 'snd' || (caps().sound && E.soundSet))).map(([m, l, t, ico]) => b(ic(ico, l), t, () => setMode(m), 'seg' + (mode === m ? ' on' : '')))),
       ...body.filter(Boolean),
       h('div', { class: 'sedit-foot dim' },
         `In this scope: ${here.camera ? 'camera ✓ · ' : ''}${nObj} objects · ${nOv} screen items · ${nAll} scenes adjusted · ${nCut} cuts`,

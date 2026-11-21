@@ -8,6 +8,7 @@
 import { h, api, toast, confirmBox } from '../app.js';
 import { createHistory } from './history.js';
 import { assignLane, clipLen } from './tracks.js';
+import { icon, ic } from '../icons.js';
 
 const AUD = /\.(wav|mp3|m4a|ogg|flac|aac)$/i, BIG = 35 * 1024 * 1024;
 
@@ -38,7 +39,7 @@ export function createSoundEditor({ projectId, timeline, dur, time, seek, fps = 
     if (disabled) { el.append(h('span', { class: 'dim' }, disabled)); return; }
     const head = h('div', { class: 'tl2-lrow' },
       h('span', { class: 'dim' }, 'Added sounds:'), h('b', {}, String(clips.length)),
-      h('button', { class: 'ghost', title: 'Add a sound effect or music at the playhead', onclick: () => openPicker() }, '➕ Add sound'),
+      h('button', { class: 'ghost', title: 'Add a sound effect or music at the playhead', onclick: () => openPicker() }, ic('plus', 'Add sound')),
       pending || saving ? h('span', { class: 'dim' }, 'saving…') : null,
       status?.() || null);
     el.append(head);
@@ -56,7 +57,7 @@ export function createSoundEditor({ projectId, timeline, dur, time, seek, fps = 
       h('b', {}, (c.kind === 'music' ? '♪ ' : '') + c.name),
       h('label', { class: 'se-f' }, 'Start', startIn),
       h('button', { class: 'ghost', title: 'Move to playhead', onclick: () => edit(() => { c.t = +time().toFixed(3); }) }, '⇤ here'),
-      h('button', { class: 'ghost', title: 'Go to the start of the sound', onclick: () => seek(c.t + 0.001) }, '▶ start'),
+      h('button', { class: 'ghost', title: 'Go to the start of the sound', onclick: () => seek(c.t + 0.001) }, ic('play', 'start')),
       h('label', { class: 'se-f' }, 'Level', h('input', { type: 'range', min: 0, max: 200, step: 5, value: Math.round((c.gain ?? 1) * 100),
         oninput: (e) => { if (!sliding) { history.push(); sliding = true; } c.gain = +e.target.value / 100; gainOut.textContent = e.target.value + '%'; }, onchange: () => { sliding = false; changed(); } }), gainOut),
       num('Fade in', 'fin', 0.05, 0, 30, 's', 'Fade-in duration'),
@@ -67,7 +68,7 @@ export function createSoundEditor({ projectId, timeline, dur, time, seek, fps = 
       h('label', { class: 'se-f' }, h('input', { type: 'checkbox', checked: !!c.loop, onchange: (e) => edit(() => { c.loop = e.target.checked; }) }), 'Loop'),
       h('label', { class: 'se-f' }, h('input', { type: 'checkbox', checked: !!c.mute, onchange: (e) => edit(() => { c.mute = e.target.checked; }) }), 'Mute'),
       h('button', { class: 'ghost', title: 'Add a copy at the playhead', onclick: () => duplicateAtPlayhead(c.id) }, '⧉ duplicate'),
-      h('button', { class: 'ghost danger', onclick: async () => { if (!await confirmBox('Remove sound', h('div', {}, `Remove "${c.name}" from the film? (The file stays in the film’s vhaudio folder.)`), 'Remove')) return; remove(c.id); } }, '🗑 remove')));
+      h('button', { class: 'ghost danger', onclick: async () => { if (!await confirmBox('Remove sound', h('div', {}, `Remove "${c.name}" from the film? (The file stays in the film’s vhaudio folder.)`), 'Remove')) return; remove(c.id); } }, ic('trash', 'remove'))));
   }
 
   // ---- P4: sounds dropped on the timeline (library item or files from Explorer) or added from the library list
@@ -174,7 +175,7 @@ export function createSoundEditor({ projectId, timeline, dur, time, seek, fps = 
     function draw() {
       tabs.innerHTML = '';
       for (const [k, t] of [['sfx', `Built-in effects (${lib?.sfx.length ?? 0})`], ['user', `My sounds folder (${lib?.user.length ?? 0})`]]) tabs.append(h('button', { class: tab === k ? 'primary' : '', onclick: () => { tab = k; draw(); } }, t));
-      tabs.append(h('button', { onclick: () => fileIn.click() }, '📁 Upload file…'));
+      tabs.append(h('button', { onclick: () => fileIn.click() }, ic('upload', 'Upload file…')));
       list.innerHTML = '';
       const rows = (lib ? lib[tab] : []).filter((x) => !q || (x.name + ' ' + x.group).toLocaleLowerCase('en-US').includes(q));
       if (!rows.length) list.append(h('div', { class: 'dim' }, tab === 'user' ? `No sounds in folder: ${lib?.libDir || ''}` : 'No effects.'));
@@ -182,7 +183,7 @@ export function createSoundEditor({ projectId, timeline, dur, time, seek, fps = 
       for (const x of rows) {
         if (x.group !== lastGroup && tab === 'user') { list.append(h('div', { class: 'se-group' }, x.group || '/')); lastGroup = x.group; }
         list.append(h('div', { class: 'se-item' },
-          h('button', { class: 'ghost', title: 'Listen', onclick: () => { player.src = '/api/sound-library/play?f=' + encodeURIComponent(x.file); player.play().catch(() => { }); } }, '▶'),
+          h('button', { class: 'ghost', title: 'Listen', onclick: () => { player.src = '/api/sound-library/play?f=' + encodeURIComponent(x.file); player.play().catch(() => { }); } }, icon('play')),
           h('span', { class: 'se-name' }, x.name),
           h('span', { class: 'spacer' }),
           h('button', { class: 'primary', onclick: () => add({ file: x.file }, pickKind || (/music|m\u00fczik|bg|bed/i.test(x.group || '') ? 'music' : null)) }, 'Add')));
@@ -202,7 +203,7 @@ export function createSoundEditor({ projectId, timeline, dur, time, seek, fps = 
       if (f.size > 500 * 1024 * 1024) return toast('File is larger than 500 MB', true);
       close(); dropAdd({ files: [f], t: time(), kind: pickKind });   // > 35 MB goes through audio-upload
     }
-    box.append(h('div', { class: 'row' }, h('h1', {}, '➕ Add sound'), h('span', { class: 'spacer' }), h('button', { class: 'ghost', onclick: close }, '✕')),
+    box.append(h('div', { class: 'row' }, h('h1', {}, 'Add sound'), h('span', { class: 'spacer' }), h('button', { class: 'ghost', title: 'Close', onclick: close }, icon('x'))),
       h('div', { class: 'sub' }, `The sound is added at the playhead (${TC(time())}); you can then drag it in the timeline. The file is copied to the film’s folder.`),
       tabs, search, list, fileIn);
     load();

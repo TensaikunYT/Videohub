@@ -6,6 +6,7 @@
 // only that entry's fields) and the review page's apply queue rebuilds the film's mix (server/sound.js; the untouched
 // mix stays as *.vhorig.wav; 3D studio: the engine's build at once, since the button asked for it).
 import { h, api, toast } from '../app.js';
+import { icon, ic } from '../icons.js';
 
 const KEY = { vo: 'vo', music: 'music', sfx: 'sfx' };   // layer id → tweaks.json sound key
 const pct = (g) => Math.round(g * 100) + '%';
@@ -45,7 +46,7 @@ export function createStems({ media, projectId, dur, range, live, reloadAudio, a
     // the one-click wish: take the film's music out (or put it back), whole film
     if (canApply && apply().some((l) => l.id === 'music')) {
       const off = scope === 'all' && (base.music ?? 1) < 0.004;
-      row.append(h('button', { class: 'ghost', disabled: busy, title: off ? 'Bring back the film music' : 'Remove all film music (voice and effects stay; original audio is backed up)', onclick: () => { scope = 'all'; loadBase(); gain.music = off ? 1 : 0; applyToFilm(); } }, off ? '🎵 Bring back music' : '🔇 Remove music'));
+      row.append(h('button', { class: 'ghost', disabled: busy, title: off ? 'Bring back the film music' : 'Remove all film music (voice and effects stay; original audio is backed up)', onclick: () => { scope = 'all'; loadBase(); gain.music = off ? 1 : 0; applyToFilm(); } }, off ? ic('music', 'Bring back music') : ic('mute', 'Remove music')));
     }
     el.append(row);
     if (!apply().length) return;
@@ -54,7 +55,7 @@ export function createStems({ media, projectId, dur, range, live, reloadAudio, a
       h('select', { title: 'Where to apply these levels', onchange: (e) => { scope = e.target.value; loadBase(); update(); } },
         h('option', { value: 'all', selected: scope === 'all' }, 'Whole film'),
         h('option', { value: 'range', selected: scope === 'range', disabled: !r }, r ? `Selected range (${r[0].toFixed(1)}–${r[1].toFixed(1)} s)` : 'Selected range (select with I / O first)')),
-      canApply ? h('button', { class: dirty() ? 'primary' : 'ghost', disabled: busy || !dirty(), title: 'Apply these levels to the film audio (original audio stays backed up); the next render uses this audio', onclick: () => applyToFilm() }, busy ? 'saving…' : '💾 Apply to film') : h('span', { class: 'dim' }, info ? 'Channel levels in this film can only be previewed.' : ''),
+      canApply ? h('button', { class: dirty() ? 'primary' : 'ghost', disabled: busy || !dirty(), title: 'Apply these levels to the film audio (original audio stays backed up); the next render uses this audio', onclick: () => applyToFilm() }, busy ? 'saving…' : ic('save', 'Apply to film')) : h('span', { class: 'dim' }, info ? 'Channel levels in this film can only be previewed.' : ''),
       dirty() ? h('button', { class: 'ghost', onclick: () => { for (const l of apply()) gain[l.id] = base[l.id] ?? 1; update(); } }, 'Undo') : null,
       (mute.size || solo.size) ? h('button', { class: 'ghost', onclick: () => { mute.clear(); solo.clear(); update(); } }, 'Clear M/S') : null,
       stored.length ? h('span', { class: 'dim' }, `${stored.length} sound settings in the film`) : null,

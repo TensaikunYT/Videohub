@@ -93,6 +93,9 @@ Every video in the project is probed with ffprobe and gets a role:
   registered it;
 - **final** — everything else with sound.
 
+**Throwaway files** (test stills, QA frames, contact sheets, experiments) belong in `qa/` or `tmp/` inside the film,
+not at its root, so tidying finds them (§6).
+
 Files under `chunks/` (`c_NNN.mp4`) are chunks, `chunks_prev*` / `chunks_vN` old chunks, `part*.mp4`, `seg_*`,
 `*_silent.mp4`, `*.tmp.mp4` are parts, images in `snaps/ qa/ frames*/ shots/` are snaps. The project's **latest
 video** is the newest final (then web, then preview) — never a clip, part or silent file.
@@ -110,6 +113,10 @@ with these environment variables: `DUR` (from `project.json` `render.env`, else 
 existing chunks), `WK` (= workers), `ONLY` (partial renders), `PREVIEW=1` (preview mode), `FPS` (if the user picked
 one), `VIDEOHUB_ENCODER` (`auto | nvenc | amf | qsv | x264`: Settings → Render speed, or the render dialog; a script may
 ignore it), `VIDEOHUB_JOB` (the job id) and `VIDEOHUB_DIR` (the VideoHub folder — e.g. to load its `puppeteer-core`).
+With `VIDEOHUB_JOB` set a chunked script should stop once its chunks are made: the queue joins them and lays the sound
+itself, so a script that also writes `render/video.mp4` and its own `film_final.mp4` / `render/<name>.mp4` only puts a
+second copy of the same film on disk (the template's `render.js` stops there; run by hand it still joins and mixes).
+A preview (`PREVIEW=1`) still writes `render/preview/video.mp4`, which the queue reads.
 Any other `render.env` keys are passed too. Progress is read from stdout lines like `12/40 chunks to render` and
 `[w0] chunk 3 ok — 5 done` (also `chunk 3 ok  5/40  85s` and `w1] 120/600`).
 
@@ -193,3 +200,26 @@ sound edits are applied by VideoHub when it builds the mix. Never delete or over
 ### 5.5 Quick checks ("🔍 Scan")
 Pages with `window.qaFrame` get engine-specific frame checks; every live page gets brightness/freeze checks from its
 canvases.
+
+## 6. Finish film (tidying a finished film)
+
+"Finish film…" (Files tab, Film details, Cleanup → Films with leftovers, `hub_finish`) sorts the film folder
+(`server/finish.js`) and moves nothing until the user confirms the list:
+
+- **stays**: code and text, fonts, models, `vendor`/`lib`/`kit`/`engine`/`src*`/`assets`/`clips`/`ref` and other input
+  folders, the voice-over and its timings, the final mix (`audio/mix*.wav`, the `live.audio` / `render.mux` inputs),
+  `.videohub/`, `render/manifest.json`, and one copy of the newest video. Anything the film's code names stays too: a
+  folder or file mentioned on a code line that reads it (not a comment, not a line that writes there; scripts named
+  like `snap`/`check`/`test`/`qa`/`sheet` do not count);
+- **Recycle Bin / Trash**: `render/` leftovers once a finished video exists (chunks, old chunks, `video.mp4`, concat
+  lists, logs), byte-for-byte copies of the newest video (same size and the same bytes at the start, middle and end),
+  silent intermediates, Chrome profiles and caches, check and test folders (`snaps*`, `qa*`, `check*`, `shots`,
+  `lookdev`, `previews`, `draw_*`, `*_snapshot`, `test*`, `tmp*`, `work`, `frames*`, … — only their pictures and
+  clips when they also hold scripts), loose test output at the root that the code does not use (`sheet*`, `contact*`, `snap*`, `shot*`, `test*`, `check*`, `qa*`, `frame*`, numbered frames), logs, `.codex_*` files;
+- **archive**: older versions (the same name without `_vN`, or another render of the same length and size);
+- **optional** (off unless ticked): sound stems (`music`, `sfx`, `bed`, `stem*`, `*_raw`, `.npy`), older mixes,
+  `node_modules` beside a `package.json`, big image sequences the code reads, thumbnail drafts, raw data caches, other loose pictures at the root that the code does not use.
+
+Never touched: anything outside the film folder, symbolic links and junctions (a folder holding one goes file by
+file), scan roots, skills folders, studio engines (`make.mjs` + `scenes/` + `engine/`), a film whose render is
+running or queued. A film without a finished video keeps its render folder.

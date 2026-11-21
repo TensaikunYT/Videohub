@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { agentName, setAgentName } from './agent.js';
-import { sameFolder, setSystemCapabilities } from './system.js';
+import { sameFolder, setSystemCapabilities, trashName } from './system.js';
 
 const source = fs.readFileSync(new URL('./app.js', import.meta.url), 'utf8');
 const settingsCode = source.slice(source.indexOf('async function settingsPage'), source.indexOf('// One picker serves'));
@@ -17,8 +17,8 @@ const walk = node => typeof node === 'object' && node ? [node, ...(node.children
 
 async function settings({ platform = 'linux', roots = ['/home/me/film'], failSave = false } = {}) {
   const calls = [], messages = [], pickers = [];
-  const config = { capabilities: { platform }, agentName: 'Claude', roots: roots.map(path => ({ path, type: 'container', enabled: true })), archiveDir: '/home/me/archive', maxParallelRenders: 1, secondRenderMinFreeMB: 8000, tools: {}, thumbstudio: {} };
-  const ctx = { h: element, sameFolder, setSystemCapabilities, setAgentName, toast: (message, error) => messages.push({ message, error }),
+  const config = { capabilities: { platform }, agentName: 'Claude', roots: roots.map(path => ({ path, type: 'container', enabled: true })), archiveDir: '/home/me/archive', maxParallelRenders: 1, secondRenderMinFreeMB: 8000, tools: {}, thumbstudio: { globalDir: '/home/me/old-thumbnails' } };
+  const ctx = { trashName, h: element, icon: () => element('svg'), ic: (name, text) => text ? [element('svg'), text] : element('svg'), sameFolder, setSystemCapabilities, setAgentName, toast: (message, error) => messages.push({ message, error }),
     api: async (url, options) => {
       if (url === '/api/guard/settings') throw new Error('not needed');
       if (url === '/api/hidden') return [];
@@ -31,7 +31,7 @@ async function settings({ platform = 'linux', roots = ['/home/me/film'], failSav
   vm.createContext(ctx); vm.runInContext(settingsCode, ctx);
   const page = element('div'); await ctx.settingsPage(page);
   const button = text => walk(page).find(n => n.tag === 'button' && n.children.includes(text));
-  return { page, calls, messages, picker: pickers.find(p => p.title === 'Choose a folder to watch' && p.el.children.includes('📂 Choose folder…')),
+  return { page, calls, messages, picker: pickers.find(p => p.title === 'Choose a folder to watch' && p.el.children.includes('Choose folder…')),
     addInput: walk(page).find(n => n.placeholder === 'Absolute path to a folder'),
     agentInput: walk(page).find(n => n.maxlength === '40'), save: () => button('Save').onclick(), add: () => button('Add').onclick() };
 }
@@ -72,4 +72,36 @@ test('successful settings save applies the normalized name returned by the serve
   const s = await settings(); s.agentInput.value = '  OpenCode  ';
   await s.save();
   assert.equal(agentName(), 'OpenCode'); assert.equal(s.agentInput.value, 'OpenCode');
+});
+
+test('"Show agent activity" is on by default and saves at once', async () => {
+  const s = await settings();
+  const box = walk(s.page).find(n => n.tag === 'input' && n.type === 'checkbox' && n.checked !== undefined && walk(s.page).some(l => l.tag === 'label' && l.children.includes(n)));
+  assert.ok(box && box.checked === true);
+  const target = { checked: false }; await box.onchange({ target });
+  assert.deepEqual(s.calls.at(-1), { agentActivity: false });
+  assert.ok(s.messages.some(m => /off/.test(m.message) && !m.error));
+});
+
+test('"Ask about render leftovers" is on by default and, like the stale-chunk days, saves at once', async () => {
+  const s = await settings();
+  const boxes = walk(s.page).filter(n => n.tag === 'input' && n.type === 'checkbox' && walk(s.page).some(l => l.tag === 'label' && l.children.includes(n)));
+  const ask = boxes.find(b => walk(s.page).some(l => l.tag === 'label' && l.children.includes(b) && JSON.stringify(walk(l).map(n => n.children)).includes('Ask about render leftovers')));
+  assert.ok(ask && ask.checked === true);
+  ask.onchange({ target: { checked: false } }); await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(s.calls.at(-1), { autoCleanPrompt: false });
+  const days = walk(s.page).find(n => n.tag === 'input' && n.type === 'number');
+  assert.equal(days.value, '7');
+  days.onchange({ target: { value: '10' } }); await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(s.calls.at(-1), { chunkDays: 10 });
+  const before = s.calls.length; const bad = { value: '0' }; days.onchange({ target: bad }); await new Promise(r => setTimeout(r, 0));
+  assert.equal(s.calls.length, before, 'an invalid number is not saved');
+});
+
+test('Settings has no thumbnail folders and never sends an old thumbstudio key back', async () => {
+  const s = await settings();
+  const text = JSON.stringify(walk(s.page).map(n => n.children.filter(c => typeof c === 'string')));
+  assert.doesNotMatch(text, /thumbnail/i);
+  await s.save();
+  assert.equal('thumbstudio' in s.calls[0], false);
 });

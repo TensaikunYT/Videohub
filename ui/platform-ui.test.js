@@ -6,7 +6,8 @@ import vm from 'node:vm';
 const source = fs.readFileSync(new URL('./app.js', import.meta.url), 'utf8');
 function element(tag, attrs = {}, ...children) {
   return { tag, ...attrs, value: attrs.value || '', children: children.flat(Infinity).filter(c => c != null),
-    append(...next) { this.children.push(...next.flat(Infinity)); }, replaceWith() {} };
+    append(...next) { this.children.push(...next.flat(Infinity)); }, replaceWith() {},
+    get childNodes() { return this.children; }, replaceChildren(...next) { this.children = next.flat(Infinity); } };
 }
 const descendants = node => typeof node === 'object' && node ? [node, ...(node.children || []).flatMap(descendants)] : [];
 const textOf = node => typeof node === 'object' && node ? (node.children || []).map(textOf).join(' ') : String(node ?? '');
@@ -14,7 +15,7 @@ const event = { preventDefault() {}, stopPropagation() {} };
 
 function picker(result, answer = true, entered = '/home/me/films') {
   const picked = [], dialogs = [], errors = [];
-  const ctx = { h: element, api: async () => result, toast: message => errors.push(message),
+  const ctx = { h: element, ic: (name, text) => text ? [element('svg'), text] : element('svg'), api: async () => result, toast: message => errors.push(message),
     confirmBox: async (title, body) => { dialogs.push({ title, body }); descendants(body).find(n => n.tag === 'input').value = entered; return answer; } };
   vm.createContext(ctx);
   vm.runInContext(source.slice(source.indexOf('export function folderButton')).replace('export function', 'function'), ctx);

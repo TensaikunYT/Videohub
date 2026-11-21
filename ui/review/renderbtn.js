@@ -3,20 +3,22 @@ import { agentName } from '../agent.js';
 // The render goes through VideoHub's queue (one at a time, RAM protection). Full film, or, when the project can
 // re-render parts and there are notes Claude fixed, only the parts those notes touch. Progress shows on the button.
 import { h, api, toast, confirmBox, onHubEvent, folderButton } from '../app.js';
+import { ic } from '../icons.js';
 
 const FIXED = ['fixed', 'claude'];
 
 export function createRenderButton(p, { notes }) {
   const id = p.id;
-  const btn = h('button', { class: 'primary rv2-render', title: 'Render the film through the VideoHub queue' }, '🎬 Render');
+  const btn = h('button', { class: 'primary rv2-render', title: 'Render the film through the VideoHub queue' }, ic('renders', 'Render…'));
+  const label = (ico, text) => btn.replaceChildren(...ic(ico, text));
   let job = null;   // this project's queued/running job
   let choosing = false;
   const show = () => {
     if (choosing) { btn.disabled = true; return; }
-    if (!job || ['done', 'failed', 'cancelled'].includes(job.state)) { btn.disabled = false; btn.textContent = '🎬 Render'; return; }
+    if (!job || ['done', 'failed', 'cancelled'].includes(job.state)) { btn.disabled = false; label('renders', 'Render…'); return; }
     btn.disabled = true;
-    btn.textContent = job.state === 'queued' ? `⏳ Render queued${job.waiting ? ' (waiting)' : ''}`
-      : `⏳ Render ${Math.round((job.progress || 0) * 100)}%${job.etaSec ? ` · ${Math.max(1, Math.round(job.etaSec / 60))} min` : ''}`;
+    label('hourglass', job.state === 'queued' ? `Render queued${job.waiting ? ' (waiting)' : ''}`
+      : `Render ${Math.round((job.progress || 0) * 100)}%${job.etaSec ? ` · ${Math.max(1, Math.round(job.etaSec / 60))} min` : ''}`);
     btn.title = job.waiting || 'Rendering';
   };
   // a job of this project already in the queue (started by Claude or another window)
@@ -73,7 +75,7 @@ export function createRenderButton(p, { notes }) {
     let copyTo = ''; try { copyTo = localStorage.getItem('vh-copyto-' + id) || ''; } catch { }
     let lastDir = ''; try { lastDir = localStorage.getItem('vh-copyto-last') || ''; } catch { }
     const copyIn = h('input', { type: 'text', value: copyTo, placeholder: 'not selected (project folder only)', oninput: e => { copyTo = e.target.value.trim(); }, style: { flex: '1', minWidth: '0' } });
-    const pick = folderButton(() => copyTo || lastDir || null, (p) => { copyTo = p; copyIn.value = p; }, 'Which folder should the MP4 be saved to?', '📂 Choose folder…');
+    const pick = folderButton(() => copyTo || lastDir || null, (p) => { copyTo = p; copyIn.value = p; }, 'Which folder should the MP4 be saved to?', 'Choose folder…');
     const outBox = h('div', { class: 'rout' },
       h('div', {}, h('span', { class: 'dim' }, 'Output file: '), fileEl), h('div', {}, h('span', { class: 'dim', style: { fontSize: '12px' } }, 'Folder: '), dirEl),
       h('div', { class: 'row', style: { gap: '6px', marginTop: '6px', alignItems: 'center' } }, h('span', { class: 'dim', style: { fontSize: '12.5px', whiteSpace: 'nowrap' } }, 'Also save the MP4 to:'), copyIn, pick, h('button', { type: 'button', class: 'ghost', title: 'Do not copy', onclick: () => { copyTo = ''; copyIn.value = ''; } }, '✕')));

@@ -205,7 +205,9 @@ test('the real notes composer writes to the switched draft and its shelf exposes
   const context = {
     agentName: () => 'OpenCode',
     h: node, TC: String, document: { body: {}, activeElement: null },
+    icon: name => node('svg', { name }), ic: (name, text) => text ? [node('svg', { name }), text] : node('svg', { name }),
     api: () => { throw new Error('This test must not send a note'); },
+    filmChannel: () => null, onFilmChannel: () => () => { }, refreshChannel: () => { }, sentState: () => null, unsentNotes: () => [], agentWaiting: () => false,
   };
   vm.createContext(context); vm.runInContext(panelSource, context);
   const panel = context.createNotesPanel({

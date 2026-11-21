@@ -1,4 +1,4 @@
-// Stored values (note statuses, note kinds, project statuses, thumbnail statuses …) and their legacy aliases.
+// Stored values (note statuses, note kinds, project statuses …) and their legacy aliases.
 // VideoHub writes the English values. Files written by older (Turkish) versions use the Turkish words; they are mapped
 // to the English ones when a file is read (server/legacy.js) and the hub_* tools accept them as input aliases.
 // A plain module: the UI (labels) and the server (normalising) both import it.
@@ -6,14 +6,11 @@
 export const NOTE_STATUSES = ['open', 'claude', 'fixed', 'approved', 'reopened'];
 export const NOTE_KINDS = ['visual', 'timing', 'sound', 'text', 'general'];
 export const PROJECT_STATUSES = ['in-progress', 'review', 'revision', 'approved', 'published', 'archived', 'done'];
-export const THUMB_STATUSES = ['draft', 'generating', 'chosen', 'final'];
-export const THUMB_NOTE_STATUSES = ['open', 'claude', 'fixed'];
 
 // old Turkish value → English value
 const LEGACY_NOTE_STATUS = { 'açık': 'open', 'düzeltildi': 'fixed', 'onaylandı': 'approved', 'hâlâ var': 'reopened', 'hala var': 'reopened' };
 const LEGACY_NOTE_KIND = { 'görsel': 'visual', zamanlama: 'timing', ses: 'sound', metin: 'text', genel: 'general' };
 const LEGACY_PROJECT_STATUS = { 'yapım': 'in-progress', inceleme: 'review', revizyon: 'revision', 'onaylandı': 'approved', 'yayınlandı': 'published', 'arşiv': 'archived', 'tamamlandı': 'done' };
-const LEGACY_THUMB_STATUS = { taslak: 'draft', 'üretiliyor': 'generating', 'seçildi': 'chosen' };
 const LEGACY_BY = { 'kullanıcı': 'user' };
 
 // the old words, accepted as input aliases (hub_* tools, API bodies)
@@ -29,8 +26,6 @@ const pick = (map, list) => (v) => {
 export const noteStatus = pick(LEGACY_NOTE_STATUS, NOTE_STATUSES);
 export const noteKind = pick(LEGACY_NOTE_KIND, NOTE_KINDS);
 export const projectStatus = pick(LEGACY_PROJECT_STATUS, PROJECT_STATUSES);
-export const thumbStatus = pick(LEGACY_THUMB_STATUS, THUMB_STATUSES);
-export const thumbNoteStatus = pick(LEGACY_NOTE_STATUS, THUMB_NOTE_STATUSES);
 export const byWho = (v) => (typeof v === 'string' && LEGACY_BY[v.toLowerCase()]) || v;
 
 // notes still waiting for Claude / the user
@@ -54,4 +49,3 @@ export function normalizeMeta(m) {
 export const NOTE_STATUS_LABEL = { open: 'open', claude: 'with agent', fixed: 'fixed', approved: 'approved', reopened: 'still there' };
 export const NOTE_KIND_LABEL = { visual: 'visual', timing: 'timing', sound: 'sound', text: 'text', general: 'general' };
 export const PROJECT_STATUS_LABEL = { 'in-progress': 'in progress', review: 'in review', revision: 'revision', approved: 'approved', published: 'published', archived: 'archived', done: 'done' };
-export const THUMB_STATUS_LABEL = { draft: 'Draft', generating: 'Generating', chosen: 'Chosen', final: 'Final' };

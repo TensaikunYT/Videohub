@@ -2,6 +2,7 @@
 // the I/O range, timeline zoom + follow, note / captions / sound / still / fullscreen. What does not fit goes
 // into "⋯" by data-pri (dock.js fitRow). parseTime / fmtTC / createShuttle are pure and tested in node.
 import { fitRow, openPop } from './dock.js';
+import { icon, ic } from '../icons.js';
 
 // "1:23.45" m:ss.cc · "1:23:12" m:ss:ff · "83.4" / "83" s · "k1234" "f1234" "#1234" frame · "+2" "-0.5" relative s ·
 // "+10f" "-3k" relative frames · comma = decimal point. → seconds at the middle of the frame it lands on, or null.
@@ -94,7 +95,7 @@ function el(tag, attrs = {}, ...kids) {
 export function createTransport(ctx) {
   const fps = () => ctx.fps() || 30, V = ctx.view;
   const bt = (label, title, fn, pri, cls = 'tbtn') => el('button', { class: cls, title, 'data-pri': pri, onclick: fn }, label);
-  const playBtn = bt('▶', 'Play / pause (Space)', () => ctx.togglePlay(), 9, 'play');
+  const playBtn = bt(icon('play'), 'Play / pause (Space)', () => ctx.togglePlay(), 9, 'play');
   playBtn.dataset.fitStatic = '';
   // timecode: a button showing where we are; click (or G) turns it into a field that takes any time form
   const tc = el('button', { class: 'tc', title: 'Go to time / frame (G): 1:23.4 · 83.4 · k1234 · +2 · −10f', 'data-pri': 9, 'data-fit-static': '', onclick: () => focusTime() });
@@ -107,31 +108,31 @@ export function createTransport(ctx) {
   const rInfo = el('button', { class: 'rinfo', 'data-pri': 8, title: 'Click to enter frame numbers', onclick: () => editRange() });
   const rA = el('input', { class: 'fin', inputmode: 'numeric', title: 'start frame (or 1:02.5)' }), rB = el('input', { class: 'fin', inputmode: 'numeric', title: 'end frame (or 1:04)' });
   const rEdit = el('span', { class: 'redit', 'data-pri': 8, hidden: true }, 'frame', rA, '→', rB, bt('OK', 'Apply range (Enter)', () => applyRange(), null));
-  const rLoop = bt('⟲', 'Loop the range (\\ · Ctrl+L)', () => ctx.toggleLoop(), 7);
+  const rLoop = bt(icon('loop'), 'Loop the range (\\ · Ctrl+L)', () => ctx.toggleLoop(), 7);
   const rNote = bt('+ Range note', 'Add a note for the selected range (N)', () => ctx.noteForRange(), 6, 'tbtn rnote');
-  const rClear = bt('×', 'Clear the range', () => ctx.clearRange(), 7, 'tbtn ghost');
+  const rClear = bt(icon('x'), 'Clear the range', () => ctx.clearRange(), 7, 'tbtn ghost');
   // the range items are separate row children, so a narrow bar drops the least needed ones first (not the whole group)
   const rangeEls = [rIn, rInfo, rEdit, rOut, rLoop, rNote, rClear];
   // timeline zoom: slider 0–100 → span = dur·(2/dur)^(v/100); − + Fit; 📌 = the view follows the playhead
   const zSlider = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 0, class: 'tl2-zoom', title: 'whole film' });
   const anchor = () => { const [a, b] = V.get(), t = ctx.now(); return t >= a && t <= b ? t : (a + b) / 2; };
-  const zOut = bt('−', 'Timeline: zoom out', () => V.zoomBy(1.6, anchor()), null, 'tbtn ghost');
-  const zIn = bt('+', 'Timeline: zoom in around the playhead', () => V.zoomBy(1 / 1.6, anchor()), null, 'tbtn ghost');
+  const zOut = bt(icon('minus'), 'Timeline: zoom out', () => V.zoomBy(1.6, anchor()), null, 'tbtn ghost');
+  const zIn = bt(icon('plus'), 'Timeline: zoom in around the playhead', () => V.zoomBy(1 / 1.6, anchor()), null, 'tbtn ghost');
   const zFit = bt('All', 'Show the whole film in the timeline (Shift+Z · double-click)', () => V.fit(), null, 'tbtn ghost');
-  const zPin = bt('📌', 'Follow: when zoomed in, advance the view as the playhead reaches the edge', () => V.setFollow(!V.followOn()), null, 'tbtn ghost tp-pin');
+  const zPin = bt(icon('pin'), 'Follow: when zoomed in, advance the view as the playhead reaches the edge', () => V.setFollow(!V.followOn()), null, 'tbtn ghost tp-pin');
   const zoomGroup = el('span', { class: 'tp-zoom', 'data-pri': 4 }, zOut, zSlider, zIn, zFit, zPin);
-  const noteBtn = bt('📝 Add note', 'Add a note at this frame (N)', () => ctx.newNote(), 8, 'tbtn tp-note');
+  const noteBtn = bt(ic('plus', 'Add note'), 'Add a note at this frame (N)', () => ctx.newNote(), 8, 'tbtn tp-note');
   const ccBtn = bt('CC', 'Show narration text below the video (C)', () => ctx.toggleCaptions(), 6);
   ccBtn.hidden = true;
-  const muteBtn = bt('🔊', 'Sound (U)', () => { ctx.setMuted(!ctx.muted()); update(); }, 8, 'tbtn ghost');
+  const muteBtn = bt(icon('volume'), 'Sound (U)', () => { ctx.setMuted(!ctx.muted()); update(); }, 8, 'tbtn ghost');
   const vol = el('input', { type: 'range', min: 0, max: 1, step: 0.05, value: 1, class: 'vol', title: 'Volume', 'data-pri': 2, oninput: () => { ctx.setVolume(+vol.value); update(); } });
-  const more = el('button', { class: 'tbtn ghost rv2-more', title: 'More controls', hidden: true }, '⋯');
+  const more = el('button', { class: 'tbtn ghost rv2-more', title: 'More controls', hidden: true }, icon('more'));
   const row = el('div', { class: 'rv2-transport' },
-    bt('⏮', 'Go to start (Home)', () => ctx.seek(0), 5), bt('−5s', 'Back 5 s (Shift+←)', () => ctx.seek(ctx.now() - 5), 3),
-    bt('◀︎|', 'Back 1 frame (←) · hold: rewind (J)', () => ctx.step(-1), 9), playBtn, bt('|▶︎', 'Forward 1 frame (→) · fast forward: L', () => ctx.step(1), 9),
-    bt('+5s', 'Forward 5 s (Shift+→)', () => ctx.seek(ctx.now() + 5), 3), bt('⏭', 'Go to end (End)', () => ctx.seek(ctx.dur() - 1 / fps()), 5),
+    bt(icon('skipb'), 'Go to start (Home)', () => ctx.seek(0), 5), bt('−5s', 'Back 5 s (Shift+←)', () => ctx.seek(ctx.now() - 5), 3),
+    bt(icon('frameb'), 'Back 1 frame (←) · hold: rewind (J)', () => ctx.step(-1), 9), playBtn, bt(icon('framef'), 'Forward 1 frame (→) · fast forward: L', () => ctx.step(1), 9),
+    bt('+5s', 'Forward 5 s (Shift+→)', () => ctx.seek(ctx.now() + 5), 3), bt(icon('skipf'), 'Go to end (End)', () => ctx.seek(ctx.dur() - 1 / fps()), 5),
     tc, tcIn, speedSel, badge, ...rangeEls, el('span', { class: 'spacer' }), zoomGroup, noteBtn, ccBtn, muteBtn, vol,
-    bt('📷', 'Save frame as an image', () => ctx.saveFrame(), 3), bt('⛶', 'Fullscreen (F)', () => ctx.fullscreen(), 7), more);
+    bt(icon('camera'), 'Save frame as an image', () => ctx.saveFrame(), 3), bt(icon('fullscreen'), 'Fullscreen (F)', () => ctx.fullscreen(), 7), more);
 
   // ---- timecode field
   let tcText = '', tcKey = '';
@@ -202,15 +203,16 @@ export function createTransport(ctx) {
 
   // ---- per-frame update: text + button states only (cheap; nothing is measured)
   // nothing in ctx is called while building (the page defines some of it later); the first update syncs the rest
-  let synced = false;
+  let synced = false, playIcon = 'play', muteIcon = 'volume';
   function update(t = ctx.now()) {
     if (!synced) { synced = true; syncZoom(); updRange(); }
     tcWidth();
     const f = Math.floor(t * fps() + 1e-4), cs = ctx.chunkSec?.();
     const txt = `${fmtTC(t)} · frame ${f}${cs ? ' · chunk ' + Math.floor(t / cs) : ''}`;
     if (txt !== tcText) { tcText = txt; tc.textContent = txt; }
-    const p = ctx.paused() ? '▶' : '⏸'; if (playBtn.textContent !== p) playBtn.textContent = p;
-    const m = ctx.muted() || ctx.volume() === 0 ? '🔇' : '🔊'; if (muteBtn.textContent !== m) muteBtn.textContent = m;
+    // icons swap only when the state changes (this runs every frame: no layout reads, no needless DOM writes)
+    const p = ctx.paused() ? 'play' : 'pause'; if (playIcon !== p) { playIcon = p; playBtn.replaceChildren(icon(p)); }
+    const m = ctx.muted() || ctx.volume() === 0 ? 'mute' : 'volume'; if (muteIcon !== m) { muteIcon = m; muteBtn.replaceChildren(icon(m)); }
     if (document.activeElement !== vol && Math.abs(+vol.value - ctx.volume()) > 0.001) vol.value = ctx.volume();
     setHidden(ccBtn, !ctx.captionsAvailable()); ccBtn.classList.toggle('on', !!ctx.captionsOn?.());
   }

@@ -1,6 +1,7 @@
 // The editor's right-hand panel: tabs (Notes / Sounds / Clip, plus one per open editor) over one pane each,
 // and a footer that stays visible on every tab ("Send to Claude"). Only the current pane is shown.
 import { ls } from './dock.js';
+import { icon as svgIcon } from '../icons.js';
 
 const mk = (tag, cls, attrs = {}) => { const e = document.createElement(tag); if (cls) e.className = cls; for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
 
@@ -37,11 +38,11 @@ export function createSidePanel({ tabs = [], foot = null, key = 'vh-side-tab' })
   // the strip's width changes with the side splitter
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => reveal()) : null;
   ro?.observe(nav);
-  function add({ id, label, el: content }, { select = false } = {}) {
+  function add({ id, label, icon, el: content }, { select = false } = {}) {
     if (T.has(id)) { if (select) show(id); return; }
     const lab = mk('span', 'rv2-tlab'); lab.textContent = label;
     const badge = mk('span', 'rv2-badge'); badge.hidden = true;
-    const btn = mk('button', keep.has(id) ? 'rv2-tab' : 'rv2-tab rv2-tab-x', { 'data-id': id, role: 'tab', 'aria-selected': 'false', type: 'button', title: label }); btn.append(lab, badge);
+    const btn = mk('button', keep.has(id) ? 'rv2-tab' : 'rv2-tab rv2-tab-x', { 'data-id': id, role: 'tab', 'aria-selected': 'false', type: 'button', title: label }); if (icon) btn.append(svgIcon(icon)); btn.append(lab, badge);
     btn.addEventListener('click', () => show(id));
     const pane = mk('section', 'rv2-pane', { 'data-id': id, role: 'tabpanel' }); if (content) pane.append(content);
     nav.append(btn); body.append(pane); T.set(id, { btn, pane, badge });
