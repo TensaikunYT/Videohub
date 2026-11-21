@@ -8,8 +8,9 @@
 // What VideoHub reads from this file (docs/PROJECT-CONTRACT.md): FPS, CH (frames per chunk) and the word "chunks" make
 // it a chunked ("family A") script; process.env.ONLY means it can re-render single chunks; VW/VH give the size;
 // PAGE is the page it opens. VideoHub runs it as `node render.js <workers>` in this folder with DUR, WK, ONLY, PREVIEW,
-// FPS and VIDEOHUB_ENCODER in the environment, then joins the chunks and adds the sound itself (audio/mix.wav, or
-// .videohub/project.json render.mux). Keep those names if you adapt this script.
+// FPS, VIDEOHUB_ENCODER and VIDEOHUB_JOB in the environment, then joins the chunks and adds the sound itself (audio/mix.wav,
+// or .videohub/project.json render.mux): with VIDEOHUB_JOB set this script stops after the chunks. Keep those names if you
+// adapt this script.
 //
 // Speed (docs/RENDER-SPEED.md in the VideoHub folder):
 // - Frames: when the page has one canvas of exactly VW x VH that holds the whole picture (this template does), its
@@ -57,6 +58,10 @@ const FPS = +(process.env.FPS || 30), DUR = +(process.env.DUR || 10), CH = 60, V
 const PAGE = process.env.PAGE || 'index.html';
 const fps = PREVIEW ? Math.min(FPS, 30) : FPS, scale = PREVIEW ? 0.5 : 1, TOTAL = Math.round(DUR * fps);
 const OUT = PREVIEW ? path.resolve('render/preview') : path.resolve('render/chunks');
+// what happens once the chunks are made: a preview is renamed, a partial render stops, a render run by VideoHub's queue
+// (VIDEOHUB_JOB) stops too (the queue joins the chunks and lays the sound itself: doing it here as well only wrote the
+// same film a second time), and a render run by hand joins the chunks and adds audio/mix.wav
+const afterChunks = env => env.PREVIEW === '1' ? 'preview' : env.ONLY ? 'partial' : env.VIDEOHUB_JOB ? 'queue' : 'join';
 
 // ---------- encoders (the same table as VideoHub's server/encoders.js; quality checked against a lossless reference)
 const ENCODER_ARGS = {
@@ -320,12 +325,14 @@ async function shotChunk(w, a, b, tmp, hold) {
   const sec = (Date.now() - T0) / 1000;
   console.log(`rendered ${frames} frames in ${sec.toFixed(1)}s (${(frames / sec).toFixed(1)} fps, encoder ${ENC.name})`);
 
-  if (PREVIEW) { fs.renameSync(cf(0), path.join(OUT, 'video.mp4')); console.log('preview done: render/preview/video.mp4'); return; }
-  if (only) { console.log('partial done'); return; }
-  // joined picture (VideoHub joins the chunks again itself; this is for running the script by hand)
+  const next = afterChunks(process.env);
+  if (next === 'preview') { fs.renameSync(cf(0), path.join(OUT, 'video.mp4')); console.log('preview done: render/preview/video.mp4'); return; }
+  if (next === 'partial') { console.log('partial done'); return; }
+  if (next === 'queue') { console.log('chunks done: VideoHub joins them and adds the sound'); return; }
+  // run by hand: the joined picture, and the film with its sound
   fs.writeFileSync('render/list.txt', Array.from({ length: nCh }, (_, c) => `file '${cf(c).split(path.sep).join('/')}'`).join('\n'));
   execFileSync(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'render/list.txt', '-c', 'copy', 'render/video.mp4']);
-  if (!process.env.VIDEOHUB_JOB && fs.existsSync('audio/mix.wav')) {
+  if (fs.existsSync('audio/mix.wav')) {
     const name = path.basename(process.cwd());
     execFileSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', 'render/video.mp4', '-i', 'audio/mix.wav', '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', `render/${name}.mp4`]);
     console.log(`done: render/${name}.mp4`);
