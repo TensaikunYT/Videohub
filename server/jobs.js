@@ -96,7 +96,9 @@ export async function create(body) {
   if (mode !== 'command' && !p.studio && !rc.script && !rc.media) {
     throw Object.assign(new Error('This project has no render script (render.js) and no finished video VideoHub can re-encode. Add the film code, or use mode:"command" with your own command.'), { code: 400 });
   }
-  if (rc.media && mode !== 'full') throw Object.assign(new Error('This project has no film code; only a full render (re-encoding its current video) is possible.'), { code: 400 });
+  // [VH FIX] a media project may use a source-preserving command render (mode "command"), not only the
+  // built-in re-encode. Without this, hub_render(command) is rejected before the approval gate can run.
+  if (rc.media && !['full', 'command'].includes(mode)) throw Object.assign(new Error('This project has no film code; only a full re-encode or a custom command render is possible.'), { code: 400 });
   const workers = +(body.workers ?? rc.workers ?? 1);
   if (!Number.isInteger(workers) || workers < 1 || workers > (p.studio ? 4 : 8)) throw Object.assign(new Error('Invalid number of render workers.'), { code: 400 });
   const job = { id: 'j' + Date.now().toString(36) + '-' + randomUUID().slice(0, 8), project: p.id, projectName: p.title || p.name, path: p.path, mode, state: 'queued', createdAt: now(), session: body.session || null, notes: body.notes || [], env: { ...rc.env, ...(body.env || {}) }, workers, progress: 0 };
