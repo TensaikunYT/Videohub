@@ -4,6 +4,8 @@ import { h, api, toast, confirmBox, pill, TC, AGO } from '../app.js';
 import { icon, ic } from '../icons.js';
 import { filmChannel, onFilmChannel, refreshChannel } from '../shell.js';
 import { sentState, unsentNotes, agentWaiting } from '../channel-view.js';
+import { sendAgentNotes, providerNow } from '../agent-panel.js';
+// [REASONIX PATCH] providerNow({api}) decides whether the notes go to the upstream inbox (claude) or to Reasonix/DeepSeek.
 
 // Element.append prints null/false as text; this skips them like h() does.
 const put = (el, ...kids) => { for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c); return el; };
@@ -216,6 +218,8 @@ export function createNotesPanel(ctx) {
   // otherwise its next hub_wait / hub_notes picks them up
   async function send() {
     if (sendBtn.disabled) return;
+    // [REASONIX PATCH] a selected Reasonix/DeepSeek provider handles the send itself; claude keeps the upstream inbox flow
+    if (await providerNow({ api }) !== 'claude') { await sendAgentNotes(ctx.projectId, { h, api, toast, confirmBox }); return; }
     sendBtn.disabled = true;
     try {
       const r = await api(`/api/project/${ctx.projectId}/notes/send`, { method: 'POST', body: {} });

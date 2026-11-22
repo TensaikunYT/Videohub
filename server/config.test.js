@@ -67,3 +67,22 @@ test('an old thumbstudio key (Thumbnail Studio was removed) is kept on disk and 
     const s = c.saveConfig({ port: 7799, thumbstudio: { globalDir: 3 } }); assert.equal(s.port, 7799); assert.equal(s.roots.length, 1);
   }
 });
+
+// [REASONIX PATCH] agent provider settings
+test('agent provider settings are normalized and a blank or masked key never wipes the saved one', () => {
+  const c = load();
+  let r = c.saveConfig({ agent: { provider: 'reasonix', reasonixPath: '  C:\\Tools\\reasonix.exe  ', reasonixMaxSteps: 9999 } });
+  assert.equal(r.agent.provider, 'reasonix');
+  assert.equal(r.agent.reasonixPath, 'C:\\Tools\\reasonix.exe');
+  assert.equal(r.agent.reasonixMaxSteps, 500);
+  r = c.saveConfig({ agent: { provider: 'nope', deepseekApiKey: 'sk-test', deepseekBaseUrl: 'https://api.deepseek.com/' } });
+  assert.equal(r.agent.provider, 'claude');
+  assert.equal(r.agent.deepseekApiKey, 'sk-test');
+  assert.equal(r.agent.deepseekBaseUrl, 'https://api.deepseek.com');
+  r = c.saveConfig({ agent: { provider: 'deepseek', deepseekApiKey: '' } });
+  assert.equal(r.agent.deepseekApiKey, 'sk-test');            // blank = keep
+  r = c.saveConfig({ agent: { deepseekApiKey: '********' } });
+  assert.equal(r.agent.deepseekApiKey, 'sk-test');            // the mask = keep
+  r = c.saveConfig({ agent: { deepseekApiKey: 'sk-new' } });
+  assert.equal(r.agent.deepseekApiKey, 'sk-new');
+});

@@ -1,5 +1,6 @@
 import { trashName, setSystemCapabilities, sameFolder } from './system.js';
 import { agentName, setAgentName } from './agent.js';
+import { agentSettings } from './agent-panel.js';   // [REASONIX PATCH] Reasonix / DeepSeek providers
 // VideoHub UI: hash router + pages. No build step.
 import { reviewPage } from './review.js';
 import { outputsPanel, outputActions } from './outputs-panel.js';
@@ -807,6 +808,9 @@ async function settingsPage(page) {
       h('td', { class: 'num' }, h('button', { onclick: async () => { await api('/api/hidden/restore', { method: 'POST', body: { key: x.key } }); toast(`"${x.name}" restored to the list`); render(); } }, 'Restore')))))));
   const agentIn = h('input', { value: c.agentName || 'Claude', maxlength: '40' });
   page.append(h('h2', {}, 'Agent name'), h('p', { class: 'sub' }, 'The name shown on review buttons.'), agentIn);
+  // [REASONIX PATCH] the provider picker; rendered only when the server returned an agent block (older test contexts skip it)
+  const agentBox = (typeof agentSettings === 'function' && c.agent) ? agentSettings(c, { h, api, toast, confirmBox }) : null;
+  if (agentBox) page.append(agentBox.el);
   // ---- the Now page's source; saved at once
   const actBox = h('input', { type: 'checkbox', checked: c.agentActivity !== false, onchange: async e => {
     const on = e.target.checked;
@@ -874,9 +878,15 @@ async function settingsPage(page) {
     h('div', { class: 'row', style: { marginTop: '20px' } }, h('button', { class: 'primary', onclick: async () => {
       const v = (i) => i.inp.value.trim() || null;
       try {
-        const saved = await api('/api/config', { method: 'POST', body: { agentName: agentIn.value, roots, archiveDir: arch.value.trim(), maxParallelRenders: +par.value,
+        const agent = agentBox ? agentBox.values() : null;
+        // [REASONIX PATCH] if the name is still one of the automatic ones, follow the selected provider
+        const automatic = ['', 'Claude', 'Reasonix', 'DeepSeek', 'OpenCode'].includes(agentIn.value.trim());
+        const name = automatic && agent ? agentBox.label() : agentIn.value;
+        const saved = await api('/api/config', { method: 'POST', body: { agentName: name, roots, archiveDir: arch.value.trim(), maxParallelRenders: +par.value,
+          ...(agent ? { agent } : {}),
           outputsDir: v(dOut), soundLibDir: v(dSnd), studioDir: v(dStu), skipFolders: skipIn.value.split(',').map(s => s.trim()).filter(Boolean) } });
         agentIn.value = setAgentName(saved.agentName); toast('Saved, rescanning…');
+        agentBox?.refreshRuns();
       } catch (err) { toast('Could not save: ' + err.message, true); }
     } }, 'Save')),
   );

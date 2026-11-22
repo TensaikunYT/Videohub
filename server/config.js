@@ -26,6 +26,20 @@ export const defaultFilmsDir = () => path.join(baseDir(), 'films');
 // Overridable with config.skipFolders.
 export const DEFAULT_SKIP_FOLDERS = ['tools', 'fonts', 'test', 'render', 'videos', 'thumbnails', 'assets'];
 
+// [REASONIX PATCH] Agent provider settings: Claude Code (the original MCP/clipboard flow), the Reasonix CLI that
+// applies edits itself, or a direct DeepSeek API chat. Kept in data/config.json like every other local setting.
+export const AGENT_PROVIDERS = ['claude', 'reasonix', 'deepseek'];
+export const AGENT_KEY_MASK = '********';
+export const DEFAULT_AGENT = () => ({
+  provider: 'claude',
+  reasonixPath: '',
+  reasonixModel: '',
+  reasonixMaxSteps: 80,
+  deepseekApiKey: '',
+  deepseekBaseUrl: 'https://api.deepseek.com',
+  deepseekModel: 'deepseek-chat',
+});
+
 function hasRenderCode(dir) {
   try { return fs.readdirSync(dir).some(f => /^(render\.(m?js|py)|anim_render\.\w+|manifest\.json|index\.html|.*\.snipp)$/i.test(f)); } catch { return false; }
 }
@@ -80,6 +94,7 @@ export const DEFAULTS = (base = baseDir()) => ({
   autoCleanPrompt: true,
   autoCleanMinMB: 500,
   chunkDays: 7,
+  agent: DEFAULT_AGENT(),   // [REASONIX PATCH] see AGENT_PROVIDERS above
 });
 function firstRoots() {
   const films = defaultFilmsDir();
@@ -114,6 +129,18 @@ function normalise(c, port) {
   c.autoCleanPrompt = c.autoCleanPrompt !== false;
   c.chunkDays = Number.isFinite(+c.chunkDays) && +c.chunkDays >= 1 ? Math.min(365, Math.round(+c.chunkDays)) : 7;
   c.autoCleanMinMB = Number.isFinite(+c.autoCleanMinMB) && +c.autoCleanMinMB >= 0 ? Math.min(1e6, Math.round(+c.autoCleanMinMB)) : 500;
+  // [REASONIX PATCH] agent provider settings (see DEFAULT_AGENT)
+  const a = c.agent && typeof c.agent === 'object' && !Array.isArray(c.agent) ? c.agent : {};
+  const da = DEFAULT_AGENT();
+  c.agent = { ...da, ...a };
+  c.agent.provider = AGENT_PROVIDERS.includes(c.agent.provider) ? c.agent.provider : 'claude';
+  for (const k of ['reasonixPath', 'reasonixModel', 'deepseekApiKey', 'deepseekBaseUrl', 'deepseekModel']) {
+    c.agent[k] = typeof c.agent[k] === 'string' ? c.agent[k].trim() : da[k];
+  }
+  c.agent.reasonixMaxSteps = Math.max(1, Math.min(500, parseInt(c.agent.reasonixMaxSteps, 10) || da.reasonixMaxSteps));
+  if (!/^https?:\/\//i.test(c.agent.deepseekBaseUrl)) c.agent.deepseekBaseUrl = da.deepseekBaseUrl;
+  c.agent.deepseekBaseUrl = c.agent.deepseekBaseUrl.replace(/\/+$/, '');
+  if (!c.agent.deepseekModel) c.agent.deepseekModel = da.deepseekModel;
   return c;
 }
 export function saveConfig(patch) {
@@ -121,5 +148,11 @@ export function saveConfig(patch) {
   if ('roots' in patch && !Array.isArray(patch.roots)) { const { roots, ...rest } = patch; patch = rest; }   // not a list: keep the folders there are
   if ('baseDir' in patch) { const { baseDir: b, ...rest } = patch; patch = rest; }   // the workspace is chosen in setup only (it never moves folders)
   if (patch.render && typeof patch.render === 'object') patch = { ...patch, render: { ...prev.render, ...patch.render } };
+  // [REASONIX PATCH] merge agent settings; an empty key or the mask means "keep the key that is already saved"
+  if (patch.agent && typeof patch.agent === 'object' && !Array.isArray(patch.agent)) {
+    const { deepseekApiKey, ...rest } = patch.agent;
+    const keepKey = deepseekApiKey === undefined || deepseekApiKey === null || deepseekApiKey === '' || deepseekApiKey === AGENT_KEY_MASK;
+    patch = { ...patch, agent: { ...prev.agent, ...rest, ...(keepKey ? {} : { deepseekApiKey }) } };
+  }
   cfg = normalise({ ...prev, ...patch }, prev.port); writeJson(FILE, cfg); return cfg;
 }

@@ -37,6 +37,7 @@ import { listFilmFiles, changedRule, resolveInFilm } from './film-files.js';
 import { createSkills, SKILL_AGENTS, bareName, skillRoots } from './skills.js';
 import { createSkillUsage } from './skill-usage.js';
 import { nowRenders } from '../ui/render-status.js';
+import * as agentApi from './agent.js';   // [REASONIX PATCH] Reasonix CLI / DeepSeek providers
 
 const UI = path.join(HUB_DIR, 'ui');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.json': 'application/json', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.aac': 'audio/aac', '.flac': 'audio/flac' };
@@ -480,11 +481,13 @@ route('GET', '/api/activity', async () => {
   if (Date.now() - activityAt > 3000) await Promise.race([refreshActivity(), new Promise(r => setTimeout(r, 1500))]).catch(() => { });
   return { ...activityPayload(), reader: activity.stats() };
 });
-route('GET', '/api/config', () => ({ ...config(), workspace: baseDir(), capabilities: capabilities(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations() }));
+route('GET', '/api/config', () => ({ ...config(), agent: agentApi.publicAgent(), workspace: baseDir(), capabilities: capabilities(), discovered: discoverRoots(), tools: TOOLS, example: example.info(), integrations: integrations() }));
 example.routes(route, readBody, () => scan());
 route('POST', '/api/config', async (req) => { const body = await readBody(req); const c = saveConfig(body); scan().catch(() => { }); if ('agentActivity' in body) refreshActivity().catch(() => { });
   if (['autoCleanPrompt', 'chunkDays', 'autoCleanMinMB'].some(k => k in body)) scanSettled().then(() => new Promise(r => setTimeout(r, 1500))).then(() => lookForLeftovers('settings'));   // the banner follows the switch
-  return c; });
+  return { ...c, agent: agentApi.publicAgent(c.agent) }; });
+agentApi.routes(route, readBody);
+agentApi.onAgent(ev => broadcast('agent', ev));
 // render encoders this PC can use (one tiny test encode each, cached in data/encoders.json; ?refresh=1 probes again)
 route('GET', '/api/encoders', async (req, url) => ({ ...(await detectEncoders({ ffmpeg: TOOLS.ffmpeg, cacheFile: path.join(DATA_DIR, 'encoders.json'), refresh: url.searchParams.get('refresh') === '1' })), chosen: config().render?.encoder || 'auto', labels: ENC_LABELS }));
 notesApi.routes(route, readBody);
