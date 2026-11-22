@@ -1,0 +1,7 @@
+# Runtime data and local-only files (never commit)
+data/
+node_modules/
+.test-tmp/
+
+# Logs and crash dumps
+*.log

@@ -36,6 +36,14 @@ unless the user asks for one (then use `hub_plan`, section 1).
 `node "{{VIDEOHUB_DIR}}/server/cli.js" hub_live "{\"project\":\"/home/me/film\"}"`. The tools start the hub
 themselves when it is not running.
 
+### Which agent receives the notes
+VideoHub's Settings → Agent provider can be `claude` (the default inbox + MCP flow), `reasonix` or `deepseek`.
+If the user runs you as the Reasonix CLI, the Send button starts a `reasonix run` in the film folder and the notes
+arrive in that run's prompt; still use `hub_notes` / `hub_note_update` when the MCP tools are available so the
+statuses in the review panel stay correct. A DeepSeek provider is a chat-only mode: it cannot edit files, so do not
+claim it did. A project with no film code (only an MP4) cannot be re-drawn by code; VideoHub can only re-encode it,
+and the review dialog says so. Details: `{{VIDEOHUB_DIR}}/docs/AGENT-PROVIDERS.md`.
+
 ## 1. The user asks for a video → build it (a plan only on request)
 
 Start building (section 2); do not stop to have a plan approved. Only when the user asks to see or approve the plan

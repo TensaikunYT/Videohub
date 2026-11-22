@@ -15,6 +15,15 @@ Ask Claude Code, Codex or OpenCode for a video. The agent builds the film as a w
 5. **The agent waits for you.** Instead of ending its turn, the agent calls `hub_wait`, which returns the moment you send notes, answer a question or approve something. It fixes the code, marks the notes fixed and waits again; the preview updates in place.
 6. **Render** only when you ask: one render at a time, with CPU/RAM protection. Later renders redo only the chunks your notes touched.
 
+### Other agent providers
+Settings → Agent provider can send the same notes to the **Reasonix CLI** (it edits the film in place) or to a
+**DeepSeek API key** (it answers in the app) instead of the default Claude Code / Codex / OpenCode inbox. The default
+flow is unchanged. See [agent providers](docs/AGENT-PROVIDERS.md).
+
+A folder with only an MP4 and no film code can still be rendered: **Re-encode the current film** copies the picture
+and lays the film's sound (including timeline edits) into a new version. A render script that is not there is now
+reported instead of being run.
+
 If no agent is waiting, **Send to agent** keeps your notes for its next `hub_wait`, and **Copy as message** still gives you a short text to paste into its chat.
 
 ## One window
@@ -54,6 +63,11 @@ Built into the Node server, with no compiled helper:
 
 ### Agent tools (MCP)
 `hub_plan`, `hub_ask`, `hub_wait`, `hub_live`, `hub_notes`, `hub_note_update`, `hub_render`, `hub_job`, `hub_project`, `hub_workspace`, `hub_register_version`, `hub_cleanup`, `hub_finish`. The same tools work from a shell: `node <VideoHub>/server/cli.js <tool> "<json>"`. How long `hub_wait` may block in each agent is measured in [docs/AGENT-WAIT.md](docs/AGENT-WAIT.md).
+
+## More screenshots
+![The Films page](docs/screenshots/projects.png)
+![The Renders page](docs/screenshots/renders.png)
+![The live preview](docs/screenshots/review-live-preview.png)
 
 ## Requirements
 All platforms need Node.js 22+, ffmpeg on PATH, a native Chrome/Chromium/Edge browser for headless rendering, and Claude Code, Codex or OpenCode for making and fixing films. No native modules or compiled render-protection helper are required.
@@ -105,6 +119,13 @@ npm start
 
 `npm install` there downloads Electron (about 100 MB, on the first `npm start` if not before); nothing else in VideoHub downloads or needs it. No packaged installer is shipped: an unsigned packaged app would trigger Windows SmartScreen (and macOS Gatekeeper) warnings, so the shell runs from source with the Electron package from npm.
 
+### Other agents: Reasonix CLI and DeepSeek API
+You do not need Claude Code or OpenCode. **Settings → Agent provider** can use the **Reasonix CLI** (`reasonix`, also
+called `r`): Send to agent starts it in the project folder with the notes, and it edits the film's files. It can also
+use a **DeepSeek API key**, imported from Reasonix's own `.env` or pasted once; that mode answers in a dialog and does
+not edit files. The original clipboard/MCP flow stays the default. Full details:
+[docs/AGENT-PROVIDERS.md](docs/AGENT-PROVIDERS.md).
+
 ## Your first film
 1. If setup added the example film, its card is on the Films page. Otherwise the page shows **Welcome to
    VideoHub** with your workspace and films folder (`<workspace>/films`): click **Add the example film**.
@@ -124,6 +145,10 @@ from [templates/new-film](templates/new-film).
 5. **Render** — when you ask, the agent calls `hub_render`, or you press Render. Later fixes can render only the changed chunks.
 
 Older agent sessions that do not know `hub_wait` still work: press **Copy as message** and paste it into the chat; the agent reads the notes with `hub_notes`. If MCP tools are not loaded, the same tools work through `node <VideoHub>/server/cli.js <tool> "<json>"`.
+
+If Settings → Agent provider is set to **Reasonix**, the Send button starts that CLI for you (no paste step). If it is
+set to **DeepSeek**, the answer appears in the app and you copy it into your editor. See
+[docs/AGENT-PROVIDERS.md](docs/AGENT-PROVIDERS.md).
 
 ## Optional integrations
 | Feature | Needs | Without it |
