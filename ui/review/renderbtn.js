@@ -34,10 +34,10 @@ export function createRenderButton(p, { notes }) {
   async function chooseRender() {
     const rc = await api(`/api/project/${id}/recipe`).catch(() => ({}));
     const ro = await api(`/api/project/${id}/render-options`).catch(() => ({}));
-    const canFull = !!(p.studio || ro.script || rc.script);
+    const canFull = !!(p.studio || ro.script || rc.script || ro.media);
     if (!canFull) { toast(`This project has no render script (render.js) that VideoHub can run. Ask ${agentName()} to render it.`, true); return; }
     const fixed = notes().filter(n => FIXED.includes(n.status)).map(n => n.id);
-    const canPart = !!rc.chunkSec && fixed.length > 0 && (p.studio || p.family === 'A');
+    const canPart = !ro.media && !!rc.chunkSec && fixed.length > 0 && (p.studio || p.family === 'A');
     // settings: only what this project's render understands, defaults from its recipe
     const set = { workers: ro.workers?.default || 2, fps: ro.fps?.default || null, codec: ro.codecDefault || 'auto' };
     const sel = (label, help, values, cur, onch, fmt = v => v) => h('label', { class: 'rset', title: help }, h('span', { class: 'dim' }, label),
@@ -81,11 +81,12 @@ export function createRenderButton(p, { notes }) {
       h('div', { class: 'row', style: { gap: '6px', marginTop: '6px', alignItems: 'center' } }, h('span', { class: 'dim', style: { fontSize: '12.5px', whiteSpace: 'nowrap' } }, 'Also save the MP4 to:'), copyIn, pick, h('button', { type: 'button', class: 'ghost', title: 'Do not copy', onclick: () => { copyTo = ''; copyIn.value = ''; } }, '✕')));
     updInfo();
     const ok = await confirmBox('Render', h('div', { class: 'rdialog' },
+      ro.media ? h('p', { class: 'dim', style: { fontSize: '12.5px' } }, 'This project has no film code (render.js). VideoHub re-encodes its current video and lays its sound (including timeline edits) under it. Changes described in notes still have to be made by the agent.') : null,
       canPart ? opt('partial', `Only the fixed parts (${fixed.length} note${fixed.length === 1 ? '' : 's'})`, 'Re-render the 2-second chunks touched by notes, then join the film. Review just the changes in the new version.') : null,
-      opt('full', 'Full film', `Render the whole film again${mins ? ` (${mins} min film)` : ''}.`),
+      opt('full', ro.media ? 'Re-encode the current film' : 'Full film', ro.media ? 'No new picture is drawn: the current final is copied and the sound is muxed again into a new version.' : `Render the whole film again${mins ? ` (${mins} min film)` : ''}.`),
       ro.preview ? opt('preview', 'Quick preview', 'Half resolution, 30 fps: a faster render for checking the film before the final version.') : null,
       h('div', { class: 'rsec' }, 'Output'), infoEl,
-      h('div', { class: 'rsec' }, 'Settings'), settings,
+      ro.media ? null : h('div', { class: 'rsec' }, 'Settings'), ro.media ? null : settings,
       h('div', { class: 'rsec' }, 'Save to'), outBox,
       h('p', { class: 'dim', style: { fontSize: '12.5px' } }, 'Added to the VideoHub queue (one render at a time, with RAM protection). Progress appears on this button.')), 'Render');
     if (!ok) return;

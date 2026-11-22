@@ -51,14 +51,26 @@ export async function recipe(p) {
   // (measured on a 7-minute 2D film: 30.5 -> 36.3 fps; 4 copies 37.7). 3D scenes stay at 2.
   const is2d = () => { try { return /film2d/.test(fs.readFileSync(path.join(p.path, 'scene.js'), 'utf8')); } catch { return false; } };
   const r = { workers: p.studio ? (is2d() ? 3 : 2) : 1, env: {}, ...(meta.render || {}) };
-  r.script = r.script || p.render?.script || 'render.js';
+  // [REASONIX PATCH] A project without film code must not inherit the old "render.js" default: the queue would run a
+  // file that does not exist (the "$500 Missed ADS Calls" project failed with MODULE_NOT_FOUND). The scan writes
+  // render.script = null for such a folder; only a script that is really there counts.
+  const declared = r.script || p.render?.script || null;
+  r.script = declared && fs.existsSync(path.join(p.path, declared)) ? declared : null;
   r.fps = r.fps || p.render?.fps || 60;
   r.chunkFrames = r.chunkFrames || p.render?.chunkFrames || null;
   r.chunkSec = r.chunkFrames ? r.chunkFrames / r.fps : null;
   if (p.studio) r.script = null;
+  // [REASONIX PATCH] A finished-video project (an MP4 with no film code) can still render: the queue re-uses its
+  // current final as the picture and lays the film's sound under it, so timeline sound edits reach a new version.
+  r.media = null;
+  if (!r.script && !p.studio) {
+    const src = lastFilm(p) || p.outputs.find(o => o.role === 'web');
+    if (src && fs.existsSync(src.path)) r.media = { source: src.path, name: src.name, w: src.w || null, h: src.h || null, dur: src.dur || null, fps: src.fps || null };
+  }
   const man = readJson(path.join(rdir(p), 'render', 'manifest.json'));
   if (p.studio && man) { r.fps = man.fps; r.chunkFrames = man.chunkFrames; r.chunkSec = man.chunkSec || man.chunkFrames / man.fps; r.studio = true; }
   if (!r.env.DUR && man?.dur) r.env.DUR = String(man.dur);
+  if (r.media?.dur) r.env.DUR = String(r.media.dur);   // [REASONIX PATCH] the finished video's own length wins
   if (!r.env.DUR && r.chunkFrames) {
     const files = chunkFiles(p);
     const last = files[files.length - 1];
@@ -79,6 +91,12 @@ export async function create(body) {
   const rc = await recipe(p);
   const mode = body.mode || 'partial';
   if (!['partial', 'full', 'preview', 'command'].includes(mode)) throw Object.assign(new Error('mode: partial | full | preview | command'), { code: 400 });
+  // [REASONIX PATCH] Say what is missing instead of spawning a script that is not there (the old default "render.js"
+  // produced MODULE_NOT_FOUND after the user had already approved the render).
+  if (mode !== 'command' && !p.studio && !rc.script && !rc.media) {
+    throw Object.assign(new Error('This project has no render script (render.js) and no finished video VideoHub can re-encode. Add the film code, or use mode:"command" with your own command.'), { code: 400 });
+  }
+  if (rc.media && mode !== 'full') throw Object.assign(new Error('This project has no film code; only a full render (re-encoding its current video) is possible.'), { code: 400 });
   const workers = +(body.workers ?? rc.workers ?? 1);
   if (!Number.isInteger(workers) || workers < 1 || workers > (p.studio ? 4 : 8)) throw Object.assign(new Error('Invalid number of render workers.'), { code: 400 });
   const job = { id: 'j' + Date.now().toString(36) + '-' + randomUUID().slice(0, 8), project: p.id, projectName: p.title || p.name, path: p.path, mode, state: 'queued', createdAt: now(), session: body.session || null, notes: body.notes || [], env: { ...rc.env, ...(body.env || {}) }, workers, progress: 0 };
@@ -232,6 +250,23 @@ async function runJob(job) {
     assertActive(job);
     if (code !== 0) throw new Error(`The command ended with code ${code} (log: ${job.log})`);
     if (job.output) await register(p, job, path.resolve(p.path, job.output), vN, job.changedRanges || null);
+    return finish(p, job);
+  }
+
+  // [REASONIX PATCH] finished-video project: no film code, so the current final is the picture. Its sound stays (the
+  // timeline's edited mix when there is one), and the result becomes the next version like any other render.
+  if (rc.media) {
+    if (job.mode !== 'full') throw new Error('This project has no film code; only a full render is possible.');
+    setPhase(job, 'render');
+    fs.mkdirSync(path.join(rdir(p), 'render'), { recursive: true });
+    const video = path.join(rdir(p), 'render', 'video.mp4');
+    const r = await spawnLogged(job, TOOLS.ffmpeg, ['-v', 'error', '-y', '-i', rc.media.source, '-map', '0:v:0', '-an', '-c:v', 'copy', '-movflags', '+faststart', video], { cwd: p.path, env });
+    assertActive(job);
+    if (r.code !== 0) throw new Error(`Re-encoding "${rc.media.name}" failed: ${r.stderr.slice(0, 300)}`);
+    setPhase(job, 'audio');
+    const out = await withAudio(p, video, path.join(rdir(p), `${baseOf(p)}_v${vN}.mp4`), rc, job);
+    setPhase(job, 'register');
+    await register(p, job, out, vN, null);
     return finish(p, job);
   }
 
@@ -451,9 +486,12 @@ async function renderInfo(p) {
 async function renderOptions0(p) {
   const rc = await recipe(p);
   if (p.studio) return { studio: true, partial: !!rc.chunkSec, preview: false, fps: null, workers: { default: rc.workers, max: 4 }, codecs: ['auto', 'x264', 'nvenc', 'amf'], dur: +rc.env.DUR || null };
-  let src = ''; try { src = fs.readFileSync(path.join(p.path, rc.script), 'utf8'); } catch { }
+  // [REASONIX PATCH] rc.script can be null (a finished-video project): never build a path from null, and tell the
+  // render dialog that this project can still be re-encoded from its current film.
+  const script = rc.script && fs.existsSync(path.join(p.path, rc.script)) ? rc.script : null;
+  let src = ''; try { if (script) src = fs.readFileSync(path.join(p.path, script), 'utf8'); } catch { }
   const env = new Set([...src.matchAll(/process\.env\.([A-Z_]+)/g)].map(m => m[1]));
-  return { studio: false, script: fs.existsSync(path.join(p.path, rc.script)) ? rc.script : null, partial: p.family === 'A' && !!rc.chunkSec,
+  return { studio: false, script, media: rc.media || null, partial: p.family === 'A' && !!rc.chunkSec,
     preview: env.has('PREVIEW'), fps: env.has('FPS') ? { default: rc.fps || 30 } : null, workers: { default: rc.workers || 2, max: 8, env: env.has('WK') ? 'WK' : null }, dur: +rc.env.DUR || null,
     // a script that reads VIDEOHUB_ENCODER (the template's render.js) gets the encoder choice; default = Settings' choice
     ...(env.has('VIDEOHUB_ENCODER') ? { codecs: ENCODERS.filter(n => n === 'auto' || n === 'x264' || PROBE_ORDER.includes(n)), codecEnv: 'VIDEOHUB_ENCODER', codecDefault: rc.env.VIDEOHUB_ENCODER || config().render?.encoder || 'auto', codecLabels: LABELS } : { codecs: null }) };

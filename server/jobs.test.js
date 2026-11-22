@@ -14,9 +14,9 @@ const code = fs.readFileSync(new URL('./jobs.js', import.meta.url), 'utf8')
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 function harness(platform = {}) {
   const base = path.resolve('.test-tmp', 'queue-fixture');
-  const files = new Set(), children = [], timers = [], events = [], log = [];
+  const files = new Set(['p1', 'p2'].map(id => path.join(base, id, 'render.js'))), children = [], timers = [], events = [], log = [];
   let pid = 100, workers = 1, maxParallel = 1, guard = { running: false }, encoder = 'auto';
-  const projects = new Map(['p1', 'p2'].map(id => [id, { id, name: id, path: path.join(base, id), studio: base, outDir: path.join(base, 'out', id), outputs: [], render: {} }]));
+  const projects = new Map(['p1', 'p2'].map(id => [id, { id, name: id, path: path.join(base, id), studio: base, outDir: path.join(base, 'out', id), outputs: [], render: { script: 'render.js' } }]));
   const spawn = (cmd, args, opts) => {
     const child = new EventEmitter(); child.pid = ++pid; child.cmd = cmd; child.args = args; child.opts = opts;
     child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.kill = () => { child.killed = true; };
@@ -286,4 +286,34 @@ test('folder picker reports an unsupported dialog at the top level for the UI te
   h.routes((method, url, fn) => handlers.set(method + ' ' + url, fn), async req => req);
   const result = await handlers.get('POST /api/pick-folder')({ start: '/home/me' });
   assert.equal(result.unsupported, true); assert.equal(result.path, undefined);
+});
+
+// [REASONIX PATCH] Regression tests for the "$500 Missed ADS Calls" failure: a finished-video project has no render.js.
+test('a project without film code reports the missing script instead of spawning it', async () => {
+  const h = harness(), p = h.projects.get('p1');
+  p.studio = null; p.render = { script: null }; h.files.delete(path.join(p.path, 'render.js'));
+  const rc = await h.recipe(p);
+  assert.equal(rc.script, null); assert.equal(rc.media, null);
+  await assert.rejects(h.create({ project: 'p1', mode: 'full' }), e => e.code === 400 && /no render script/.test(e.message));
+  assert.equal(h.children.length, 0);
+});
+
+test('a finished-video project renders by re-encoding its current film and keeping the sound', async () => {
+  const h = harness(), p = h.projects.get('p1');
+  p.studio = null; p.render = { script: null }; h.files.delete(path.join(p.path, 'render.js'));
+  const src = path.join(p.path, 'Ad-Leak-Polygon-3D-2026-11-22.mp4');
+  h.files.add(src);
+  p.outputs = [{ path: src, rel: 'Ad-Leak-Polygon-3D-2026-11-22.mp4', name: 'Ad-Leak-Polygon-3D-2026-11-22.mp4', size: 1000, mtime: 1, role: 'final', ok: true, dur: 69.53, audio: true, w: 1280, h: 720, fps: 30 }];
+  p.latest = 'Ad-Leak-Polygon-3D-2026-11-22.mp4';
+  const rc = await h.recipe(p);
+  assert.equal(rc.script, null); assert.equal(rc.media.source, src); assert.equal(rc.env.DUR, '69.53');
+  await assert.rejects(h.create({ project: 'p1', mode: 'partial', notes: [1] }), e => e.code === 400 && /no film code/.test(e.message));
+  const job = await h.create({ project: 'p1', mode: 'full', workers: 1 }); await flush();
+  const pict = h.children[0]; assert.equal(pict.cmd, 'ffmpeg'); assert.ok(pict.args.includes(src));
+  h.files.add(path.join(p.path, 'render', 'video.mp4')); await h.close(pict);
+  const probe = h.children.at(-1); assert.equal(probe.cmd, 'ffprobe'); await h.close(probe, '69.53\n');
+  const mux = h.children.at(-1); assert.equal(mux.cmd, 'ffmpeg'); assert.ok(mux.args.includes(src));   // the previous final's sound
+  await h.close(mux);
+  assert.equal(h.get(job.id).state, 'done');
+  assert.match(h.get(job.id).output, /_v2\.mp4$/);
 });
