@@ -26,7 +26,24 @@ Small edits to existing files, each marked with `[REASONIX PATCH]`:
 | `ui/app.js` | One guarded call site for the provider panel; provider-aware agent name |
 | `ui/review/notes.js` | Send button calls the provider dispatcher |
 | `ui/review/renderbtn.js` | Finished-video render option |
+| `server/media.js` | `[VH FIX]` a missing ffmpeg fails the review proxy instead of crashing the hub |
+| `server/agent.js`, `server/jobs.js` | `[VH FIX]` log retention: the 50 newest agent runs and 20 newest render logs per project |
+| `vh.ps1`, `vh.cmd` | `vh` launcher: starts the server hidden, waits for `/api/ping`, opens Edge/Chrome `--app`, finds ffmpeg for the shortcut's PATH; `vh.ps1 -Shortcut` recreates the desktop shortcuts |
+| `ui/index.html`, `ui/shell.js` | Window and rail title `vh` |
 | `README.md`, `skill/videohub/SKILL.md` | Documentation only |
+
+## The vh desktop shortcut
+
+The Desktop shortcuts (`VideoHub.lnk` and `vh.lnk`) point to `powershell.exe -File vh.ps1`. The launcher starts the
+server with `Start-Process -WindowStyle Hidden` (so it outlives the shortcut), waits for the server, then opens the UI
+as a browser app window (`--app=`, no address bar). It also finds ffmpeg in the user's usual install locations, because
+a shortcut can inherit a shorter PATH than a normal shell.
+
+If a future setup/update rewrites the shortcuts, recreate them with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "<hub>\vh.ps1" -Shortcut
+```
 
 ## Pulling an upstream update
 

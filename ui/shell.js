@@ -36,7 +36,7 @@ const chanSubs = new Set();
 export function initShell() {
   const rail = document.querySelector('#rail'), top = document.querySelector('#topbar');
   rail.replaceChildren(
-    el('a', 'rail-logo', { href: '#/', title: 'VideoHub' }, logo(34)),
+    el('a', 'rail-logo', { href: '#/', title: 'vh' }, logo(34)),
     ...NAV.map(([key, href, ic0, label, tip]) => {
       const a = el('a', 'rail-btn', { href, 'data-nav': key, title: tip }, icon(ic0), el('span', '', {}, label));
       if (key === 'projects') a.append(el('b', 'rail-badge new', { id: 'newOutP', hidden: true }));

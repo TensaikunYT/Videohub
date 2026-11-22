@@ -21,12 +21,24 @@ import { list as listNotes, prompt as notePrompt } from './notes.js';
 import { killTree } from './platform.js';
 
 const RUNS_FILE = path.join(DATA_DIR, 'agent-runs.json');
+const RUN_LOG_DIR = path.join(DATA_DIR, 'agent-runs');
 const runs = readJson(RUNS_FILE, []);
 const children = new Map();          // run id -> child process (for cancel)
 const listeners = new Set();
 export const onAgent = fn => { listeners.add(fn); return () => listeners.delete(fn); };
 const emit = ev => { for (const fn of listeners) try { fn(ev); } catch { } };
-const save = () => writeJson(RUNS_FILE, runs.slice(-50));
+const save = () => {
+  const kept = runs.slice(-50);
+  writeJson(RUNS_FILE, kept);
+  // [VH FIX] do not let agent logs accumulate: keep only the logs of the 50 runs that are still listed.
+  const keep = new Set(kept.map(r => r.log).filter(Boolean));
+  try {
+    for (const f of fs.readdirSync(RUN_LOG_DIR)) {
+      const full = path.join(RUN_LOG_DIR, f);
+      if (!keep.has(full)) { try { fs.unlinkSync(full); } catch { } }
+    }
+  } catch { }
+};
 
 export const providerLabel = p => p === 'reasonix' ? 'Reasonix' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
 

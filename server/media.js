@@ -164,6 +164,7 @@ async function makeProxy(j) {
     let last = 0;
     p.stdout.on('data', d => { const m = String(d).match(/out_time_us=(\d+)/g); if (!m) return; const us = +m[m.length - 1].split('=')[1]; j.progress = Math.min(0.99, us / 1e6 / dur); if (Date.now() - last > 700) { last = Date.now(); emit({ key: j.key, file: j.file, state: 'running', progress: j.progress }); } });
     let err = ''; p.stderr.on('data', d => { err += d; });
+    p.on('error', reject);   // [VH FIX] a missing ffmpeg must fail this proxy, never crash the hub
     p.on('close', c => c === 0 ? resolve() : reject(new Error('ffmpeg ' + c + ': ' + err.slice(0, 200))));
   });
   fs.renameSync(tmp, j.out);

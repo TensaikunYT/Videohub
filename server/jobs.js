@@ -158,7 +158,7 @@ async function pump() {
       if (other) { if (next.waiting !== other) { next.waiting = other; emit('waiting', next); } if (!waitTimer) waitTimer = setTimeout(() => { waitTimer = null; pump(); }, 5000); break; }
       next.waiting = null;
       executing.add(next.id);
-      runJob(next).catch(async e => { await stopping.get(next.id); restoreChunks(next); if (next.state === 'cancelled') return; next.state = 'failed'; next.error = String(e.message || e); next.finishedAt = now(); emit('failed', next); }).finally(async () => { await stopping.get(next.id); stopping.delete(next.id); executing.delete(next.id); setTimeout(pump, 500); });
+      runJob(next).catch(async e => { await stopping.get(next.id); restoreChunks(next); if (next.state === 'cancelled') return; next.state = 'failed'; next.error = String(e.message || e); next.finishedAt = now(); const failedProject = project(next.project); if (failedProject) pruneRenderLogs(failedProject); emit('failed', next); }).finally(async () => { await stopping.get(next.id); stopping.delete(next.id); executing.delete(next.id); setTimeout(pump, 500); });
     }
   } finally { pumping = false; }
 }
@@ -415,8 +415,20 @@ async function register(p, job, file, vN, changedRanges, kind = 'final') {
   }
 }
 
-async function finish(p, job) {
-  assertActive(job);
+// [VH FIX] keep the render log folder bounded: the 20 newest videohub-*.log files per project are enough.
+function pruneRenderLogs(p) {
+  try {
+    const dir = path.join(rdir(p), 'render');
+    const logs = fs.readdirSync(dir).filter(f => /^videohub-.*\.log$/.test(f))
+      .map(f => ({ f, m: fs.statSync(path.join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.m - a.m);
+    for (const x of logs.slice(20)) try { fs.unlinkSync(path.join(dir, x.f)); } catch { }
+  } catch { }
+}
+
+async function finish(p, job) {  assertActive(job);
+  // [VH FIX] keep the render log folder bounded: the 20 newest videohub-*.log files per project are enough.
+  pruneRenderLogs(p);
   // the user asked for a copy somewhere else too (the original stays in the project: versions, notes and partial renders need it)
   if (job.copyTo && job.outputPath) {
     try {
