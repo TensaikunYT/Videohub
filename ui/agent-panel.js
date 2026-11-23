@@ -89,16 +89,49 @@ export function agentSettings(c, { h, api, toast, confirmBox }) {
     field('Model', model, testBtn),
     h('p', { class: 'dim', style: { fontSize: '12.5px' } }, 'The key is stored in data/config.json on this computer and is never sent back to the browser. This mode answers in a dialog; use Reasonix CLI when the agent must change files.'));
 
-  const runsBox = h('div', { class: 'panel', style: { marginTop: '8px', padding: '6px 10px' } });
+  const runsBox = h('div', { class: 'panel runs-box', style: { marginTop: '8px', padding: '6px 10px' } });
   const drawRuns = rs => {
-    runsBox.replaceChildren(...(rs?.length ? rs.slice(0, 5).map(r => h('div', { class: 'row', style: { gap: '8px', alignItems: 'center' } },
-      h('span', { class: 'pill ' + r.state }, r.state),
-      h('b', {}, r.projectName || r.project), h('span', { class: 'dim' }, `${(r.notes || []).length} note(s) · ${r.startedAt || ''}`),
-      r.state === 'running' ? h('button', { type: 'button', class: 'ghost danger', onclick: async () => { await api(`/api/agent/runs/${r.id}/cancel`, { method: 'POST' }).catch(e => toast(e.message, true)); refreshRuns(); } }, 'Cancel') : null,
-      r.state === 'running' && r.log ? h('span', { class: 'dim mono', style: { fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis' } }, r.log) : null)) : [h('div', { class: 'dim' }, 'No agent runs yet.')]));
+    const NL = String.fromCharCode(10);
+    const noteTip = r => {
+      const ns = r.noteDetails?.length ? r.noteDetails : (r.notes || []).map(id => ({ id, text: '' }));
+      return ns.length ? ns.map(n => `#${n.id} ${n.text || '(note removed)'}`).join(NL) : 'No notes in this run.';
+    };
+    const revertRun = async r => {
+      if (!r.version?.id) { toast('No SHA snapshot was saved for this run.', true); return; }
+      const ns = r.noteDetails?.length ? r.noteDetails : (r.notes || []).map(id => ({ id, text: '' }));
+      const ok = await confirmBox('Revert to this prior version?',
+        h('div', {},
+          h('p', {}, `Roll the whole film back to the exact files of this completed run (${r.id}). The current version is snapshotted first, so the revert itself can be undone.`),
+          h('p', { class: 'dim', style: { fontSize: '12px' } }, `Version: ${r.version.kind || 'after'} · ${r.version.fileCount || 0} files · ${r.version.createdAt || ''}`),
+          h('p', { class: 'mono', style: { fontSize: '11.5px', overflowWrap: 'anywhere' } }, `SHA ${r.version.sha256 || ''}`),
+          ns.length ? h('div', { class: 'dim', style: { fontSize: '12px', whiteSpace: 'pre-line', marginTop: '6px' } }, ns.map(n => `#${n.id} ${n.text || '(note removed)'}`).join(NL)) : null),
+        'Proceed');
+      if (!ok) return;
+      try {
+        const res = await api(`/api/project/${r.project}/rollback/version`, { method: 'POST', body: { snapshot: r.version.id } });
+        toast(`Reverted to ${r.version.sha256.slice(0, 12)} · ${res.fileCount} files.`);
+        refreshRuns();
+      } catch (e) { toast('Could not revert: ' + e.message, true); }
+    };
+    runsBox.replaceChildren(...(rs?.length ? rs.map(r => {
+      const ns = r.noteDetails?.length ? r.noteDetails : (r.notes || []).map(id => ({ id, text: '' }));
+      const state = r.state === 'done' && r.version?.id
+        ? h('button', { type: 'button', class: 'pill done', title: "Revert the film to this run's SHA version", onclick: () => revertRun(r) }, 'done')
+        : h('span', { class: 'pill ' + r.state + (r.state === 'running' ? ' run-live' : '') }, r.state);
+      return h('div', { class: 'run-row' + (r.state === 'running' ? ' run-live-row' : ''), style: { gap: '8px', alignItems: 'center' } },
+        state,
+        h('b', {}, r.projectName || r.project),
+        h('span', { class: 'run-notes', title: noteTip(r), 'data-tip': noteTip(r) }, `${ns.length} note(s) · ${r.startedAt || ''}`),
+        r.state === 'running' ? h('button', { type: 'button', class: 'ghost danger', onclick: async () => { await api(`/api/agent/runs/${r.id}/cancel`, { method: 'POST' }).catch(e => toast(e.message, true)); refreshRuns(); } }, 'Cancel') : null,
+        r.state === 'running' && r.log ? h('span', { class: 'dim mono', style: { fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis' } }, r.log) : null);
+    }) : [h('div', { class: 'dim' }, 'No agent runs yet.')]));
   };
   const refreshRuns = () => api('/api/agent/runs').then(drawRuns).catch(() => { });
   refreshRuns();
+  const runPoll = setInterval(() => {
+    if (!runsBox.isConnected) { clearInterval(runPoll); return; }
+    refreshRuns();
+  }, 1000);
 
   function sync() {
     reasonixBox.hidden = state.provider !== 'reasonix';

@@ -88,11 +88,64 @@ es.addEventListener('version', e => { const v = JSON.parse(e.data).v; if (v !== 
 es.addEventListener('renders', e => { rendersCache = JSON.parse(e.data); updateLive(); for (const f of renderSubs) f(rendersCache); });
 export const onRenders = fn => { renderSubs.add(fn); return () => renderSubs.delete(fn); };
 // agent activity (Now page, rail count, film cards, the film's agent pill): the hub sends it only when it changed
-let activityCache = null; const activitySubs = new Set();
+let activityCache = null, activityRaw = null, agentRuns = []; const activitySubs = new Set();
 export const activityData = () => activityCache;
 export const onActivity = fn => { activitySubs.add(fn); return () => activitySubs.delete(fn); };
-function setActivity(d) { if (!d) return; activityCache = d; shellActivity(d); markWorkingFilms(); for (const f of activitySubs) f(d); }
+
+// Reasonix runs live in /api/agent/runs, not in the Claude/Codex session files the hub reads. Merge them into the
+// same activity shape so the Now page, the rail pulse, the film card and the film's agent pill show them. Gated by
+// the "Show agent activity" setting and by the run's own state.
+function reasonixSessions(runs, now) {
+  const windowMs = 3 * 3600e3;
+  return (runs || []).filter(r => r && r.provider === 'reasonix').map(r => {
+    const started = Date.parse(r.startedAt) || now;
+    const ended = r.finishedAt ? (Date.parse(r.finishedAt) || started) : null;
+    const running = r.state === 'running' || r.state === 'queued';
+    if (r.state === 'cancelled') return null;   // stopped verification/test runs are not a live session
+    if (running && now - started > windowMs) return null;   // a stale run left "running" by a restarted hub
+    if (!running && !(ended && now - ended < windowMs)) return null;
+    const notes = (r.notes || []).length;
+    const film = { id: r.project, title: r.projectName || 'this film' };
+    return {
+      id: 'run:' + r.id, agent: 'reasonix', agentName: 'Reasonix',
+      title: running ? 'Editing ' + film.title : 'Finished ' + film.title,
+      state: running ? 'working' : 'idle', film, cwd: r.path,
+      lastActivityAt: running ? started : ended, turnStartedAt: started,
+      ...(running ? {} : { endedAt: ended, elapsedSec: Math.max(0, (ended - started) / 1000) }),
+      lastAction: { text: running
+        ? (notes ? 'Working through ' + notes + ' review note' + (notes === 1 ? '' : 's') : 'Editing the film')
+        : r.state === 'done' ? 'Finished the review notes' : 'Stopped before finishing', at: running ? started : ended },
+      notes,
+    };
+  }).filter(Boolean);
+}
+function mergedActivity() {
+  const base = activityRaw || { enabled: true, ready: true, at: Date.now(), windowHours: 3, sessions: [], waits: {}, renders: [] };
+  if (base.enabled === false) return base;
+  const extra = reasonixSessions(agentRuns, Date.now());
+  return extra.length ? { ...base, sessions: [...(base.sessions || []), ...extra] } : base;
+}
+function publishActivity() {
+  const d = mergedActivity();
+  activityCache = d; shellActivity(d); markWorkingFilms(); for (const f of activitySubs) f(d);
+}
+function setActivity(d) { if (!d) return; activityRaw = d; publishActivity(); }
+let activityPollHot = false, activityTimer = null;
+function scheduleActivity() {
+  clearTimeout(activityTimer);
+  activityTimer = setTimeout(async () => {
+    await loadActivity();
+    scheduleActivity();
+  }, activityPollHot ? 1000 : 8000);
+}
+async function refreshAgentRuns() {
+  try { agentRuns = await api('/api/agent/runs'); } catch { agentRuns = []; }
+  const hot = agentRuns.some(r => r.state === 'running' || r.state === 'queued');
+  if (hot !== activityPollHot) { activityPollHot = hot; scheduleActivity(); }
+  publishActivity();
+}
 es.addEventListener('activity', e => { try { setActivity(JSON.parse(e.data)); } catch { } });
+es.addEventListener('agent', () => refreshAgentRuns());
 // the agent channel (plan, questions, a waiting agent): the open film's top bar, drawer and tabs follow it; a new
 // question on the film you have open says so once (the drawer is one click away)
 es.addEventListener('channel', e => {
@@ -106,7 +159,7 @@ es.addEventListener('channel', e => {
 });
 const filmChannelId = () => { const [name, id] = location.hash.replace(/^#\/?/, '').split('/'); return ['review', 'plan', 'files', 'p'].includes(name) ? decodeURIComponent(id || '') : null; };
 // the first activity read is asked for after the first page is drawn (it never holds up the Films cards)
-const loadActivity = () => api('/api/activity').then(d => { if (!activityCache) setActivity(d); }).catch(() => { });
+const loadActivity = () => { refreshAgentRuns(); api('/api/activity').then(d => { setActivity(d); scheduleActivity(); }).catch(() => { scheduleActivity(); }); };
 // the "agent working" mark on film cards follows the activity without redrawing the grid
 function markWorkingFilms() {
   const on = workingFilms(activityCache);

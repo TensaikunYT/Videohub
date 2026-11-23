@@ -17,7 +17,8 @@ import { randomUUID } from 'node:crypto';
 import { config, saveConfig, AGENT_KEY_MASK, AGENT_PROVIDERS, DEFAULT_AGENT } from './config.js';
 import { APPDATA, DATA_DIR, HOME, readJson, writeJson, now } from './util.js';
 import { project } from './scan.js';
-import { list as listNotes, prompt as notePrompt } from './notes.js';
+import { list as listNotes, prompt as notePrompt, update as updateNote } from './notes.js';
+import * as rollback from './rollback.js';
 import { killTree } from './platform.js';
 
 const RUNS_FILE = path.join(DATA_DIR, 'agent-runs.json');
@@ -39,6 +40,19 @@ const save = () => {
     }
   } catch { }
 };
+
+// [VH FIX] Reconcile agent runs persisted by an earlier VideoHub process. Their child process and close
+// handler are gone, so a stale 'running' record would keep every LIVE/RUNNING indicator on forever.
+let bootReconciled = false;
+for (const r of runs) {
+  if (r.state === 'running' || r.state === 'queued') {
+    r.state = 'failed';
+    r.error = 'VideoHub restarted; this run is no longer active.';
+    r.finishedAt = r.finishedAt || now();
+    bootReconciled = true;
+  }
+}
+if (bootReconciled) save();
 
 export const providerLabel = p => p === 'reasonix' ? 'Reasonix' : p === 'deepseek' ? 'DeepSeek' : 'Claude';
 
@@ -178,6 +192,15 @@ export function startReasonix(p, notes) {
   };
   const stream = fs.createWriteStream(log, { flags: 'a' });
   stream.write(`\n# ${now()}  ${det.path} ${args.map(x => /[\s"]/.test(x) ? JSON.stringify(x) : x).join(' ')}\n`);
+  // Mandatory: the exact pre-edit bytes must be recoverable before anything can write. No snapshot, no edit.
+  let pre = null;
+  try {
+    pre = rollback.snapshot(p, { kind: 'before', runId: id, noteIds: notes.map(n => n.id), prompt: notes.map(n => `#${n.id} ${n.text}`).join('\n\n'), label: `before ${id}` });
+    stream.write(`# rollback: pre-edit snapshot ${pre.id} sha256 ${pre.sha256}\n`);
+  } catch (e) {
+    stream.end();
+    throw Object.assign(new Error('Could not snapshot the project before the edit; the agent was not started: ' + e.message), { code: 500 });
+  }
   let child;
   try { child = spawnCli(det.path, args, { cwd: p.path, env }); }
   catch (e) { stream.end(); throw Object.assign(new Error('Could not start Reasonix: ' + e.message), { code: 500 }); }
@@ -197,6 +220,10 @@ export function startReasonix(p, notes) {
   child.on('close', code => {
     if (run.state !== 'cancelled') { run.state = code === 0 ? 'done' : 'failed'; run.error = code === 0 ? null : `Reasonix ended with code ${code} (log: ${log})`; }
     run.exitCode = code; run.finishedAt = now();
+    try {
+      const post = rollback.snapshot(p, { kind: 'after', runId: id, noteIds: notes.map(n => n.id), prompt: notes.map(n => `#${n.id} ${n.text}`).join('\n\n'), label: `after ${id}` });
+      stream.write(`# rollback: post-edit snapshot ${post.id} sha256 ${post.sha256}\n`);
+    } catch (e) { stream.write(`# rollback: post-edit snapshot FAILED: ${e.message}\n`); }
     stream.write(`\n# ${now()}  exit ${code}\n`); stream.end(); children.delete(id); save(); emit({ type: run.state === 'done' ? 'done' : run.state === 'cancelled' ? 'cancelled' : 'failed', run: pubRun(run) });
   });
   return run;
@@ -207,12 +234,40 @@ export function cancelRun(id) {
   if (!run || !['running', 'queued'].includes(run.state)) return false;
   const child = children.get(id);
   if (child?.pid) killTree(child.pid).catch(() => { try { child.kill(); } catch { } });
+  else if (run.pid) killTree(run.pid).catch(() => { });
   run.state = 'cancelled'; run.finishedAt = now(); save(); emit({ type: 'cancelled', run: pubRun(run) });
   return true;
 }
 
-const pubRun = r => ({ ...r, output: (r.output || '').slice(-4000) });
-export const listRuns = () => runs.slice(-20).reverse().map(pubRun);
+const pubRun = (r, cache = null) => {
+  let noteDetails = [];
+  try {
+    let ns = cache?.notes.get(r.path);
+    if (!ns) { ns = listNotes({ path: r.path }); cache?.notes.set(r.path, ns); }
+    noteDetails = (r.notes || []).map(id => { const n = ns.find(x => x.id === +id); return { id: +id, text: n?.text || '' }; });
+  } catch { }
+  let version = null;
+  try {
+    let ss = cache?.snaps.get(r.path);
+    if (!ss) { ss = rollback.list({ path: r.path }); cache?.snaps.set(r.path, ss); }
+    version = ss.filter(s => s.runId === r.id && s.kind === 'after').slice(-1)[0]
+      || ss.filter(s => s.runId === r.id && s.kind === 'before').slice(-1)[0] || null;
+  } catch { }
+  return { ...r, output: (r.output || '').slice(-4000), noteDetails, version };
+};
+function reconcileRuns() {
+  let changed = false;
+  for (const r of runs) {
+    if ((r.state === 'running' || r.state === 'queued') && !children.has(r.id)) {
+      r.state = 'failed';
+      r.error = 'The agent process is not running; state reconciled.';
+      r.finishedAt = r.finishedAt || now();
+      changed = true;
+    }
+  }
+  if (changed) save();
+}
+export const listRuns = () => { reconcileRuns(); const cache = { notes: new Map(), snaps: new Map() }; return runs.slice().reverse().map(r => pubRun(r, cache)); };
 
 // ---------- DeepSeek API
 function deepseekKey(a = config().agent) { return a.deepseekApiKey || process.env.DEEPSEEK_API_KEY || ''; }
@@ -308,6 +363,34 @@ export function routes(route, readBody) {
     return { ...d, noteCount: notes.length };
   });
   route('GET', '/api/agent/runs', () => listRuns());
+  route('POST', '/api/project/:id/rollback/version', async (req, url, { id }) => {
+    const p = need(id), b = await readBody(req);
+    const snapshot = String(b.snapshot || '');
+    if (!snapshot) throw Object.assign(new Error('snapshot is required'), { code: 400 });
+    const m = rollback.load(p, snapshot);
+    const guard = rollback.snapshot(p, { kind: 'pre-version', noteIds: m.noteIds || [], prompt: 'before revert to ' + snapshot, label: 'before revert to ' + snapshot });
+    const r = rollback.restore(p, snapshot);
+    return { ...r, guard: guard.id, version: snapshot };
+  });
+  route('GET', '/api/project/:id/rollback/last', (req, url, { id }) => {
+    const p = need(id), noteId = Number(url.searchParams.get('note'));
+    return { ...rollback.status(p, noteId), snapshots: rollback.list(p).slice(-20) };
+  });
+  route('POST', '/api/project/:id/rollback', async (req, url, { id }) => {
+    const p = need(id), b = await readBody(req), noteId = Number(b.noteId);
+    if (!Number.isFinite(noteId)) throw Object.assign(new Error('noteId is required'), { code: 400 });
+    const snap = rollback.lastForNote(p, noteId);
+    if (!snap) throw Object.assign(new Error('No pre-edit snapshot was recorded for this note.'), { code: 400 });
+    // The undo is itself reversible: keep the bytes we are about to leave behind.
+    const guard = rollback.snapshot(p, { kind: 'pre-undo', noteIds: [noteId], label: 'before undo/reedit of ' + snap.id, prompt: String(b.text || '') });
+    const restored = rollback.restore(p, snap.id);
+    const patch = { status: 'open' };
+    if (b.reedit && typeof b.text === 'string') patch.text = b.text;
+    const note = updateNote(p, noteId, patch, 'user') || null;
+    // The undo is one edit round, not one note: reopen every note in the snapshot.
+    for (const nid of [...new Set(snap.noteIds || [])]) if (nid !== noteId) updateNote(p, nid, { status: 'open' }, 'user');
+    return { ...restored, guard: guard.id, snapshot: snap, note, reedit: !!b.reedit };
+  });
   route('GET', '/api/agent/runs/:id', (req, url, { id }) => {
     const r = runs.find(x => x.id === id);
     if (!r) throw Object.assign(new Error('Agent run not found'), { code: 404 });

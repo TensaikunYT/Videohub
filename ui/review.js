@@ -137,7 +137,7 @@ export async function reviewPage(page, id, relArg = '') {
   const fps = () => cur.fps || p.render?.fps || 30;
   const chunkSec = () => p.render?.chunkSec || null;
   const versionInfo = () => (p.versionsLog || []).find(v => v.file === cur.rel) || null;
-  const S = { tool: 'cursor', color: COLORS[0], width: 1, draft: null, parkedDrafts: [], undo: [], redo: [], selected: focusNote || null, range: { a: null, b: null }, loopOn: false, z: { k: 1, x: 0, y: 0 }, cmp: null, cmpMode: 'side', wipe: 0.5, frame: 0, usingProxy: false };
+  const S = { tool: 'cursor', color: COLORS[0], width: 1, draft: null, parkedDrafts: [], undo: [], redo: [], selected: focusNote || null, range: { a: null, b: null }, loopOn: false, z: { k: 1, x: 0, y: 0 }, cmp: null, cmpMode: 'side', wipe: 0.5, frame: 0, pinsOn: true, usingProxy: false };
   // quick point: a click drops a numbered point and opens a small note box next to it
   let quickOpen = false;
   const quickEmpty = d => !!d && d.quick && !d.useRange && !(d.text || '').trim() && d.shapes.every(s => s.type === 'pin');   // a point with a range survives moving to its edges
@@ -186,6 +186,8 @@ export async function reviewPage(page, id, relArg = '') {
     if (styleMenu) { styleMenu.close(); return; }
     styleMenu = openPop({ anchor: styleBtn, host: rv2, content: stylePop, side: 'right', onClose: () => { styleMenu = null; } });
   } }, styleDot, styleBar, h('span', { class: 'tl' }, 'Color'));
+  const pinIco = h('span', { class: 'pin-ico' }, h('span', { class: 'pin-tear' }));
+  const pinToggle = h('button', { class: 'tb pin-toggle on', title: 'Hide all edit pins', onclick: () => { S.pinsOn = !S.pinsOn; pinLayer.hidden = !S.pinsOn; refreshTools(); } }, pinIco, h('span', { class: 'tl' }, 'Pins'));
   const tools = h('div', { class: 'rv2-tools' },
     TOOLS.map(([k, tip, name]) => (toolBtns[k] = h('button', { class: 'tb', title: tip, onclick: () => setTool(k) }, svg(k), h('span', { class: 'tl' }, name)))),
     h('div', { class: 'tsep' }),
@@ -193,6 +195,8 @@ export async function reviewPage(page, id, relArg = '') {
     h('div', { class: 'tsep' }),
     h('button', { class: 'tb', title: 'Undo (Ctrl+Z): newest change (drawing, sound, scene, 2D)', onclick: () => routeUndo() }, svg('undo'), h('span', { class: 'tl' }, 'Undo')),
     h('button', { class: 'tb', title: 'Redo (Ctrl+Y)', onclick: () => routeRedo() }, svg('redo'), h('span', { class: 'tl' }, 'Redo')),
+    h('div', { class: 'tspacer' }),
+    pinToggle,
   );
   // picture zoom: a small overlay in the stage's bottom-right corner
   const zoomPct = h('span', { class: 'zpct', hidden: true });
@@ -208,6 +212,8 @@ export async function reviewPage(page, id, relArg = '') {
     }
     styleDot.style.background = S.color; styleBar.style.height = (2 + Math.max(0, WIDTHS.indexOf(S.width)) * 2) + 'px';
     zoomPct.hidden = S.z.k <= 1.001; zoomPct.textContent = Math.round(S.z.k * 100) + '%';
+    pinToggle.classList.toggle('on', S.pinsOn);
+    pinToggle.title = S.pinsOn ? 'Hide all edit pins' : 'Show the last round edit pins';
     ov.style.cursor = S.tool === 'cursor' ? (S.z.k > 1 ? 'grab' : 'crosshair') : S.tool === 'text' ? 'text' : S.tool === 'eraser' ? 'not-allowed' : 'crosshair';
   }
 
@@ -223,6 +229,8 @@ export async function reviewPage(page, id, relArg = '') {
   // check tour: the frame from when the note was written, laid over the current one ("before")
   const beforeImg = h('img', { class: 'beforeimg', hidden: true, alt: '' }), beforeTag = h('span', { class: 'tag beforetag', hidden: true }, 'BEFORE · when the note was written');
   const frameA = h('div', { class: 'frame' }, liveSrc ? liveSrc.el : videoA, videoB, diffCv, beforeImg, ov, wipeHandle, tagA, tagB, beforeTag);
+  const pinLayer = h('div', { class: 'undo-pins' });
+  frameA.append(pinLayer);
   // move the camera / objects right in the live picture (pages with window.VH_EDIT), saved to tweaks.json
   // each editor's panel goes into its own side-panel tab (added on open, removed on close), unscaled by the picture zoom
   const edHost = (tid, label, ico) => {
@@ -254,7 +262,7 @@ export async function reviewPage(page, id, relArg = '') {
 
   // timeline (built before the transport: the transport's zoom controls drive the timeline's view)
   let layerLabels = [], soundEd = null;   // sound layer names (set once loaded), added sounds
-  const timeline = createTimeline({ overlayHost: () => rv2, live: !!liveSrc, pause: () => { if (shuttle.speed()) shuttle.stop(); else { videoA.pause(); videoB.pause(); } }, needPeaks: src => loadWave(src, p.path + '/' + src, false), layerOn: lid => mixer ? mixer.audible(lid) : true, dur: () => dur(), time: () => liveSrc?.displayedTime ?? videoA.currentTime, fps, chunkSec, notes: () => notes, selected: () => S.selected, range: () => S.range, loopOn: () => S.loopOn, setRange: (a, b) => setRange(a, b), changed: () => versionInfo()?.changedRanges, seek: t => seek(t), selectNote: nid => selectNote(nid), onDrop: d => soundEd?.dropAdd(d) });
+  const timeline = createTimeline({ latestFixedId: () => latestFixed()?.id || null, undoLastEdit: n => notesPanel?.undoLastEdit(n), overlayHost: () => rv2, live: !!liveSrc, pause: () => { if (shuttle.speed()) shuttle.stop(); else { videoA.pause(); videoB.pause(); } }, needPeaks: src => loadWave(src, p.path + '/' + src, false), layerOn: lid => mixer ? mixer.audible(lid) : true, dur: () => dur(), time: () => liveSrc?.displayedTime ?? videoA.currentTime, fps, chunkSec, notes: () => notes, selected: () => S.selected, range: () => S.range, loopOn: () => S.loopOn, setRange: (a, b) => setRange(a, b), changed: () => versionInfo()?.changedRanges, seek: t => seek(t), selectNote: nid => selectNote(nid), onDrop: d => soundEd?.dropAdd(d) });
 
   // transport: one row (ui/review/transport.js); nothing in this ctx is called while it is built
   let trData = null, ccOn = false; try { ccOn = localStorage.getItem('vh-cc') === '1'; } catch { }
@@ -284,8 +292,8 @@ export async function reviewPage(page, id, relArg = '') {
     startTour: () => startTour(),
     liveCapture: liveSrc ? (a, b) => ({ start: liveSrc.capture((a + 0.5) / fps()), end: liveSrc.capture((b + 0.5) / fps()) }) : null,
     range: () => S.range, rangeOk: () => rangeOk(), setRange: (a, b) => setRange(a, b), frame: () => S.frame, parseFrame: v => parseFrame(v), playRange: n => playRange(n),
-    changed: () => { notesPanel.render(); timeline.draw(); redraw(); }, removeNote: nid => { notes = notes.filter(n => n.id !== nid); notesPanel.render(); timeline.draw(); redraw(); },
-    reloadNotes: async () => { notes = await api(`/api/project/${id}/notes`); notesPanel.render(); timeline.draw(); redraw(); notesPanel.refreshOld(); },
+    changed: () => { S.pinsOn = true; pinLayer.hidden = false; refreshTools(); notesPanel.render(); timeline.draw(); redraw(); }, removeNote: nid => { notes = notes.filter(n => n.id !== nid); notesPanel.render(); timeline.draw(); redraw(); },
+    reloadNotes: async () => { notes = await api(`/api/project/${id}/notes`); S.pinsOn = true; pinLayer.hidden = false; refreshTools(); notesPanel.render(); timeline.draw(); redraw(); notesPanel.refreshOld(); },
     onCount: n => side?.setBadge('notes', n || ''),
   });
   // side panel: Notes / Sounds / Clip; `Send to ${agentName()}` sits under the panes, visible on every tab
@@ -590,33 +598,63 @@ export async function reviewPage(page, id, relArg = '') {
   const encodeJpeg = c => new Promise(ok => setTimeout(() => { try { ok(c.toDataURL('image/jpeg', 0.9)); } catch { ok(null); } }, 0));
   let saving = 0; const earlyNotes = new Map();   // SSE news about a note whose POST has not answered yet
   function selectNote(nid) { S.selected = nid; showNotes(); notesPanel.render(); notesPanel.scrollTo(nid); timeline.draw(); redraw(); }
+  function latestFixed() { return notes.filter(n => ['fixed', 'approved'].includes(n.status)).sort((a, b) => Number(b.id) - Number(a.id))[0] || null; }
 
   // ---------- overlay
   const octx = ov.getContext('2d');
   let live = null;   // shape being drawn
-  let labelHits = [];   // note labels on the frame, in 0..1 coords, so a click can open the note
   const nextId = () => notes.reduce((m, n) => Math.max(m, n.id), 0) + 1;
   const numbered = (shapes, num) => shapes.map(s => s.type === 'pin' ? { ...s, num } : s);
   function redraw() {
     const W = ov.width, H = ov.height; octx.clearRect(0, 0, W, H);
-    const t = noteTime(); labelHits = [];
-    for (const n of notes) {
-      if (!liveMode && n.file && n.file !== cur.rel && n.file !== '~live') continue;
-      const at = n.at ?? n.t, near = Math.abs(t - at) < 0.35 || (n.t2 != null && t >= n.t && t <= n.t2);
-      if (!near && n.id !== S.selected) continue;
-      if (n.id === S.selected && !near && Math.abs(t - at) > 2) continue;
-      const sh = numbered(n.drawing || [], n.id); paint(octx, sh, W, H, near ? 0.95 : 0.4);
-      const b = sh.length ? bbox(sh) : [0.02, 0.04];
-      octx.font = `600 ${Math.max(13, W * 0.013)}px Segoe UI`; const txt = `#${n.id} ${n.text.slice(0, 42)}`, tw = octx.measureText(txt).width;
-      const lh = Math.max(22, W * 0.02), onlyPin = sh.length && sh.every(x => x.type === 'pin'), pr = pinR(W);
-      // a point note: label beside the marker head; anything else: above the drawing
-      const x = Math.min(W - tw - 20, b[0] * W + (onlyPin ? pr * 1.4 : 0)), y = Math.max(4, onlyPin ? b[1] * H - pr * PIN_HEAD - lh / 2 : b[1] * H - 30);
-      octx.fillStyle = 'rgba(0,0,0,.72)'; octx.fillRect(x, y, tw + 14, lh); octx.fillStyle = '#fff'; octx.textBaseline = 'top'; octx.fillText(txt, x + 7, y + 4);
-      if (near) labelHits.push({ n, x0: x / W, y0: y / H, x1: (x + tw + 14) / W, y1: (y + lh) / H });
-    }
     if (S.draft && S.frame === S.draft.frame) paint(octx, numbered(S.draft.shapes, nextId()), W, H);
     if (live) paint(octx, [live], W, H);
     placeQuick();
+    placePins();
+  }
+  let pinSig = '';
+  // one pin per completed notation: text pin over the text, spot pin at the spot, every other tool
+  // gets a pin stacked down the far-left edge in edit order. The annotation drawing itself is not painted.
+  function lastRound() {
+    const done = notes.filter(n => ['fixed', 'approved'].includes(n.status));
+    if (!done.length) return [];
+    const at = n => Date.parse(n.createdAt) || 0;
+    const newest = Math.max(0, ...done.map(at));
+    return done.filter(n => newest - at(n) <= 30 * 60 * 1000);
+  }
+  function pinTarget(n) {
+    const sh = n.drawing || [];
+    const nonPin = sh.filter(s => s.type !== 'pin');
+    if (!nonPin.length) return sh.length ? sh[0].pts[0] : null;   // click-spot note: pin at the exact spot
+    if (nonPin.every(s => s.type === 'text')) { const b = bbox([nonPin[0]]); return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]; }
+    return null;   // pen, arrow, box or circle (and mixed drawings) -> the left column
+  }
+  function placePins() {
+    const t = noteTime();
+    // Same time gate as the original note overlay: a pin belongs to the scene it edited, not the whole film.
+    const done = lastRound().filter(n => {
+      const at = n.at ?? n.t;
+      return Math.abs(t - at) < 0.35 || (n.t2 != null && t >= n.t && t <= n.t2);
+    });
+    pinLayer.hidden = !S.pinsOn;
+    const sig = done.map(n => n.__pinKey || (n.__pinKey = `${n.id}:${n.status}:${n.text}:${JSON.stringify(n.drawing || [])}`)).join('|');
+    if (sig === pinSig) return;
+    pinSig = sig; pinLayer.replaceChildren();
+    let left = 0;
+    for (const n of done) {
+      const at = pinTarget(n);
+      const tip = (`#${n.id} ${String(n.text || '').replace(/\s+/g, ' ').trim()}`).slice(0, 50);
+      const b = h('button', {
+        class: 'undo-pin' + (at ? '' : ' left'),
+        'data-tip': tip,
+        'aria-label': tip,
+        onclick: e => { e.preventDefault(); e.stopPropagation(); notesPanel?.undoLastEdit(n); },
+      }, h('span', {}, String(n.id)));
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      if (at) { b.style.left = (at[0] * 100).toFixed(2) + '%'; b.style.top = (at[1] * 100).toFixed(2) + '%'; }
+      else { b.style.left = '2px'; b.style.top = (30 + left * 26) + 'px'; left++; }
+      pinLayer.append(b);
+    }
   }
   const ptOf = e => { const r = ov.getBoundingClientRect(); return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]; };
   let textAt = null, down = null, panning = null, spaceDown = false, spaceUsed = false;
@@ -660,20 +698,8 @@ export async function reviewPage(page, id, relArg = '') {
   ov.addEventListener('pointercancel', () => { down = null; panning = null; live = null; textAt = null; redraw(); });
 
   // ---------- quick point: click → numbered point + a note box right there
-  function noteAt(pt) {
-    const l = labelHits.find(b => pt[0] >= b.x0 && pt[0] <= b.x1 && pt[1] >= b.y0 && pt[1] <= b.y1); if (l) return l.n;
-    const t = noteTime();
-    for (const n of notes) {
-      if ((!liveMode && n.file && n.file !== cur.rel && n.file !== '~live') || !(n.drawing || []).length) continue;
-      if (!(Math.abs(t - (n.at ?? n.t)) < 0.35 || (n.t2 != null && t >= n.t && t <= n.t2))) continue;
-      if (hit(n.drawing, pt, 0.03) >= 0) return n;
-    }
-    return null;
-  }
   function quickPoint(pt, at = noteTime(), wasPlaying = !videoA.paused) {
     freezeNoteFrame(at);
-    const n = noteAt(pt);
-    if (n && !(S.draft && S.frame === S.draft.frame)) { selectNote(n.id); return; }
     const previous = S.draft;
     const d = ensureDraft(at, false);
     if (d === previous) {   // same frame: move the lone quick point, or add a point to the drawing

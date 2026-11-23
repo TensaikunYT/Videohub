@@ -433,3 +433,4 @@
 .tl2-ms { width: 26px; height: 24px; font-size: 12px; border-radius: 6px; }
 .tl2-lvl { height: 24px; line-height: 22px; border-radius: 6px; }
 .tl2-hname { font-size: 12px; }
+.rv2-tools .tspacer { flex: 1 1 auto; min-height: 12px; }

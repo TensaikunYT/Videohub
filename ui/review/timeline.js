@@ -40,7 +40,9 @@ export function createTimeline(ctx) {
   // the tip lives in the editor's overlay host (position: fixed), so the dock's scroll box never clips it and it
   // shows in fullscreen; appended on first hover
   const tip = h('div', { class: 'tl2-tip', hidden: true }), tipCv = h('canvas', { width: 160, height: 90 }), tipTxt = h('div', {});
-  tip.append(tipCv, tipTxt);
+  let tipUndo = null;
+  const tipBtn = h('button', { class: 'tip-undo', hidden: true, onclick: e => { e.stopPropagation(); const n = tipUndo; tip.hidden = true; if (n) ctx.undoLastEdit?.(n); } }, 'Undo last edit');
+  tip.append(tipCv, tipTxt, tipBtn);
 
   // ---- state
   let strip = null, stripImg = null, waveImg = null, tr = null, layers = [], cues = null, scenes = [], selScene = -1;
@@ -413,6 +415,7 @@ export function createTimeline(ctx) {
   function showTip(canvas, x, y0, y1, fill) {
     const host = ctx.overlayHost?.() || el;
     if (tip.parentNode !== host) host.append(tip);
+    tipBtn.hidden = true; tipUndo = null;
     tip.hidden = false; fill();
     const r = canvas.getBoundingClientRect(), th = tip.offsetHeight;
     let top = r.top + y0 - th - 6;
@@ -440,7 +443,14 @@ export function createTimeline(ctx) {
     const said = tr && r.kind === 'text' ? tr.phrases.find(([s, e]) => t >= s - 0.05 && t <= e + 0.05) : null;
     if (said) { tipTxt.textContent = `${mmss(said[0])} · «${said[2]}» · click: jump here`; tipCv.hidden = true; return; }
     const gr = groupAt(x, r);
-    if (gr) { const near = gr.notes[0]; tipTxt.textContent = gr.notes.length > 1 ? `${gr.notes.length} notes: ${gr.notes.map(n => '#' + n.id).join(' ')} · click: next note` : `#${near.id} ${near.text.slice(0, 60)} · click: jump to note`; stripTip(near.at ?? near.t); return; }
+    if (gr) {
+      const near = gr.notes[0], lastId = ctx.latestFixedId?.();
+      tipUndo = lastId ? gr.notes.find(n => n.id === lastId) || null : null;
+      tipBtn.hidden = !tipUndo;
+      tipTxt.textContent = gr.notes.length > 1 ? `${gr.notes.length} notes: ${gr.notes.map(n => '#' + n.id).join(' ')} · click: next note` : `#${near.id} ${near.text.slice(0, 60)} · click: jump to note`;
+      if (tipUndo) tipTxt.textContent += ' · last completed edit';
+      stripTip(near.at ?? near.t); return;
+    }
     plainTip(t);
   }
 

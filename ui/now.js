@@ -9,6 +9,7 @@ const PHASE = { prepare: 'Preparing', render: 'Drawing frames', validate: 'Check
 
 export async function nowPage(page, filmId = null) {
   let data = activityData() || await api('/api/activity').catch(() => null);
+  data = activityData() || data;   // the merged live-run activity may arrive while the request is in flight
   let renders = data?.renders || [];
   const sub = h('p', { class: 'sub' }, 'What your agents and renders are doing right now. Read from the session files the agents already write on this computer: no tokens, nothing leaves this PC.');
   const filmTitle = () => (data?.sessions || []).find(s => s.film?.id === filmId)?.film?.title || 'this film';

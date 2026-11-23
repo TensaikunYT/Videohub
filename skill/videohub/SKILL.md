@@ -132,3 +132,13 @@ dialog for the user. Do not delete them yourself.
 **Throwaway files go in `qa/` or `tmp/` inside the film**, never at its root: test stills, QA frames, contact sheets,
 experiments. Finish film removes those folders (and loose pictures the code never names), so tidying finds them;
 anything the film's code reads stays.
+
+## Polygon 3D Kaz live mode
+
+The agreed Polygon integration lives in the Polygon skill's `videohub/` folder: a synchronous `window.renderOut(t)` adapter over `KAZ_INFO` / `KAZ_DRAW` / `KAZ_FREE`, a prepared chunked `render.js`, a `.videohub/project.json` template, a read-only `preflight.js`, and a two-scene `test-fixture/`.
+
+Use it for 16:9-first live review (1920x1080), then compose 9:16 separately. Do not render MP4, call `hub_render`, or create chunks before explicit human approval. The accepted phone-image pattern is optional and must use the project's own reference image.
+
+## Polygon resolution hardlock
+
+The Polygon skill enforces a human-confirmed `videohub/format.json` (width, height, aspect ratio, orientation, confirmation timestamp/source) before any film build or live preview. The canvas, camera, WebGL renderer, VideoHub preview and prepared render script must all use that one record. A missing record is `BLOCKED — VIDEO FORMAT NOT HUMAN-CONFIRMED`; a mismatch is `FAIL — VIDEO RESOLUTION CONFIGURATION MISMATCH`. Valid silent films use `audioRequired: false`; a missing required narration is a failure.

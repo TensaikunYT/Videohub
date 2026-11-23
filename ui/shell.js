@@ -36,7 +36,7 @@ const chanSubs = new Set();
 export function initShell() {
   const rail = document.querySelector('#rail'), top = document.querySelector('#topbar');
   rail.replaceChildren(
-    el('a', 'rail-logo', { href: '#/', title: 'vh' }, logo(34)),
+    el('a', 'rail-logo', { href: '#/', title: 'VideoHub' }, logo(34)),
     ...NAV.map(([key, href, ic0, label, tip]) => {
       const a = el('a', 'rail-btn', { href, 'data-nav': key, title: tip }, icon(ic0), el('span', '', {}, label));
       if (key === 'projects') a.append(el('b', 'rail-badge new', { id: 'newOutP', hidden: true }));
@@ -147,6 +147,15 @@ export function shellActivity(data) {
   activity = data;
   const c = document.querySelector('#nowCount'), n = workingCount(data);
   if (c) { c.hidden = !n; c.textContent = n ? String(n) : ''; c.title = n ? `${n} agent session${n === 1 ? '' : 's'} working now` : ''; }
+  // the live pulse on the Now rail button: on every screen, only while an agent is working
+  const nowBtn = document.querySelector('.rail [data-nav="now"]');
+  if (nowBtn) {
+    const live = n > 0;
+    nowBtn.classList.toggle('live', live);
+    nowBtn.title = live ? `${n} agent session${n === 1 ? '' : 's'} working now - open Now` : 'What your agents and renders are doing now';
+    if (live) nowBtn.setAttribute('aria-label', `Now, ${n} agent session${n === 1 ? '' : 's'} working`);
+    else nowBtn.removeAttribute('aria-label');
+  }
   drawPill(); drawDrawer();
 }
 // shown when a session touched this film or the film has a plan, a question or a waiting agent; a click opens the drawer

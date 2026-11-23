@@ -118,6 +118,7 @@ const AGENT_GLYPH = {
   codex: '<path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z" fill="none" stroke="#e8eaee" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="#e8eaee"/>',
   opencode: '<path d="M9 5H5v14h4M15 5h4v14h-4" fill="none" stroke="#9fd3ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
   shared: '<g fill="none" stroke="#b6f067" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="12" r="3"/><circle cx="17" cy="6.5" r="3"/><circle cx="17" cy="17.5" r="3"/><path d="M9.7 10.6l4.6-2.6M9.7 13.4l4.6 2.6"/></g>',
+  reasonix: '<g fill="none" stroke="#8ee6b0" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="12" r="3"/><circle cx="17" cy="6.5" r="3"/><circle cx="17" cy="17.5" r="3"/><path d="M9.7 10.6l4.6-2.6M9.7 13.4l4.6 2.6"/></g>',
 };
 export function agentIcon(agent, size = 16) {
   const s = document.createElementNS(NS, 'svg');

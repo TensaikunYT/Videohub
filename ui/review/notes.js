@@ -59,6 +59,65 @@ export function createNotesPanel(ctx) {
   }
   let editing = null;
 
+  // ---------- Undo Last Edit (the one missing option)
+  // The latest completed note is the last prior edit. Its prompt is editable; both actions restore the
+  // exact pre-edit SHA snapshot, and only Re-edit sends the edited prompt to the agent.
+  const lastFixed = () => ctx.notes().filter(n => ['fixed', 'approved'].includes(n.status)).sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
+  const isLastFixed = n => lastFixed()?.id === n.id;
+  async function undoLastEdit(n) {
+    if (!n) return;
+    const original = (n.text || '').trim();
+    const ta = h('textarea', { class: 'undo-prompt', spellcheck: 'false' });
+    ta.value = n.text || '';
+    const hint = h('div', { class: 'dim undo-hint' }, `This is the last full edit prompt. Undo restores the exact pre-edit SHA; Re-edit restores it too, then sends the edited prompt to ${agentName()}. The AI is instructed to leave no annotation marks in the edited scene.`);
+    const status = h('div', { class: 'undo-status mono' }, 'Checking the pre-edit snapshot…');
+    const undo = h('button', { class: 'primary', disabled: true, title: 'Restore the exact pre-edit bytes' }, 'Undo Last Edit');
+    const reed = h('button', { disabled: true, title: 'The snapshot must be available and the prompt edited' }, 'Re-edit with edited prompt');
+    const cancel = h('button', { class: 'ghost' }, 'Cancel');
+    let s = null, available = false, busy = false;
+    const close = () => bg.remove();
+    const gate = () => {
+      const changed = ta.value.trim() !== original;
+      reed.disabled = !available || !changed || !ta.value.trim();
+      reed.title = !available ? 'No pre-edit snapshot is available for this edit' : !ta.value.trim() ? 'Write the new prompt' : !changed ? 'Edit the prompt first' : 'Restore the pre-edit snapshot, then send this prompt';
+    };
+    ta.oninput = gate;
+    const run = async reedit => {
+      if (busy) return;
+      if (!available) { toast('No pre-edit snapshot is available for this edit.', true); return; }
+      busy = true; undo.disabled = reed.disabled = cancel.disabled = true;
+      try {
+        const r = await api(`/api/project/${ctx.projectId}/rollback`, { method: 'POST', body: { noteId: n.id, text: reedit ? ta.value.trim() : undefined, reedit } });
+        close();
+        toast(`Restored ${r.fileCount} files to SHA ${String(r.sha256).slice(0, 12)}.`);
+        await ctx.reloadNotes();
+        if (reedit) {
+          const a = await api(`/api/project/${ctx.projectId}/agent`, { method: 'POST', body: { ids: [n.id] } });
+          toast(a.kind === 'run' ? `${agentName()} is re-editing note #${n.id}.` : `Re-edit request sent to ${agentName()}.`);
+        }
+      } catch (e) {
+        toast(e.message, true); busy = false; undo.disabled = cancel.disabled = false; gate();
+      }
+    };
+    undo.onclick = () => run(false);
+    reed.onclick = () => run(true);
+    cancel.onclick = close;
+    const bg = h('div', { class: 'modal-bg' }, h('div', { class: 'modal undo-modal', onclick: e => e.stopPropagation() },
+      h('h1', {}, `Undo last edit · #${n.id}`),
+      h('p', { class: 'dim' }, 'The last prompt is editable. Both actions restore the same 100% SHA rollback of this section. Only Re-edit sends the new prompt.'),
+      ta, hint, status,
+      h('div', { class: 'row undo-actions' }, cancel, h('span', { class: 'spacer' }), undo, reed)));
+    bg.addEventListener('click', e => { if (e.target === bg) close(); });
+    document.body.append(bg);
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    try { s = await api(`/api/project/${ctx.projectId}/rollback/last?note=${n.id}`); }
+    catch (e) { status.textContent = 'Could not check the pre-edit snapshot: ' + e.message; return; }
+    available = !!s?.available;
+    if (available) { undo.disabled = false; status.textContent = `snapshot ${s.snapshot.id} · ${s.snapshot.fileCount} files · SHA ${s.snapshot.sha256}`; }
+    else status.textContent = s?.reason || 'No pre-edit snapshot was recorded for this edit.';
+    gate();
+  }
+
   // ---------- draft composer
   function renderDrafts() {
     const drafts = ctx.parkedDrafts?.() || [];
@@ -175,6 +234,7 @@ export function createNotesPanel(ctx) {
       other ? h('div', { class: 'dim', style: { fontSize: '12px' } }, n.file === '~live' ? 'in live preview (no render)' : `on "${n.file}"`) : null,
       n.reply ? h('div', { class: 'reply' }, h('b', {}, `${agentName()}: `), n.reply, n.fixedIn ? h('span', { class: 'dim' }, ` (${n.fixedIn})`) : null) : null,
       h('div', { class: 'acts', onclick: e => e.stopPropagation() },
+        ['fixed', 'approved'].includes(n.status) && isLastFixed(n) ? h('button', { class: 'ghost undo-last', title: 'Re-edit or undo this section with a full SHA restore', onclick: e => { e.stopPropagation(); undoLastEdit(n); } }, 'Undo / Re-edit') : null,
         n.status === 'fixed' ? [h('button', { onclick: () => setStatus(n, 'approved') }, ic('check', 'Approve')), h('button', { class: 'danger', onclick: () => setStatus(n, 'reopened') }, 'Still there')] : null,
         n.status === 'approved' ? h('button', { onclick: () => setStatus(n, 'reopened') }, 'Reopen') : null,
         n.local ? h('span', { class: 'dim', style: { fontSize: '11.5px' } }, 'saving…') : ['open', 'reopened'].includes(n.status) ? [h('button', { class: 'ghost', onclick: () => { editing = n.id; render(); } }, 'Edit'),
@@ -187,7 +247,7 @@ export function createNotesPanel(ctx) {
   const cache = new Map();
   let firstShownId = null;
   const sigOf = n => JSON.stringify([n.local, n.status, n.sentAt, n.text, n.kind, n.t, n.t2, n.frames, n.say, n.reply, n.fixedIn, n.imgV, n.pending, n.images?.crop || n.images?.annotated || null,
-    n.id === ctx.selected(), n.file === ctx.file(), editing === n.id, Math.floor(Date.now() / 60000)]);
+    n.id === ctx.selected(), n.file === ctx.file(), editing === n.id, lastFixed()?.id, Math.floor(Date.now() / 60000)]);
   function render() {
     renderDrafts();
     const f = filterSel.value, notes = ctx.notes();
@@ -258,5 +318,5 @@ export function createNotesPanel(ctx) {
   }
 
   const reload = () => ctx.reloadNotes();
-  return { el, render, renderDrafts, refreshOld, reload, openComposer, updateComposer, closeComposer, scrollTo, focusText: () => comp?.text.focus(), destroy: () => offChan() };
+  return { el, render, renderDrafts, refreshOld, reload, openComposer, updateComposer, closeComposer, scrollTo, undoLastEdit, focusText: () => comp?.text.focus(), destroy: () => offChan() };
 }

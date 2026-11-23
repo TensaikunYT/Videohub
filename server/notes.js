@@ -250,13 +250,17 @@ export function bulk(p, action, ids) {
   } else throw Object.assign(new Error('action: approve | remove'), { code: 400 });
 }
 
+// Hard rule sent with every annotation/go-ahead so the model never paints the user's marks into the film.
+export const ANNOTATION_RULE = 'Hard rule: the red/drawn annotation marks (freehand pen, line or arrow, box, circle, text, numbered or click marker) are instructions to you only. Never recreate, copy, leave or add those marks, boxes, circles, arrows, lines, labels or pins in the edited scene or its visuals. The edited scene must contain only the corrected content the user asked for; VideoHub shows one small red pin per completed instruction. Do not paint annotation marks into the film.';
+
 // the short message the user pastes into the chat ("Send to Claude")
 export function prompt(p, ids) {
   const open = list(p).filter(n => ids ? ids.includes(n.id) : isOpenNote(n));
   return `VideoHub: ${open.length} note${open.length === 1 ? '' : 's'} on "${p.title || p.name}" (${open.map(n => '#' + n.id).join(', ')}).\n`
     + `Project folder: ${p.path}\n`
     + `Get them with hub_notes({project: ${JSON.stringify(p.path)}}), fix the code (the open live preview reloads itself) and mark each note with hub_note_update. DO NOT RENDER: render only with hub_render when the user asks for a render. `
-    + `If this chat does not know the project yet, first read the STATE.md / CLAUDE.md / README files in its folder.`;
+    + `If this chat does not know the project yet, first read the STATE.md / CLAUDE.md / README files in its folder.
+` + ANNOTATION_RULE;
 }
 
 export function routes(route, readBody) {
