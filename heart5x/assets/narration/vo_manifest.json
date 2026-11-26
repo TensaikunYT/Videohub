@@ -4,70 +4,71 @@
     "start": 0.4,
     "window_end": 3.9,
     "text": "What if your heart suddenly beat five times faster?",
-    "caption": "What if your heart suddenly beat 5x faster?",
-    "raw_duration": 3.01,
-    "tempo": 0.926,
-    "fitted_duration": 3.227,
-    "end": 3.627,
+    "raw_duration": 3.367,
+    "trim_start": 0.03,
+    "tempo": 1.0,
+    "fitted_duration": 3.236,
+    "end": 3.636,
     "words": [
       [
         0.4,
-        0.71,
+        0.711,
         "What"
       ],
       [
-        0.71,
-        0.896,
+        0.711,
+        0.898,
         "if"
       ],
       [
-        0.896,
-        1.207,
+        0.898,
+        1.209,
         "your"
       ],
       [
-        1.207,
-        1.579,
+        1.209,
+        1.582,
         "heart"
       ],
       [
-        1.579,
-        2.138,
+        1.582,
+        2.142,
         "suddenly"
       ],
       [
-        2.138,
-        2.448,
+        2.142,
+        2.454,
         "beat"
       ],
       [
-        2.448,
-        2.758,
+        2.454,
+        2.765,
         "five"
       ],
       [
-        2.758,
-        3.131,
+        2.765,
+        3.138,
         "times"
       ],
       [
-        3.131,
-        3.627,
+        3.138,
+        3.636,
         "faster?"
       ]
     ],
-    "file": "vo_line1.wav"
+    "file": "vo_line1.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 2,
     "start": 4.2,
     "window_end": 9.8,
     "text": "At rest, it beats about seventy times a minute. Five times that is three hundred fifty.",
-    "caption": "At rest, ~70 beats a minute. 5x that is 350.",
-    "raw_duration": 5.836,
-    "tempo": 1.0909,
-    "fitted_duration": 5.356,
-    "end": 9.556,
+    "raw_duration": 5.666,
+    "trim_start": 0.12,
+    "tempo": 1.0,
+    "fitted_duration": 5.371,
+    "end": 9.571,
     "words": [
       [
         4.2,
@@ -76,778 +77,786 @@
       ],
       [
         4.383,
-        4.748,
+        4.749,
         "rest,"
       ],
       [
-        4.748,
-        4.93,
+        4.749,
+        4.932,
         "it"
       ],
       [
-        4.93,
-        5.296,
+        4.932,
+        5.299,
         "beats"
       ],
       [
-        5.296,
-        5.661,
+        5.299,
+        5.665,
         "about"
       ],
       [
-        5.661,
-        6.148,
+        5.665,
+        6.153,
         "seventy"
       ],
       [
-        6.148,
-        6.513,
+        6.153,
+        6.519,
         "times"
       ],
       [
-        6.513,
-        6.635,
+        6.519,
+        6.641,
         "a"
       ],
       [
-        6.635,
-        7.122,
+        6.641,
+        7.13,
         "minute."
       ],
       [
-        7.122,
-        7.426,
+        7.13,
+        7.435,
         "Five"
       ],
       [
-        7.426,
-        7.791,
+        7.435,
+        7.801,
         "times"
       ],
       [
-        7.791,
-        8.095,
+        7.801,
+        8.106,
         "that"
       ],
       [
-        8.095,
-        8.278,
+        8.106,
+        8.289,
         "is"
       ],
       [
-        8.278,
-        8.643,
+        8.289,
+        8.655,
         "three"
       ],
       [
-        8.643,
-        9.13,
+        8.655,
+        9.144,
         "hundred"
       ],
       [
-        9.13,
-        9.556,
+        9.144,
+        9.571,
         "fifty."
       ]
     ],
-    "file": "vo_line2.wav"
+    "file": "vo_line2.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 3,
     "start": 10.3,
     "window_end": 16.8,
     "text": "Speeding up is normal. Hard exercise can push a healthy young adult's heart to around one hundred ninety beats per minute.",
-    "caption": "Speeding up is normal. Hard exercise ~190 BPM.",
-    "raw_duration": 7.311,
-    "tempo": 1.1697,
-    "fitted_duration": 6.259,
-    "end": 16.559,
+    "raw_duration": 7.419,
+    "trim_start": 0.11,
+    "tempo": 1.1244,
+    "fitted_duration": 6.357,
+    "end": 16.657,
     "words": [
       [
         10.3,
-        10.758,
+        10.765,
         "Speeding"
       ],
       [
-        10.758,
-        10.911,
+        10.765,
+        10.92,
         "up"
       ],
       [
-        10.911,
-        11.063,
+        10.92,
+        11.075,
         "is"
       ],
       [
-        11.063,
-        11.47,
+        11.075,
+        11.489,
         "normal."
       ],
       [
-        11.47,
-        11.725,
+        11.489,
+        11.747,
         "Hard"
       ],
       [
-        11.725,
-        12.183,
+        11.747,
+        12.212,
         "exercise"
       ],
       [
-        12.183,
-        12.386,
+        12.212,
+        12.419,
         "can"
       ],
       [
-        12.386,
-        12.641,
+        12.419,
+        12.677,
         "push"
       ],
       [
-        12.641,
-        12.742,
+        12.677,
+        12.781,
         "a"
       ],
       [
-        12.742,
-        13.15,
+        12.781,
+        13.194,
         "healthy"
       ],
       [
-        13.15,
-        13.455,
+        13.194,
+        13.504,
         "young"
       ],
       [
-        13.455,
-        13.862,
+        13.504,
+        13.918,
         "adult's"
       ],
       [
-        13.862,
-        14.167,
+        13.918,
+        14.228,
         "heart"
       ],
       [
-        14.167,
-        14.32,
+        14.228,
+        14.383,
         "to"
       ],
       [
-        14.32,
-        14.676,
+        14.383,
+        14.744,
         "around"
       ],
       [
-        14.676,
-        14.88,
+        14.744,
+        14.951,
         "one"
       ],
       [
-        14.88,
-        15.287,
+        14.951,
+        15.365,
         "hundred"
       ],
       [
-        15.287,
-        15.643,
+        15.365,
+        15.726,
         "ninety"
       ],
       [
-        15.643,
-        15.948,
+        15.726,
+        16.037,
         "beats"
       ],
       [
-        15.948,
-        16.152,
+        16.037,
+        16.243,
         "per"
       ],
       [
-        16.152,
-        16.559,
+        16.243,
+        16.657,
         "minute."
       ]
     ],
-    "file": "vo_line3.wav"
+    "file": "vo_line3.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 4,
     "start": 17.3,
     "window_end": 24.8,
     "text": "But at three hundred fifty, each beat lasts under two-tenths of a second. The chambers barely have time to refill between beats.",
-    "caption": "At 350, each beat lasts under 0.2 s. Chambers barely refill.",
-    "raw_duration": 8.088,
-    "tempo": 1.1155,
-    "fitted_duration": 7.27,
-    "end": 24.57,
+    "raw_duration": 7.721,
+    "trim_start": 0.06,
+    "tempo": 1.0299,
+    "fitted_duration": 7.353,
+    "end": 24.653,
     "words": [
       [
         17.3,
-        17.525,
+        17.528,
         "But"
       ],
       [
-        17.525,
-        17.694,
+        17.528,
+        17.699,
         "at"
       ],
       [
-        17.694,
-        18.033,
+        17.699,
+        18.041,
         "three"
       ],
       [
-        18.033,
-        18.483,
+        18.041,
+        18.497,
         "hundred"
       ],
       [
-        18.483,
-        18.878,
+        18.497,
+        18.896,
         "fifty,"
       ],
       [
-        18.878,
-        19.16,
+        18.896,
+        19.181,
         "each"
       ],
       [
-        19.16,
-        19.441,
+        19.181,
+        19.466,
         "beat"
       ],
       [
-        19.441,
-        19.78,
+        19.466,
+        19.808,
         "lasts"
       ],
       [
-        19.78,
-        20.118,
+        19.808,
+        20.15,
         "under"
       ],
       [
-        20.118,
-        20.738,
+        20.15,
+        20.777,
         "two-tenths"
       ],
       [
-        20.738,
-        20.907,
+        20.777,
+        20.948,
         "of"
       ],
       [
-        20.907,
-        21.019,
+        20.948,
+        21.062,
         "a"
       ],
       [
-        21.019,
-        21.47,
+        21.062,
+        21.518,
         "second."
       ],
       [
-        21.47,
-        21.696,
+        21.518,
+        21.746,
         "The"
       ],
       [
-        21.696,
-        22.203,
+        21.746,
+        22.259,
         "chambers"
       ],
       [
-        22.203,
-        22.597,
+        22.259,
+        22.658,
         "barely"
       ],
       [
-        22.597,
-        22.879,
+        22.658,
+        22.943,
         "have"
       ],
       [
-        22.879,
-        23.161,
+        22.943,
+        23.228,
         "time"
       ],
       [
-        23.161,
-        23.33,
+        23.228,
+        23.399,
         "to"
       ],
       [
-        23.33,
-        23.724,
+        23.399,
+        23.798,
         "refill"
       ],
       [
-        23.724,
-        24.175,
+        23.798,
+        24.254,
         "between"
       ],
       [
-        24.175,
-        24.57,
+        24.254,
+        24.653,
         "beats."
       ]
     ],
-    "file": "vo_line4.wav"
+    "file": "vo_line4.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 5,
     "start": 25.3,
     "window_end": 31.8,
     "text": "Faster doesn't mean more blood. With less filling, each beat pushes out less, and blood pressure drops.",
-    "caption": "Faster is not more blood. Less filling, less output.",
-    "raw_duration": 7.017,
-    "tempo": 1.1227,
-    "fitted_duration": 6.269,
-    "end": 31.569,
+    "raw_duration": 7.5,
+    "trim_start": 0.05,
+    "tempo": 1.1528,
+    "fitted_duration": 6.358,
+    "end": 31.658,
     "words": [
       [
         25.3,
-        25.722,
+        25.728,
         "Faster"
       ],
       [
-        25.722,
-        26.204,
+        25.728,
+        26.217,
         "doesn't"
       ],
       [
-        26.204,
-        26.506,
+        26.217,
+        26.523,
         "mean"
       ],
       [
-        26.506,
-        26.807,
+        26.523,
+        26.828,
         "more"
       ],
       [
-        26.807,
-        27.229,
+        26.828,
+        27.256,
         "blood."
       ],
       [
-        27.229,
-        27.53,
+        27.256,
+        27.562,
         "With"
       ],
       [
-        27.53,
-        27.832,
+        27.562,
+        27.868,
         "less"
       ],
       [
-        27.832,
-        28.374,
+        27.868,
+        28.418,
         "filling,"
       ],
       [
-        28.374,
-        28.676,
+        28.418,
+        28.724,
         "each"
       ],
       [
-        28.676,
-        28.977,
+        28.724,
+        29.029,
         "beat"
       ],
       [
-        28.977,
-        29.399,
+        29.029,
+        29.457,
         "pushes"
       ],
       [
-        29.399,
-        29.64,
+        29.457,
+        29.702,
         "out"
       ],
       [
-        29.64,
-        30.002,
+        29.702,
+        30.069,
         "less,"
       ],
       [
-        30.002,
-        30.243,
+        30.069,
+        30.313,
         "and"
       ],
       [
-        30.243,
-        30.605,
+        30.313,
+        30.68,
         "blood"
       ],
       [
-        30.605,
-        31.147,
+        30.68,
+        31.23,
         "pressure"
       ],
       [
-        31.147,
-        31.569,
+        31.23,
+        31.658,
         "drops."
       ]
     ],
-    "file": "vo_line5.wav"
+    "file": "vo_line5.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 6,
     "start": 32.4,
     "window_end": 38.8,
     "text": "Your brain notices first. Dizziness, tunnel vision, and fainting could follow within seconds.",
-    "caption": "Brain notices first. Dizziness, tunnel vision, fainting.",
-    "raw_duration": 6.346,
-    "tempo": 1.0318,
-    "fitted_duration": 6.152,
-    "end": 38.552,
+    "raw_duration": 6.095,
+    "trim_start": 0.06,
+    "tempo": 1.0,
+    "fitted_duration": 5.926,
+    "end": 38.326,
     "words": [
       [
         32.4,
-        32.727,
+        32.715,
         "Your"
       ],
       [
-        32.727,
-        33.12,
+        32.715,
+        33.094,
         "brain"
       ],
       [
-        33.12,
-        33.644,
+        33.094,
+        33.598,
         "notices"
       ],
       [
-        33.644,
-        34.102,
+        33.598,
+        34.039,
         "first."
       ],
       [
-        34.102,
-        34.822,
+        34.039,
+        34.733,
         "Dizziness,"
       ],
       [
-        34.822,
-        35.28,
+        34.733,
+        35.174,
         "tunnel"
       ],
       [
-        35.28,
-        35.803,
+        35.174,
+        35.678,
         "vision,"
       ],
       [
-        35.803,
-        36.065,
+        35.678,
+        35.931,
         "and"
       ],
       [
-        36.065,
-        36.654,
+        35.931,
+        36.498,
         "fainting"
       ],
       [
-        36.654,
-        37.047,
+        36.498,
+        36.876,
         "could"
       ],
       [
-        37.047,
-        37.505,
+        36.876,
+        37.318,
         "follow"
       ],
       [
-        37.505,
-        37.963,
+        37.318,
+        37.759,
         "within"
       ],
       [
-        37.963,
-        38.552,
+        37.759,
+        38.326,
         "seconds."
       ]
     ],
-    "file": "vo_line6.wav"
+    "file": "vo_line6.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 7,
     "start": 39.3,
     "window_end": 46.8,
     "text": "Worse: the heart feeds itself while relaxing. Now it barely does, and its rhythm can collapse into chaos.",
-    "caption": "Worse: heart feeds itself while relaxing. Rhythm can collapse.",
-    "raw_duration": 7.034,
-    "tempo": 0.9702,
-    "fitted_duration": 7.236,
-    "end": 46.536,
+    "raw_duration": 7.21,
+    "trim_start": 0.12,
+    "tempo": 1.0,
+    "fitted_duration": 6.935,
+    "end": 46.235,
     "words": [
       [
         39.3,
-        39.778,
+        39.758,
         "Worse:"
       ],
       [
-        39.778,
-        40.051,
+        39.758,
+        40.02,
         "the"
       ],
       [
-        40.051,
-        40.46,
+        40.02,
+        40.412,
         "heart"
       ],
       [
-        40.46,
-        40.87,
+        40.412,
+        40.805,
         "feeds"
       ],
       [
-        40.87,
-        41.348,
+        40.805,
+        41.263,
         "itself"
       ],
       [
-        41.348,
-        41.757,
+        41.263,
+        41.655,
         "while"
       ],
       [
-        41.757,
-        42.44,
+        41.655,
+        42.31,
         "relaxing."
       ],
       [
-        42.44,
-        42.713,
+        42.31,
+        42.571,
         "Now"
       ],
       [
-        42.713,
-        42.918,
+        42.571,
+        42.768,
         "it"
       ],
       [
-        42.918,
-        43.396,
+        42.768,
+        43.226,
         "barely"
       ],
       [
-        43.396,
-        43.805,
+        43.226,
+        43.618,
         "does,"
       ],
       [
-        43.805,
-        44.078,
+        43.618,
+        43.88,
         "and"
       ],
       [
-        44.078,
-        44.351,
+        43.88,
+        44.142,
         "its"
       ],
       [
-        44.351,
-        44.829,
+        44.142,
+        44.6,
         "rhythm"
       ],
       [
-        44.829,
-        45.102,
+        44.6,
+        44.861,
         "can"
       ],
       [
-        45.102,
-        45.716,
+        44.861,
+        45.45,
         "collapse"
       ],
       [
-        45.716,
-        46.058,
+        45.45,
+        45.777,
         "into"
       ],
       [
-        46.058,
-        46.536,
+        45.777,
+        46.235,
         "chaos."
       ]
     ],
-    "file": "vo_line7.wav"
+    "file": "vo_line7.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 8,
     "start": 47.4,
     "window_end": 54.8,
     "text": "A hummingbird's heart can top one thousand beats a minute, but it's built for it. Yours isn't.",
-    "caption": "Hummingbird: 1,000+ BPM. Built for it. Yours isn't.",
-    "raw_duration": 5.439,
-    "tempo": 0.85,
-    "fitted_duration": 6.375,
-    "end": 53.775,
+    "raw_duration": 5.793,
+    "trim_start": 0.11,
+    "tempo": 1.0,
+    "fitted_duration": 5.537,
+    "end": 52.937,
     "words": [
       [
         47.4,
-        47.534,
+        47.517,
         "A"
       ],
       [
-        47.534,
-        48.474,
+        47.517,
+        48.333,
         "hummingbird's"
       ],
       [
-        48.474,
-        48.876,
+        48.333,
+        48.682,
         "heart"
       ],
       [
-        48.876,
-        49.145,
+        48.682,
+        48.915,
         "can"
       ],
       [
-        49.145,
-        49.413,
+        48.915,
+        49.149,
         "top"
       ],
       [
-        49.413,
-        49.681,
+        49.149,
+        49.382,
         "one"
       ],
       [
-        49.681,
-        50.285,
+        49.382,
+        49.906,
         "thousand"
       ],
       [
-        50.285,
-        50.688,
+        49.906,
+        50.256,
         "beats"
       ],
       [
-        50.688,
-        50.822,
+        50.256,
+        50.372,
         "a"
       ],
       [
-        50.822,
-        51.359,
+        50.372,
+        50.839,
         "minute,"
       ],
       [
-        51.359,
-        51.627,
+        50.839,
+        51.072,
         "but"
       ],
       [
-        51.627,
-        51.963,
+        51.072,
+        51.363,
         "it's"
       ],
       [
-        51.963,
-        52.365,
+        51.363,
+        51.713,
         "built"
       ],
       [
-        52.365,
-        52.634,
+        51.713,
+        51.946,
         "for"
       ],
       [
-        52.634,
-        52.902,
+        51.946,
+        52.179,
         "it."
       ],
       [
-        52.902,
-        53.305,
+        52.179,
+        52.529,
         "Yours"
       ],
       [
-        53.305,
-        53.775,
+        52.529,
+        52.937,
         "isn't."
       ]
     ],
-    "file": "vo_line8.wav"
+    "file": "vo_line8.wav",
+    "voice": "Arena selected voice-00"
   },
   {
     "line": 9,
     "start": 55.2,
     "window_end": 59.9,
     "text": "Your heart doesn't just beat. It keeps time. Follow for more what-ifs.",
-    "caption": "Your heart keeps time. Follow for more What Ifs.",
-    "raw_duration": 4.843,
-    "tempo": 1.0883,
-    "fitted_duration": 4.466,
-    "end": 59.666,
+    "raw_duration": 5.631,
+    "trim_start": 0.04,
+    "tempo": 1.246,
+    "fitted_duration": 4.403,
+    "end": 59.603,
     "words": [
       [
         55.2,
-        55.514,
+        55.51,
         "Your"
       ],
       [
-        55.514,
-        55.892,
+        55.51,
+        55.882,
         "heart"
       ],
       [
-        55.892,
-        56.395,
+        55.882,
+        56.378,
         "doesn't"
       ],
       [
-        56.395,
-        56.71,
+        56.378,
+        56.688,
         "just"
       ],
       [
-        56.71,
-        57.087,
+        56.688,
+        57.06,
         "beat."
       ],
       [
-        57.087,
-        57.276,
+        57.06,
+        57.247,
         "It"
       ],
       [
-        57.276,
-        57.653,
+        57.247,
+        57.619,
         "keeps"
       ],
       [
-        57.653,
-        58.03,
+        57.619,
+        57.991,
         "time."
       ],
       [
-        58.03,
-        58.471,
+        57.991,
+        58.425,
         "Follow"
       ],
       [
-        58.471,
-        58.722,
+        58.425,
+        58.673,
         "for"
       ],
       [
-        58.722,
-        59.037,
+        58.673,
+        58.983,
         "more"
       ],
       [
-        59.037,
-        59.666,
+        58.983,
+        59.603,
         "what-ifs."
       ]
     ],
-    "file": "vo_line9.wav"
+    "file": "vo_line9.wav",
+    "voice": "Arena selected voice-00"
   }
 ]

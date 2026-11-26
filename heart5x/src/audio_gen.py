@@ -1,4 +1,4 @@
-"""Original synthetic music and BPM-synchronous thumps plus local narration."""
+"""Original synthetic music and BPM-synchronous thumps plus fitted narration."""
 import json,os,math,wave
 import numpy as np
 from scipy.io import wavfile
@@ -13,7 +13,7 @@ def main():
     for line in json.load(open(os.path.join(VO,'vo_manifest.json'))):
         sr,a=wavfile.read(os.path.join(VO,line['file'])); a=a.astype(np.float32)/32768
         a=sosfilt(butter(2,80,fs=SR,btype='highpass',output='sos'),a).astype('float32')
-        # gentle saturation controls Flite peaks
+        # Gentle saturation controls narration peaks.
         a=np.tanh(a*1.5)*0.53
         i=int(line['start']*SR); vo[i:i+len(a)]+=a[:N-i]; active[max(0,i-int(.1*SR)):min(N,i+len(a)+int(.12*SR))]=1
     # Soft duck envelope with 40 ms attack/release.
