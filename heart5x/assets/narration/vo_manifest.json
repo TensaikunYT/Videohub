@@ -1,0 +1,853 @@
+[
+  {
+    "line": 1,
+    "start": 0.4,
+    "window_end": 3.9,
+    "text": "What if your heart suddenly beat five times faster?",
+    "caption": "What if your heart suddenly beat 5x faster?",
+    "raw_duration": 3.01,
+    "tempo": 0.926,
+    "fitted_duration": 3.227,
+    "end": 3.627,
+    "words": [
+      [
+        0.4,
+        0.71,
+        "What"
+      ],
+      [
+        0.71,
+        0.896,
+        "if"
+      ],
+      [
+        0.896,
+        1.207,
+        "your"
+      ],
+      [
+        1.207,
+        1.579,
+        "heart"
+      ],
+      [
+        1.579,
+        2.138,
+        "suddenly"
+      ],
+      [
+        2.138,
+        2.448,
+        "beat"
+      ],
+      [
+        2.448,
+        2.758,
+        "five"
+      ],
+      [
+        2.758,
+        3.131,
+        "times"
+      ],
+      [
+        3.131,
+        3.627,
+        "faster?"
+      ]
+    ],
+    "file": "vo_line1.wav"
+  },
+  {
+    "line": 2,
+    "start": 4.2,
+    "window_end": 9.8,
+    "text": "At rest, it beats about seventy times a minute. Five times that is three hundred fifty.",
+    "caption": "At rest, ~70 beats a minute. 5x that is 350.",
+    "raw_duration": 5.836,
+    "tempo": 1.0909,
+    "fitted_duration": 5.356,
+    "end": 9.556,
+    "words": [
+      [
+        4.2,
+        4.383,
+        "At"
+      ],
+      [
+        4.383,
+        4.748,
+        "rest,"
+      ],
+      [
+        4.748,
+        4.93,
+        "it"
+      ],
+      [
+        4.93,
+        5.296,
+        "beats"
+      ],
+      [
+        5.296,
+        5.661,
+        "about"
+      ],
+      [
+        5.661,
+        6.148,
+        "seventy"
+      ],
+      [
+        6.148,
+        6.513,
+        "times"
+      ],
+      [
+        6.513,
+        6.635,
+        "a"
+      ],
+      [
+        6.635,
+        7.122,
+        "minute."
+      ],
+      [
+        7.122,
+        7.426,
+        "Five"
+      ],
+      [
+        7.426,
+        7.791,
+        "times"
+      ],
+      [
+        7.791,
+        8.095,
+        "that"
+      ],
+      [
+        8.095,
+        8.278,
+        "is"
+      ],
+      [
+        8.278,
+        8.643,
+        "three"
+      ],
+      [
+        8.643,
+        9.13,
+        "hundred"
+      ],
+      [
+        9.13,
+        9.556,
+        "fifty."
+      ]
+    ],
+    "file": "vo_line2.wav"
+  },
+  {
+    "line": 3,
+    "start": 10.3,
+    "window_end": 16.8,
+    "text": "Speeding up is normal. Hard exercise can push a healthy young adult's heart to around one hundred ninety beats per minute.",
+    "caption": "Speeding up is normal. Hard exercise ~190 BPM.",
+    "raw_duration": 7.311,
+    "tempo": 1.1697,
+    "fitted_duration": 6.259,
+    "end": 16.559,
+    "words": [
+      [
+        10.3,
+        10.758,
+        "Speeding"
+      ],
+      [
+        10.758,
+        10.911,
+        "up"
+      ],
+      [
+        10.911,
+        11.063,
+        "is"
+      ],
+      [
+        11.063,
+        11.47,
+        "normal."
+      ],
+      [
+        11.47,
+        11.725,
+        "Hard"
+      ],
+      [
+        11.725,
+        12.183,
+        "exercise"
+      ],
+      [
+        12.183,
+        12.386,
+        "can"
+      ],
+      [
+        12.386,
+        12.641,
+        "push"
+      ],
+      [
+        12.641,
+        12.742,
+        "a"
+      ],
+      [
+        12.742,
+        13.15,
+        "healthy"
+      ],
+      [
+        13.15,
+        13.455,
+        "young"
+      ],
+      [
+        13.455,
+        13.862,
+        "adult's"
+      ],
+      [
+        13.862,
+        14.167,
+        "heart"
+      ],
+      [
+        14.167,
+        14.32,
+        "to"
+      ],
+      [
+        14.32,
+        14.676,
+        "around"
+      ],
+      [
+        14.676,
+        14.88,
+        "one"
+      ],
+      [
+        14.88,
+        15.287,
+        "hundred"
+      ],
+      [
+        15.287,
+        15.643,
+        "ninety"
+      ],
+      [
+        15.643,
+        15.948,
+        "beats"
+      ],
+      [
+        15.948,
+        16.152,
+        "per"
+      ],
+      [
+        16.152,
+        16.559,
+        "minute."
+      ]
+    ],
+    "file": "vo_line3.wav"
+  },
+  {
+    "line": 4,
+    "start": 17.3,
+    "window_end": 24.8,
+    "text": "But at three hundred fifty, each beat lasts under two-tenths of a second. The chambers barely have time to refill between beats.",
+    "caption": "At 350, each beat lasts under 0.2 s. Chambers barely refill.",
+    "raw_duration": 8.088,
+    "tempo": 1.1155,
+    "fitted_duration": 7.27,
+    "end": 24.57,
+    "words": [
+      [
+        17.3,
+        17.525,
+        "But"
+      ],
+      [
+        17.525,
+        17.694,
+        "at"
+      ],
+      [
+        17.694,
+        18.033,
+        "three"
+      ],
+      [
+        18.033,
+        18.483,
+        "hundred"
+      ],
+      [
+        18.483,
+        18.878,
+        "fifty,"
+      ],
+      [
+        18.878,
+        19.16,
+        "each"
+      ],
+      [
+        19.16,
+        19.441,
+        "beat"
+      ],
+      [
+        19.441,
+        19.78,
+        "lasts"
+      ],
+      [
+        19.78,
+        20.118,
+        "under"
+      ],
+      [
+        20.118,
+        20.738,
+        "two-tenths"
+      ],
+      [
+        20.738,
+        20.907,
+        "of"
+      ],
+      [
+        20.907,
+        21.019,
+        "a"
+      ],
+      [
+        21.019,
+        21.47,
+        "second."
+      ],
+      [
+        21.47,
+        21.696,
+        "The"
+      ],
+      [
+        21.696,
+        22.203,
+        "chambers"
+      ],
+      [
+        22.203,
+        22.597,
+        "barely"
+      ],
+      [
+        22.597,
+        22.879,
+        "have"
+      ],
+      [
+        22.879,
+        23.161,
+        "time"
+      ],
+      [
+        23.161,
+        23.33,
+        "to"
+      ],
+      [
+        23.33,
+        23.724,
+        "refill"
+      ],
+      [
+        23.724,
+        24.175,
+        "between"
+      ],
+      [
+        24.175,
+        24.57,
+        "beats."
+      ]
+    ],
+    "file": "vo_line4.wav"
+  },
+  {
+    "line": 5,
+    "start": 25.3,
+    "window_end": 31.8,
+    "text": "Faster doesn't mean more blood. With less filling, each beat pushes out less, and blood pressure drops.",
+    "caption": "Faster is not more blood. Less filling, less output.",
+    "raw_duration": 7.017,
+    "tempo": 1.1227,
+    "fitted_duration": 6.269,
+    "end": 31.569,
+    "words": [
+      [
+        25.3,
+        25.722,
+        "Faster"
+      ],
+      [
+        25.722,
+        26.204,
+        "doesn't"
+      ],
+      [
+        26.204,
+        26.506,
+        "mean"
+      ],
+      [
+        26.506,
+        26.807,
+        "more"
+      ],
+      [
+        26.807,
+        27.229,
+        "blood."
+      ],
+      [
+        27.229,
+        27.53,
+        "With"
+      ],
+      [
+        27.53,
+        27.832,
+        "less"
+      ],
+      [
+        27.832,
+        28.374,
+        "filling,"
+      ],
+      [
+        28.374,
+        28.676,
+        "each"
+      ],
+      [
+        28.676,
+        28.977,
+        "beat"
+      ],
+      [
+        28.977,
+        29.399,
+        "pushes"
+      ],
+      [
+        29.399,
+        29.64,
+        "out"
+      ],
+      [
+        29.64,
+        30.002,
+        "less,"
+      ],
+      [
+        30.002,
+        30.243,
+        "and"
+      ],
+      [
+        30.243,
+        30.605,
+        "blood"
+      ],
+      [
+        30.605,
+        31.147,
+        "pressure"
+      ],
+      [
+        31.147,
+        31.569,
+        "drops."
+      ]
+    ],
+    "file": "vo_line5.wav"
+  },
+  {
+    "line": 6,
+    "start": 32.4,
+    "window_end": 38.8,
+    "text": "Your brain notices first. Dizziness, tunnel vision, and fainting could follow within seconds.",
+    "caption": "Brain notices first. Dizziness, tunnel vision, fainting.",
+    "raw_duration": 6.346,
+    "tempo": 1.0318,
+    "fitted_duration": 6.152,
+    "end": 38.552,
+    "words": [
+      [
+        32.4,
+        32.727,
+        "Your"
+      ],
+      [
+        32.727,
+        33.12,
+        "brain"
+      ],
+      [
+        33.12,
+        33.644,
+        "notices"
+      ],
+      [
+        33.644,
+        34.102,
+        "first."
+      ],
+      [
+        34.102,
+        34.822,
+        "Dizziness,"
+      ],
+      [
+        34.822,
+        35.28,
+        "tunnel"
+      ],
+      [
+        35.28,
+        35.803,
+        "vision,"
+      ],
+      [
+        35.803,
+        36.065,
+        "and"
+      ],
+      [
+        36.065,
+        36.654,
+        "fainting"
+      ],
+      [
+        36.654,
+        37.047,
+        "could"
+      ],
+      [
+        37.047,
+        37.505,
+        "follow"
+      ],
+      [
+        37.505,
+        37.963,
+        "within"
+      ],
+      [
+        37.963,
+        38.552,
+        "seconds."
+      ]
+    ],
+    "file": "vo_line6.wav"
+  },
+  {
+    "line": 7,
+    "start": 39.3,
+    "window_end": 46.8,
+    "text": "Worse: the heart feeds itself while relaxing. Now it barely does, and its rhythm can collapse into chaos.",
+    "caption": "Worse: heart feeds itself while relaxing. Rhythm can collapse.",
+    "raw_duration": 7.034,
+    "tempo": 0.9702,
+    "fitted_duration": 7.236,
+    "end": 46.536,
+    "words": [
+      [
+        39.3,
+        39.778,
+        "Worse:"
+      ],
+      [
+        39.778,
+        40.051,
+        "the"
+      ],
+      [
+        40.051,
+        40.46,
+        "heart"
+      ],
+      [
+        40.46,
+        40.87,
+        "feeds"
+      ],
+      [
+        40.87,
+        41.348,
+        "itself"
+      ],
+      [
+        41.348,
+        41.757,
+        "while"
+      ],
+      [
+        41.757,
+        42.44,
+        "relaxing."
+      ],
+      [
+        42.44,
+        42.713,
+        "Now"
+      ],
+      [
+        42.713,
+        42.918,
+        "it"
+      ],
+      [
+        42.918,
+        43.396,
+        "barely"
+      ],
+      [
+        43.396,
+        43.805,
+        "does,"
+      ],
+      [
+        43.805,
+        44.078,
+        "and"
+      ],
+      [
+        44.078,
+        44.351,
+        "its"
+      ],
+      [
+        44.351,
+        44.829,
+        "rhythm"
+      ],
+      [
+        44.829,
+        45.102,
+        "can"
+      ],
+      [
+        45.102,
+        45.716,
+        "collapse"
+      ],
+      [
+        45.716,
+        46.058,
+        "into"
+      ],
+      [
+        46.058,
+        46.536,
+        "chaos."
+      ]
+    ],
+    "file": "vo_line7.wav"
+  },
+  {
+    "line": 8,
+    "start": 47.4,
+    "window_end": 54.8,
+    "text": "A hummingbird's heart can top one thousand beats a minute, but it's built for it. Yours isn't.",
+    "caption": "Hummingbird: 1,000+ BPM. Built for it. Yours isn't.",
+    "raw_duration": 5.439,
+    "tempo": 0.85,
+    "fitted_duration": 6.375,
+    "end": 53.775,
+    "words": [
+      [
+        47.4,
+        47.534,
+        "A"
+      ],
+      [
+        47.534,
+        48.474,
+        "hummingbird's"
+      ],
+      [
+        48.474,
+        48.876,
+        "heart"
+      ],
+      [
+        48.876,
+        49.145,
+        "can"
+      ],
+      [
+        49.145,
+        49.413,
+        "top"
+      ],
+      [
+        49.413,
+        49.681,
+        "one"
+      ],
+      [
+        49.681,
+        50.285,
+        "thousand"
+      ],
+      [
+        50.285,
+        50.688,
+        "beats"
+      ],
+      [
+        50.688,
+        50.822,
+        "a"
+      ],
+      [
+        50.822,
+        51.359,
+        "minute,"
+      ],
+      [
+        51.359,
+        51.627,
+        "but"
+      ],
+      [
+        51.627,
+        51.963,
+        "it's"
+      ],
+      [
+        51.963,
+        52.365,
+        "built"
+      ],
+      [
+        52.365,
+        52.634,
+        "for"
+      ],
+      [
+        52.634,
+        52.902,
+        "it."
+      ],
+      [
+        52.902,
+        53.305,
+        "Yours"
+      ],
+      [
+        53.305,
+        53.775,
+        "isn't."
+      ]
+    ],
+    "file": "vo_line8.wav"
+  },
+  {
+    "line": 9,
+    "start": 55.2,
+    "window_end": 59.9,
+    "text": "Your heart doesn't just beat. It keeps time. Follow for more what-ifs.",
+    "caption": "Your heart keeps time. Follow for more What Ifs.",
+    "raw_duration": 4.843,
+    "tempo": 1.0883,
+    "fitted_duration": 4.466,
+    "end": 59.666,
+    "words": [
+      [
+        55.2,
+        55.514,
+        "Your"
+      ],
+      [
+        55.514,
+        55.892,
+        "heart"
+      ],
+      [
+        55.892,
+        56.395,
+        "doesn't"
+      ],
+      [
+        56.395,
+        56.71,
+        "just"
+      ],
+      [
+        56.71,
+        57.087,
+        "beat."
+      ],
+      [
+        57.087,
+        57.276,
+        "It"
+      ],
+      [
+        57.276,
+        57.653,
+        "keeps"
+      ],
+      [
+        57.653,
+        58.03,
+        "time."
+      ],
+      [
+        58.03,
+        58.471,
+        "Follow"
+      ],
+      [
+        58.471,
+        58.722,
+        "for"
+      ],
+      [
+        58.722,
+        59.037,
+        "more"
+      ],
+      [
+        59.037,
+        59.666,
+        "what-ifs."
+      ]
+    ],
+    "file": "vo_line9.wav"
+  }
+]
