@@ -53,6 +53,15 @@ function browserPath() {
 }
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 
+// Leftovers that kept the script alive after its last chunk (the queue then waited at 99% forever):
+// - headless Chrome starts chrome_crashpad_handler, which inherits the browser's stdout/stderr and outlives it, so the
+//   pipes never close; Chrome starts without the crash reporter, and a closed browser's pipes are released here;
+// - a chunk that failed leaves its ffmpeg blocked reading stdin, where SIGTERM does not stop it; close its input and
+//   SIGKILL it (it must not write into the retried chunk's file either)
+const release = br => { const pr = br && br.process(); if (pr) for (const s of [pr.stdin, pr.stdout, pr.stderr]) try { s && s.destroy(); } catch (e) { } };
+const closeBrowser = async br => { try { await br.close(); } finally { release(br); } };
+const stopFF = ff => { if (!ff) return; try { ff.stdin && ff.stdin.destroy(); } catch (e) { } try { ff.kill('SIGKILL'); } catch (e) { } };
+
 const PREVIEW = process.env.PREVIEW === '1';
 const FPS = +(process.env.FPS || 30), DUR = +(process.env.DUR || 10), CH = 60, VW = 1920, VH = 1080;
 const PAGE = process.env.PAGE || 'index.html';
@@ -258,7 +267,7 @@ async function rawChunk(w, a, b, tmp, hold) {
     for (const e of errors) console.error(e);
     if (bad) throw new Error(bad);
     if (n !== b - a) throw new Error(`chunk got ${n} of ${b - a} frames`);
-  } catch (e) { try { ff.kill(); } catch (x) { } throw e; }
+  } catch (e) { stopFF(ff); throw e; }
   finally { s.onData = s.onEnd = null; ff.stdin.off('drain', onDrain); paused = false; sock.resume(); }   // resume before end(): a paused socket would keep the last frame back
   ff.stdin.end(); return { ff, code: await closed };
 }
@@ -273,12 +282,12 @@ async function shotChunk(w, a, b, tmp, hold) {
   // 2D canvases are drawn in software: Chromium moves a canvas that is read back often (the raw path) to software
   // drawing anyway, and with both paths on the same rasteriser raw frames and screenshots are pixel-identical (WebGL is
   // not affected)
-  const launch = () => puppeteer.launch({ executablePath: exe, headless: 'new', protocolTimeout: 0, args: ['--allow-file-access-from-files', '--force-device-scale-factor=1', '--hide-scrollbars', '--disable-accelerated-2d-canvas'] });
+  const launch = () => puppeteer.launch({ executablePath: exe, headless: 'new', protocolTimeout: 0, args: ['--allow-file-access-from-files', '--force-device-scale-factor=1', '--hide-scrollbars', '--disable-accelerated-2d-canvas', '--disable-breakpad', '--disable-crash-reporter', '--disable-crashpad-for-testing'] });
 
   if (process.argv[2] === 'snap') {
     const br = await launch(), w = await openPage(br, null, 0); fs.mkdirSync('snaps', { recursive: true });
     for (const a of process.argv.slice(3)) fs.writeFileSync(`snaps/${a}.jpg`, await w.shot(+a, 'jpeg'));
-    await br.close(); return;
+    await closeBrowser(br); return;
   }
 
   const W = Math.max(1, +process.argv[2] || +process.env.WK || 2);
@@ -297,7 +306,7 @@ async function shotChunk(w, a, b, tmp, hold) {
   const budget = n => 60000 + n * 2000;
   await Promise.all(Array.from({ length: Math.min(W, queue.length) }, async (_, id) => {
     let br = await launch(), w = await openPage(br, sockets, id);
-    const restart = async () => { try { await Promise.race([br.close(), new Promise(r => setTimeout(r, 5000))]); } catch (e) { } try { br.process() && br.process().kill(); } catch (e) { } br = await launch(); w = await openPage(br, sockets, id); };
+    const restart = async () => { try { await Promise.race([br.close(), new Promise(r => setTimeout(r, 5000))]); } catch (e) { } try { br.process() && br.process().kill(); } catch (e) { } release(br); br = await launch(); w = await openPage(br, sockets, id); };
     while (queue.length) {
       const c = queue.shift(), a = c * chunkFrames, b = Math.min(TOTAL, a + chunkFrames), tmp = cf(c) + '.tmp.mp4';
       for (let attempt = 1; ; attempt++) {
@@ -309,7 +318,7 @@ async function shotChunk(w, a, b, tmp, hold) {
           if (code !== 0) throw new Error(`ffmpeg failed on chunk ${c} (code ${code})`);
           break;
         } catch (e) {
-          run.catch(() => { }); try { hold.ff && hold.ff.kill(); } catch (x) { }
+          run.catch(() => { }); stopFF(hold.ff);
           if (/transparent pixels/.test(e.message) && w.raw) { console.log(`[w${id}] frames: PNG screenshots (${e.message})`); w.raw = null; continue; }   // the screenshot shows the page behind: not the same picture
           if (attempt >= 4) throw e;
           console.log(`[w${id}] chunk ${c}: ${e.message}; trying again (${attempt}/3)`);
@@ -319,7 +328,7 @@ async function shotChunk(w, a, b, tmp, hold) {
       fs.renameSync(tmp, cf(c));
       done++; frames += b - a; console.log(`[w${id}] chunk ${c} ok — ${done} done, ${queue.length} queued, ${((Date.now() - T0) / 1000).toFixed(0)}s`);
     }
-    await br.close();
+    await closeBrowser(br);
   }));
   if (sockets) sockets.close();
   const sec = (Date.now() - T0) / 1000;
